@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap mp">
+
+  <!--
+    PARTNER CENTER VALUES — all three attributes below must be copied exactly from
+    your Partner Center dashboard after enrolling and reserving the "ReadyCode" app name.
+
+    Name         → Apps and games > ReadyCode > Product management > Product identity > Package/Identity Name
+    Publisher    → Account settings > Organization profile > Legal info > Publisher ID
+    Version      → Must match ApplicationVersion in ReadyCode.csproj; increment Build digit each submission
+  -->
+  <Identity
+    Name="REPLACE_WITH_PACKAGE_IDENTITY_NAME"
+    Publisher="CN=REPLACE_WITH_PUBLISHER_ID"
+    Version="1.0.0.0" />
+
+  <mp:PhoneIdentity
+    PhoneProductId="REPLACE_WITH_PRODUCT_GUID"
+    PhonePublisherId="00000000-0000-0000-0000-000000000000" />
+
+  <Properties>
+    <DisplayName>ReadyCode</DisplayName>
+    <PublisherDisplayName>REPLACE_WITH_PUBLISHER_DISPLAY_NAME</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <!-- Windows 10 1809 (October 2018 Update) is the minimum for Desktop MSIX packages -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersion="10.0.99999.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-US" />
+  </Resources>
+
+  <Applications>
+    <Application Id="App"
+      Executable="$targetnametoken$.exe"
+      EntryPoint="$targetentrypoint$">
+      <uap:VisualElements
+        DisplayName="ReadyCode"
+        Description="C64 BASIC editor and tokenizer for Windows"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile
+          Wide310x150Logo="Assets\Wide310x150Logo.png"
+          Square71x71Logo="Assets\SmallTile.png"
+          Square310x310Logo="Assets\LargeTile.png"
+          ShortName="ReadyCode">
+          <uap:ShowNameOnTiles>
+            <uap:ShowOn Tile="square150x150Logo"/>
+            <uap:ShowOn Tile="wide310x150Logo"/>
+            <uap:ShowOn Tile="square310x310Logo"/>
+          </uap:ShowNameOnTiles>
+        </uap:DefaultTile>
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- Outbound HTTP for C64 Ultimate REST API calls -->
+    <Capability Name="internetClient" />
+
+    <!--
+      broadFileSystemAccess is required because ReadyCode re-opens files from the Recent Files
+      list using absolute paths stored in settings.json. Standard OpenFileDialog / SaveFileDialog
+      are used for all user-initiated file access; no background scanning occurs.
+
+      Partner Center requires a written justification for this capability — paste the sentence
+      above into the "Notes for certification" field when submitting.
+    -->
+    <rescap:Capability Name="broadFileSystemAccess" />
+  </Capabilities>
+
+</Package>

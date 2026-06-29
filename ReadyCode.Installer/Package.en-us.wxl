@@ -1,0 +1,14 @@
+﻿<!--
+This file contains the declaration of all the localizable strings.
+-->
+<WixLocalization xmlns="http://wixtoolset.org/schemas/v4/wxl" Culture="en-US">
+
+  <String Id="DowngradeError" Value="A newer version of [ProductName] is already installed." />
+  <String Id="Progress1" Value="Installing" />
+  <String Id="Progress2" Value="files" />
+  <String Id="ActionText_RemoveFiles" Value="Removing backup files" />
+  <String Id="ActionData_RemoveFiles" Value="Removing file: [1]" />
+  <String Id="ActionData_CopyFiles" Value="Copying: [1]" />
+  <String Id="ActionData_CreateShortcuts" Value="Creating shortcut: [1]" />
+  <String Id="ActionData_WriteRegistryValues" Value="Writing registry: [1]" />
+</WixLocalization>

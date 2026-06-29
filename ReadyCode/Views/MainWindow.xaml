@@ -1,0 +1,1643 @@
+<Window x:Class="ReadyCode.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:ReadyCode.Views"
+        xmlns:models="clr-namespace:ReadyCode.Models"
+        xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        mc:Ignorable="d"
+        Title="{Binding ViewModel.Title}" Height="700" Width="1000"
+        WindowStartupLocation="CenterScreen"
+        PreviewKeyDown="Window_PreviewKeyDown">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+
+        <!-- Activity bar icon toggle button (left bar — active indicator on left edge) -->
+        <Style x:Key="ActivityBarButton" TargetType="ToggleButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="40"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="#9D9D9D"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="border" Background="Transparent"
+                                BorderThickness="2,0,0,0" BorderBrush="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource ThemeActivityBarIndicator}"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Activity bar icon toggle button (right bar — active indicator on right edge) -->
+        <Style x:Key="ActivityBarButtonRight" TargetType="ToggleButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="40"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="#9D9D9D"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="border" Background="Transparent"
+                                BorderThickness="0,0,2,0" BorderBrush="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource ThemeActivityBarIndicator}"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Context menu for editor tabs -->
+        <ContextMenu x:Key="TabContextMenu" Opened="TabContextMenu_Opened">
+            <MenuItem Header="Close"               InputGestureText="Ctrl+F4"  Click="TabContextClose_Click"/>
+            <MenuItem Header="Close Others"                                     Click="TabContextCloseOthers_Click"/>
+            <MenuItem Header="Close to the Right"                               Click="TabContextCloseToRight_Click"/>
+            <MenuItem Header="Close Saved"         InputGestureText="Ctrl+K U" Click="TabContextCloseSaved_Click"/>
+            <MenuItem Header="Close All"           InputGestureText="Ctrl+K W" Click="TabContextCloseAll_Click"/>
+        </ContextMenu>
+
+        <!-- Context menu for the text editor -->
+        <ContextMenu x:Key="EditorContextMenu">
+            <MenuItem Header="Transfer" InputGestureText="Ctrl+T" Click="EditorContextTransfer_Click"/>
+            <MenuItem Header="Run"      InputGestureText="F5"     Click="EditorContextRun_Click"/>
+            <Separator/>
+            <MenuItem Header="Cut"   InputGestureText="Ctrl+X"   Click="EditCut_Click"/>
+            <MenuItem Header="Copy"  InputGestureText="Ctrl+C"   Click="EditCopy_Click"/>
+            <MenuItem Header="Paste" InputGestureText="Ctrl+V"   Click="EditPaste_Click"/>
+            <Separator/>
+            <MenuItem Header="Delete" InputGestureText="Delete"  Click="EditDelete_Click"/>
+            <Separator/>
+            <MenuItem Header="Minify Code"   InputGestureText="Ctrl+M"       Click="EditorContextMinify_Click"/>
+            <MenuItem Header="Prettify Code" InputGestureText="Ctrl+Shift+M" Click="EditorContextPrettify_Click"/>
+        </ContextMenu>
+
+        <!-- Context menu for the root Explorer header -->
+        <ContextMenu x:Key="RootFolderContextMenu" Opened="PasteContextMenu_Opened">
+            <MenuItem Header="Paste" InputGestureText="Ctrl+V" Click="RootContextPaste_Click"/>
+        </ContextMenu>
+
+        <!-- Context menu for folder items in the Explorer tree -->
+        <ContextMenu x:Key="FolderContextMenu" Opened="PasteContextMenu_Opened">
+            <MenuItem Header="New File..."    Click="FolderContextNewFile_Click"/>
+            <MenuItem Header="New Folder..."  Click="FolderContextNewFolder_Click"/>
+            <Separator/>
+            <MenuItem Header="Reveal in File Explorer" Click="FolderContextReveal_Click"/>
+            <Separator/>
+            <MenuItem Header="Cut"   InputGestureText="Ctrl+X" Click="FolderContextCut_Click"/>
+            <MenuItem Header="Copy"  InputGestureText="Ctrl+C" Click="FolderContextCopy_Click"/>
+            <MenuItem Header="Paste" InputGestureText="Ctrl+V" Click="FolderContextPaste_Click"/>
+            <Separator/>
+            <MenuItem Header="Rename..."  InputGestureText="F2"     Click="FolderContextRename_Click"/>
+            <MenuItem Header="Delete"     InputGestureText="Delete" Click="FolderContextDelete_Click"/>
+        </ContextMenu>
+
+        <!-- Context menu for file items in the Explorer tree -->
+        <ContextMenu x:Key="FileContextMenu" Opened="PasteContextMenu_Opened">
+            <MenuItem Header="Reveal in File Explorer" Click="FileContextReveal_Click"/>
+            <Separator/>
+            <MenuItem Header="Cut"   InputGestureText="Ctrl+X" Click="FileContextCut_Click"/>
+            <MenuItem Header="Copy"  InputGestureText="Ctrl+C" Click="FileContextCopy_Click"/>
+            <MenuItem Header="Paste" InputGestureText="Ctrl+V" Click="FileContextPaste_Click"/>
+            <Separator/>
+            <MenuItem Header="Copy Path"          Click="FileContextCopyPath_Click"/>
+            <MenuItem Header="Copy Relative Path" Click="FileContextCopyRelativePath_Click"/>
+            <Separator/>
+            <MenuItem Header="Rename..."  InputGestureText="F2"     Click="FileContextRename_Click"/>
+            <MenuItem Header="Delete"     InputGestureText="Delete" Click="FileContextDelete_Click"/>
+        </ContextMenu>
+
+        <!-- Small icon button for Explorer panel header -->
+        <Style x:Key="ExplorerHeaderButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeFolderExplorerIconFg}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="Transparent" CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource ThemeFolderExplorerBtnHover}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource ThemeFolderExplorerBtnPressed}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Close (×) button inside each editor tab -->
+        <Style x:Key="TabCloseButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="16"/>
+            <Setter Property="Height" Value="16"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Arrow"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="Transparent" CornerRadius="2">
+                            <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                       Foreground="#888888"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource ThemeFolderExplorerBtnHover}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Button for inserting a PETSCII special character from the side panel -->
+        <Style x:Key="SpecialCharButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="62"/>
+            <Setter Property="Height" Value="60"/>
+            <Setter Property="Margin" Value="3"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Background" Value="{DynamicResource ThemeCardBg}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ThemeFolderExplorerHeaderBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeSpecialCharIconFg}"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeSpecialCharBtnHoverBg}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ThemeSpecialCharBtnHoverBorder}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeSpecialCharBtnPressedBg}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ListBoxItem container for editor tabs -->
+        <Style x:Key="TabItemContainerStyle" TargetType="ListBoxItem">
+            <Setter Property="Background" Value="{DynamicResource ThemeTabInactiveBg}"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="ContextMenu" Value="{StaticResource TabContextMenu}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <!-- Outer border: right-side separator between tabs -->
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{DynamicResource ThemeTabItemBorder}" BorderThickness="0,0,1,0">
+                            <!-- Inner border: top accent (blue when active) -->
+                            <Border x:Name="TopAccent"
+                                    BorderBrush="Transparent" BorderThickness="0,2,0,0">
+                                <ContentPresenter/>
+                            </Border>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource ThemeTabActiveBg}"/>
+                                <Setter TargetName="TopAccent" Property="BorderBrush" Value="#0066CC"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ContextMenu popup container — full ControlTemplate removes WPF's hardcoded
+             #F1F1F1 icon-column Rectangle that bleeds through as a white band. -->
+        <Style TargetType="ContextMenu">
+            <Setter Property="Background"      Value="{DynamicResource ThemeMenuItemBg}"/>
+            <Setter Property="Foreground"      Value="{DynamicResource ThemeMenuItemFg}"/>
+            <Setter Property="BorderBrush"     Value="{DynamicResource ThemeMenuItemBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding"         Value="2"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ItemsPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Shared glyph style for standard menu icons (New/Save/Print/Cut/Copy/Paste/etc.) -->
+        <Style x:Key="MenuItemIconText" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Global MenuItem style: themes top-level bar items and all dropdown/submenu items -->
+        <Style TargetType="MenuItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeMenuItemFg}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="Transparent" BorderThickness="1">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="20"/>   <!-- check mark -->
+                                    <ColumnDefinition Width="*"/>    <!-- header text -->
+                                    <ColumnDefinition Width="Auto"/> <!-- gesture text -->
+                                    <ColumnDefinition Width="Auto"/> <!-- submenu arrow -->
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="CheckMark"
+                                           Grid.Column="0"
+                                           Text="✓"
+                                           FontSize="11"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Visibility="Collapsed"
+                                           Foreground="{TemplateBinding Foreground}"/>
+                                <ContentPresenter Grid.Column="0"
+                                                   ContentSource="Icon"
+                                                   Width="16" Height="16"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"/>
+                                <AccessText x:Name="AccessText"
+                                            Grid.Column="1"
+                                            Text="{TemplateBinding Header}"
+                                            Margin="0,4,8,4"
+                                            VerticalAlignment="Center"/>
+                                <TextBlock x:Name="GestureText"
+                                           Grid.Column="2"
+                                           Text="{TemplateBinding InputGestureText}"
+                                           Foreground="{DynamicResource ThemeMenuItemFg}"
+                                           Margin="16,4,8,4"
+                                           VerticalAlignment="Center"
+                                           Visibility="Collapsed"/>
+                                <TextBlock x:Name="SubArrow"
+                                           Grid.Column="3"
+                                           Text="›"
+                                           FontSize="14"
+                                           Margin="4,0,6,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{TemplateBinding Foreground}"
+                                           Visibility="Collapsed"/>
+                                <Popup x:Name="PART_Popup"
+                                       IsOpen="{TemplateBinding IsSubmenuOpen}"
+                                       AllowsTransparency="True"
+                                       Focusable="False"
+                                       Placement="Bottom">
+                                    <Border Background="{DynamicResource ThemeMenuItemBg}"
+                                            BorderBrush="{DynamicResource ThemeMenuItemBorder}"
+                                            BorderThickness="1"
+                                            Padding="2">
+                                        <ItemsPresenter/>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <!-- Top-level bar items: span AccessText over the check column so spacing is unchanged -->
+                            <Trigger Property="Role" Value="TopLevelHeader">
+                                <Setter TargetName="AccessText" Property="Grid.Column" Value="0"/>
+                                <Setter TargetName="AccessText" Property="Grid.ColumnSpan" Value="2"/>
+                                <Setter TargetName="AccessText" Property="Margin" Value="8,4,8,4"/>
+                            </Trigger>
+                            <Trigger Property="Role" Value="TopLevelItem">
+                                <Setter TargetName="AccessText" Property="Grid.Column" Value="0"/>
+                                <Setter TargetName="AccessText" Property="Grid.ColumnSpan" Value="2"/>
+                                <Setter TargetName="AccessText" Property="Margin" Value="8,4,8,4"/>
+                            </Trigger>
+                            <!-- Submenu item: set popup bg as item bg, show gesture text -->
+                            <Trigger Property="Role" Value="SubmenuItem">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource ThemeMenuItemBg}"/>
+                                <Setter TargetName="GestureText" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <!-- Submenu header: same bg, popup opens to the right, show arrow -->
+                            <Trigger Property="Role" Value="SubmenuHeader">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource ThemeMenuItemBg}"/>
+                                <Setter TargetName="PART_Popup" Property="Placement" Value="Right"/>
+                                <Setter TargetName="SubArrow" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <!-- Checked state: show the check mark glyph -->
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <!-- Hover/highlight state (overrides role bg) -->
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource ThemeMenuItemHoverBg}"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource ThemeMenuItemHoverBorder}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeMenuItemHoverFg}"/>
+                                <Setter TargetName="GestureText" Property="Foreground" Value="{DynamicResource ThemeMenuItemHoverFg}"/>
+                                <Setter TargetName="SubArrow" Property="Foreground" Value="{DynamicResource ThemeMenuItemHoverFg}"/>
+                            </Trigger>
+                            <!-- Disabled state -->
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeMenuItemDisabledFg}"/>
+                                <Setter TargetName="GestureText" Property="Foreground" Value="{DynamicResource ThemeMenuItemDisabledFg}"/>
+                            </Trigger>
+                            <!-- No gesture text when InputGestureText is empty (overrides SubmenuItem trigger) -->
+                            <DataTrigger Binding="{Binding InputGestureText, RelativeSource={RelativeSource TemplatedParent}}" Value="">
+                                <Setter TargetName="GestureText" Property="Visibility" Value="Collapsed"/>
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+    </Window.Resources>
+
+    <!-- Input Bindings for Keyboard Shortcuts -->
+    <Window.InputBindings>
+        <!-- File Menu -->
+        <KeyBinding Key="N" Modifiers="Ctrl" Command="{Binding FileNewCommand}"/>
+        <KeyBinding Key="O" Modifiers="Ctrl" Command="{Binding FileOpenCommand}"/>
+        <KeyBinding Key="S" Modifiers="Ctrl" Command="{Binding FileSaveCommand}"/>
+        <KeyBinding Key="S" Modifiers="Ctrl+Shift" Command="{Binding FileSaveAsCommand}"/>
+        <KeyBinding Key="P" Modifiers="Ctrl" Command="{Binding ViewModel.FilePrintCommand}"/>
+
+        <!-- Edit Menu -->
+        <KeyBinding Key="G" Modifiers="Ctrl" Command="{Binding EditGoToLineCommand}"/>
+        <KeyBinding Key="Z" Modifiers="Ctrl" Command="{Binding EditUndoCommand}"/>
+        <KeyBinding Key="Y" Modifiers="Ctrl" Command="{Binding EditRedoCommand}"/>
+        <KeyBinding Key="X" Modifiers="Ctrl" Command="{Binding EditCutCommand}"/>
+        <KeyBinding Key="C" Modifiers="Ctrl" Command="{Binding EditCopyCommand}"/>
+        <KeyBinding Key="V" Modifiers="Ctrl" Command="{Binding EditPasteCommand}"/>
+        <KeyBinding Key="Delete" Command="{Binding EditDeleteCommand}"/>
+        <KeyBinding Key="U" Modifiers="Ctrl+Shift" Command="{Binding EditMakeUppercaseCommand}"/>
+        <KeyBinding Key="M" Modifiers="Ctrl"       Command="{Binding EditMinifyCommand}"/>
+        <KeyBinding Key="M" Modifiers="Ctrl+Shift" Command="{Binding EditPrettifyCommand}"/>
+        <KeyBinding Key="F" Modifiers="Ctrl" Command="{Binding EditFindCommand}"/>
+        <KeyBinding Key="H" Modifiers="Ctrl" Command="{Binding EditReplaceCommand}"/>
+
+        <!-- Tab management -->
+        <KeyBinding Key="F4" Modifiers="Ctrl" Command="{Binding TabCloseCurrentCommand}"/>
+
+        <!-- View Menu -->
+        <KeyBinding Key="B" Modifiers="Ctrl"       Command="{Binding ViewPrimarySideBarCommand}"/>
+        <KeyBinding Key="B" Modifiers="Ctrl+Alt"   Command="{Binding ViewSecondarySideBarCommand}"/>
+        <KeyBinding Key="E" Modifiers="Ctrl+Shift" Command="{Binding ViewExplorerCommand}"/>
+        <KeyBinding Key="Z" Modifiers="Alt"        Command="{Binding ViewWordWrapCommand}"/>
+
+        <!-- C64U Menu -->
+        <KeyBinding Key="T" Modifiers="Ctrl" Command="{Binding ViewModel.C64UTransferCommand}"/>
+        <KeyBinding Key="F5" Command="{Binding ViewModel.C64URunCommand}"/>
+
+        <!-- VICE Menu -->
+        <KeyBinding Key="T" Modifiers="Ctrl+Shift" Command="{Binding ViewModel.ViceTransferCommand}"/>
+        <KeyBinding Key="F5" Modifiers="Ctrl+Shift" Command="{Binding ViewModel.ViceRunCommand}"/>
+
+        <!-- Screen Control (Ctrl+1–8) -->
+        <KeyBinding Key="D1" Modifiers="Ctrl" Command="{Binding InsertSpecialCharCommand}" CommandParameter="19"/>
+        <KeyBinding Key="D2" Modifiers="Ctrl" Command="{Binding InsertSpecialCharCommand}" CommandParameter="147"/>
+        <KeyBinding Key="D3" Modifiers="Ctrl" Command="{Binding InsertSpecialCharCommand}" CommandParameter="18"/>
+        <KeyBinding Key="D4" Modifiers="Ctrl" Command="{Binding InsertSpecialCharCommand}" CommandParameter="146"/>
+        <KeyBinding Key="D5" Modifiers="Ctrl" Command="{Binding InsertSpecialCharCommand}" CommandParameter="157"/>
+        <KeyBinding Key="D6" Modifiers="Ctrl" Command="{Binding InsertSpecialCharCommand}" CommandParameter="29"/>
+        <KeyBinding Key="D7" Modifiers="Ctrl" Command="{Binding InsertSpecialCharCommand}" CommandParameter="145"/>
+        <KeyBinding Key="D8" Modifiers="Ctrl" Command="{Binding InsertSpecialCharCommand}" CommandParameter="17"/>
+
+        <!-- Printing Colors CTRL+SHIFT+1–8: Black White Red Cyan Purple Green Blue Yellow -->
+        <KeyBinding Key="D1" Modifiers="Ctrl+Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="144"/>
+        <KeyBinding Key="D2" Modifiers="Ctrl+Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="5"/>
+        <KeyBinding Key="D3" Modifiers="Ctrl+Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="28"/>
+        <KeyBinding Key="D4" Modifiers="Ctrl+Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="159"/>
+        <KeyBinding Key="D5" Modifiers="Ctrl+Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="156"/>
+        <KeyBinding Key="D6" Modifiers="Ctrl+Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="30"/>
+        <KeyBinding Key="D7" Modifiers="Ctrl+Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="31"/>
+        <KeyBinding Key="D8" Modifiers="Ctrl+Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="158"/>
+
+        <!-- Printing Colors CTRL+SHIFT+ALT+1–8: Orange Brown Lt.Red Gray1 Gray2 Lt.Green Lt.Blue Gray3 -->
+        <KeyBinding Key="D1" Modifiers="Ctrl+Shift+Alt" Command="{Binding InsertSpecialCharCommand}" CommandParameter="129"/>
+        <KeyBinding Key="D2" Modifiers="Ctrl+Shift+Alt" Command="{Binding InsertSpecialCharCommand}" CommandParameter="149"/>
+        <KeyBinding Key="D3" Modifiers="Ctrl+Shift+Alt" Command="{Binding InsertSpecialCharCommand}" CommandParameter="150"/>
+        <KeyBinding Key="D4" Modifiers="Ctrl+Shift+Alt" Command="{Binding InsertSpecialCharCommand}" CommandParameter="151"/>
+        <KeyBinding Key="D5" Modifiers="Ctrl+Shift+Alt" Command="{Binding InsertSpecialCharCommand}" CommandParameter="152"/>
+        <KeyBinding Key="D6" Modifiers="Ctrl+Shift+Alt" Command="{Binding InsertSpecialCharCommand}" CommandParameter="153"/>
+        <KeyBinding Key="D7" Modifiers="Ctrl+Shift+Alt" Command="{Binding InsertSpecialCharCommand}" CommandParameter="154"/>
+        <KeyBinding Key="D8" Modifiers="Ctrl+Shift+Alt" Command="{Binding InsertSpecialCharCommand}" CommandParameter="155"/>
+    </Window.InputBindings>
+
+    <DockPanel>
+        <!-- Menu Bar -->
+        <Menu DockPanel.Dock="Top" Background="{DynamicResource ThemeMenuBg}" Foreground="{DynamicResource ThemeMenuFg}" Height="25">
+
+            <MenuItem Header="_File">
+                <MenuItem Header="_New"             Command="{Binding FileNewCommand}"          InputGestureText="Ctrl+N">
+                    <MenuItem.Icon><TextBlock Text="&#xE7C3;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
+                </MenuItem>
+                <Separator/>
+                <MenuItem Header="Open _File..."    Command="{Binding FileOpenCommand}"         InputGestureText="Ctrl+O">
+                    <MenuItem.Icon><TextBlock Text="&#xE8E5;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="Open _Folder..."  Command="{Binding FileOpenFolderCommand}" InputGestureText="Ctrl+K Ctrl+O"/>
+                <MenuItem Header="Open _Recent" x:Name="RecentFilesMenuItem">
+                    <MenuItem Header="(none)" IsEnabled="False"/>
+                </MenuItem>
+                <Separator/>
+                <MenuItem Header="_Close" Command="{Binding TabCloseCurrentCommand}" InputGestureText="Ctrl+F4"/>
+                <Separator/>
+                <MenuItem Header="_Save"            Command="{Binding FileSaveCommand}"         InputGestureText="Ctrl+S">
+                    <MenuItem.Icon><TextBlock Text="&#xE74E;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="Save _As..."      Command="{Binding FileSaveAsCommand}"       InputGestureText="Ctrl+Shift+S">
+                    <MenuItem.Icon><TextBlock Text="&#xE792;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
+                </MenuItem>
+                <Separator/>
+                <MenuItem Header="_Export..."  Command="{Binding FileExportCommand}"/>
+                <MenuItem Header="_Import..."  Command="{Binding FileImportCommand}"/>
+                <Separator/>
+                <MenuItem Header="P_age Setup..." Command="{Binding ViewModel.FilePageSetupCommand}"/>
+                <MenuItem Header="Print Pre_view..." Command="{Binding ViewModel.FilePrintPreviewCommand}"/>
+                <MenuItem Header="_Print..."      Command="{Binding ViewModel.FilePrintCommand}"     InputGestureText="Ctrl+P">
+                    <MenuItem.Icon><TextBlock Text="&#xE749;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
+                </MenuItem>
+                <Separator/>
+                <MenuItem Header="E_xit" Click="FileExit_Click"/>
+            </MenuItem>
+
+            <MenuItem Header="_Edit">
+                <MenuItem Header="_Undo"  Command="{Binding EditUndoCommand}"  InputGestureText="Ctrl+Z">
+                    <MenuItem.Icon><TextBlock Text="&#xE7A7;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="_Redo"  Command="{Binding EditRedoCommand}"  InputGestureText="Ctrl+Y">
+                    <MenuItem.Icon><TextBlock Text="&#xE7A6;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
+                </MenuItem>
+                <Separator/>
+                <MenuItem Header="_Go to Line..." Command="{Binding EditGoToLineCommand}" InputGestureText="Ctrl+G"/>
+                <Separator/>
+                <MenuItem Header="Cu_t"   Command="{Binding EditCutCommand}"   InputGestureText="Ctrl+X">
+                    <MenuItem.Icon><TextBlock Text="&#xE8C6;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="_Copy"  Command="{Binding EditCopyCommand}"  InputGestureText="Ctrl+C">
+                    <MenuItem.Icon><TextBlock Text="&#xE8C8;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="_Paste" Command="{Binding EditPasteCommand}" InputGestureText="Ctrl+V">
+                    <MenuItem.Icon><TextBlock Text="&#xE77F;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
+                </MenuItem>
+                <Separator/>
+                <MenuItem Header="_Delete" Command="{Binding EditDeleteCommand}" InputGestureText="Delete">
+                    <MenuItem.Icon><TextBlock Text="&#xE74D;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
+                </MenuItem>
+                <Separator/>
+                <MenuItem Header="Comment _Selection"   Command="{Binding EditCommentCommand}"   InputGestureText="Ctrl+K Ctrl+C"/>
+                <MenuItem Header="U_ncomment Selection" Command="{Binding EditUncommentCommand}" InputGestureText="Ctrl+K Ctrl+U"/>
+                <Separator/>
+                <MenuItem Header="Make _Uppercase" Command="{Binding EditMakeUppercaseCommand}" InputGestureText="Ctrl+Shift+U"/>
+                <MenuItem Header="Make _Lowercase" Command="{Binding EditMakeLowercaseCommand}"/>
+                <Separator/>
+                <MenuItem Header="Minif_y Code"   Command="{Binding EditMinifyCommand}"   InputGestureText="Ctrl+M"/>
+                <MenuItem Header="Prettif_y Code" Command="{Binding EditPrettifyCommand}" InputGestureText="Ctrl+Shift+M"/>
+                <Separator/>
+                <MenuItem Header="_Find"    Command="{Binding EditFindCommand}"    InputGestureText="Ctrl+F">
+                    <MenuItem.Icon><TextBlock Text="&#xE721;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
+                </MenuItem>
+                <Separator/>
+                <MenuItem Header="_Replace" Command="{Binding EditReplaceCommand}" InputGestureText="Ctrl+H"/>
+            </MenuItem>
+
+            <MenuItem Header="_View">
+                <MenuItem Header="_Column Guide"
+                          IsCheckable="True"
+                          IsChecked="{Binding ViewModel.ShowColumnGuide, Mode=TwoWay}"/>
+                <Separator/>
+                <MenuItem Header="_Primary Side Bar"
+                          IsCheckable="True"
+                          IsChecked="{Binding ViewModel.IsLeftPanelOpen}"
+                          Command="{Binding ViewPrimarySideBarCommand}"
+                          InputGestureText="Ctrl+B"/>
+                <MenuItem Header="_Secondary Side Bar"
+                          IsCheckable="True"
+                          IsChecked="{Binding ViewModel.IsRightPanelOpen}"
+                          Command="{Binding ViewSecondarySideBarCommand}"
+                          InputGestureText="Ctrl+Alt+B"/>
+                <Separator/>
+                <MenuItem Header="_Explorer"
+                          Command="{Binding ViewExplorerCommand}"
+                          InputGestureText="Ctrl+Shift+E"/>
+                <Separator/>
+                <MenuItem Header="_Word Wrap"
+                          IsCheckable="True"
+                          IsChecked="{Binding ViewModel.WordWrap, Mode=TwoWay}"
+                          InputGestureText="Alt+Z"/>
+                <Separator/>
+                <MenuItem Header="Code Statistics"
+                          Command="{Binding ViewCodeStatisticsCommand}"/>
+            </MenuItem>
+
+            <MenuItem Header="C64_U">
+                <MenuItem Header="_Transfer" Command="{Binding ViewModel.C64UTransferCommand}" InputGestureText="Ctrl+T"/>
+                <MenuItem Header="_Run"      Command="{Binding ViewModel.C64URunCommand}" InputGestureText="F5">
+                    <MenuItem.Icon><TextBlock Text="&#xE768;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
+                </MenuItem>
+                <Separator/>
+                <MenuItem Header="R_eset"     Command="{Binding ViewModel.C64UResetCommand}"/>
+                <MenuItem Header="Re_boot"    Command="{Binding ViewModel.C64URebootCommand}"/>
+                <MenuItem Header="_Pause"     Command="{Binding ViewModel.C64UPauseCommand}"/>
+                <MenuItem Header="R_esume"    Command="{Binding ViewModel.C64UResumeCommand}"/>
+                <MenuItem Header="Power _Off" Command="{Binding ViewModel.C64UPowerOffCommand}"/>
+                <Separator/>
+                <MenuItem Header="_About My C64U" Command="{Binding ViewModel.C64USystemInfoCommand}"/>
+            </MenuItem>
+
+            <MenuItem Header="VI_CE">
+                <MenuItem Header="_Transfer" Command="{Binding ViewModel.ViceTransferCommand}" InputGestureText="Ctrl+Shift+T"/>
+                <MenuItem Header="_Run"      Command="{Binding ViewModel.ViceRunCommand}" InputGestureText="Ctrl+Shift+F5">
+                    <MenuItem.Icon><TextBlock Text="&#xE768;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
+                </MenuItem>
+                <Separator/>
+                <MenuItem Header="R_eset"     Command="{Binding ViewModel.ViceResetCommand}"/>
+                <MenuItem Header="Re_boot"    Command="{Binding ViewModel.ViceRebootCommand}"/>
+                <MenuItem Header="_Pause"     Command="{Binding ViewModel.VicePauseCommand}"/>
+                <MenuItem Header="R_esume"    Command="{Binding ViewModel.ViceResumeCommand}"/>
+                <MenuItem Header="Power _Off" Command="{Binding ViewModel.VicePowerOffCommand}"/>
+                <Separator/>
+                <MenuItem Header="_About VICE" Command="{Binding ViewModel.ViceSystemInfoCommand}"/>
+            </MenuItem>
+
+            <MenuItem Header="_Preferences">
+                <MenuItem Header="Show _Status Bar"
+                          IsCheckable="True"
+                          IsChecked="{Binding ViewModel.ShowStatusBar, Mode=TwoWay}"/>
+                <Separator/>
+                <MenuItem Header="_Settings..." Command="{Binding PreferencesSettingsCommand}"/>
+            </MenuItem>
+
+            <MenuItem Header="_Help">
+                <MenuItem Header="_About READYCode" Command="{Binding ViewModel.HelpAboutCommand}"/>
+            </MenuItem>
+
+        </Menu>
+
+        <!-- Status Bar -->
+        <StatusBar DockPanel.Dock="Bottom" Background="{DynamicResource ThemeStatusBarBg}" Foreground="{DynamicResource ThemeStatusBarFg}" Height="24"
+                   Visibility="{Binding ViewModel.ShowStatusBar, Converter={StaticResource BoolToVisibility}}">
+            <StatusBarItem Margin="5,0,0,0">
+                <TextBlock Text="{Binding ViewModel.FileStatusText}" FontSize="11"/>
+            </StatusBarItem>
+            <Separator/>
+            <StatusBarItem Margin="5,0,0,0">
+                <TextBlock Text="{Binding ViewModel.LineCountText}" FontSize="11"/>
+            </StatusBarItem>
+            <Separator/>
+
+            <StatusBarItem HorizontalAlignment="Right" Margin="0,0,10,0">
+                <TextBlock Text="{Binding ViewModel.ScreenPositionText}" FontSize="11"/>
+            </StatusBarItem>
+            <Separator/>
+            <StatusBarItem HorizontalAlignment="Stretch" HorizontalContentAlignment="Left">
+                <StatusBarItem.Style>
+                    <Style TargetType="StatusBarItem">
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding ViewModel.StatusType}" Value="Warning">
+                                <Setter Property="Background" Value="{DynamicResource ThemeStatusWarningBg}"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding ViewModel.StatusType}" Value="Error">
+                                <Setter Property="Background" Value="{DynamicResource ThemeStatusErrorBg}"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StatusBarItem.Style>
+                <TextBlock Text="{Binding ViewModel.StatusMessage}" FontSize="11">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{DynamicResource ThemeStatusBarFg}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ViewModel.StatusType}" Value="Warning">
+                                    <Setter Property="Foreground" Value="{DynamicResource ThemeStatusWarningFg}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding ViewModel.StatusType}" Value="Error">
+                                    <Setter Property="Foreground" Value="{DynamicResource ThemeStatusErrorFg}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StatusBarItem>
+        </StatusBar>
+
+        <!-- Main content: activity bars + side panels + editor -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="40"/><!-- Left activity bar -->
+                <ColumnDefinition x:Name="LeftPanelCol" Width="0" MinWidth="0"/><!-- Left panel -->
+                <ColumnDefinition x:Name="LeftSplitterCol" Width="0" MinWidth="0"/><!-- Left splitter -->
+                <ColumnDefinition Width="*" MinWidth="100"/><!-- Editor -->
+                <ColumnDefinition x:Name="RightSplitterCol" Width="0" MinWidth="0"/><!-- Right splitter -->
+                <ColumnDefinition x:Name="RightPanelCol" Width="0" MinWidth="0"/><!-- Right panel -->
+                <ColumnDefinition Width="40"/><!-- Right activity bar -->
+            </Grid.ColumnDefinitions>
+
+            <!-- Left activity bar -->
+            <Border Grid.Column="0" Background="#3C3C3C"
+                    BorderBrush="#2D2D2D" BorderThickness="0,0,1,0">
+                <StackPanel VerticalAlignment="Top">
+                    <ToggleButton x:Name="ExplorerToggle"
+                                  Style="{StaticResource ActivityBarButton}"
+                                  ToolTip="Explorer"
+                                  Click="ExplorerToggle_Click">
+                        <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="18"
+                                   Foreground="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}"/>
+                    </ToggleButton>
+                </StackPanel>
+            </Border>
+
+            <!-- Left panel: Explorer (file tree) -->
+            <Grid Grid.Column="1">
+                <DockPanel Background="{DynamicResource ThemeFolderExplorerBg}">
+                    <Border x:Name="ExplorerHeaderBorder"
+                            DockPanel.Dock="Top"
+                            Background="{DynamicResource ThemeFolderExplorerHeaderBg}"
+                            BorderBrush="{DynamicResource ThemeFolderExplorerHeaderBorder}" BorderThickness="0,0,0,1"
+                            Height="32"
+                            AllowDrop="True"
+                            ContextMenu="{StaticResource RootFolderContextMenu}"
+                            DragOver="RootHeader_DragOver"
+                            DragLeave="RootHeader_DragLeave"
+                            Drop="RootHeader_Drop">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0"
+                                       Text="{Binding ViewModel.ExplorerTitle}"
+                                       FontSize="11" FontWeight="Bold" Foreground="{DynamicResource ThemeFileFg}"
+                                       VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                        VerticalAlignment="Center" Margin="0,0,4,0">
+                                <Button Style="{StaticResource ExplorerHeaderButton}"
+                                        ToolTip="New File"
+                                        Click="ExplorerNewFile_Click">
+                                    <TextBlock Text="&#xE7C3;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                               Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}"/>
+                                </Button>
+                                <Button Style="{StaticResource ExplorerHeaderButton}"
+                                        ToolTip="New Folder"
+                                        Click="ExplorerNewFolder_Click">
+                                    <TextBlock Text="&#xED25;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                               Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}"/>
+                                </Button>
+                                <Button Style="{StaticResource ExplorerHeaderButton}"
+                                        ToolTip="Refresh Explorer"
+                                        Click="ExplorerRefresh_Click">
+                                    <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                               Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}"/>
+                                </Button>
+                                <Button Style="{StaticResource ExplorerHeaderButton}"
+                                        ToolTip="Collapse Folders in Explorer"
+                                        Click="ExplorerCollapse_Click">
+                                    <TextBlock Text="&#xE8D8;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                               Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}"/>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <TreeView x:Name="FileTree"
+                              Background="{DynamicResource ThemeFolderExplorerBg}"
+                              BorderThickness="0"
+                              AllowDrop="True"
+                              ItemsSource="{Binding ViewModel.FolderItems}"
+                              MouseDoubleClick="FileTree_MouseDoubleClick"
+                              PreviewMouseLeftButtonDown="FileTree_PreviewMouseLeftButtonDown"
+                              PreviewKeyDown="FileTree_PreviewKeyDown">
+                        <TreeView.ItemTemplate>
+                            <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                                <Grid>
+                                    <TextBlock x:Name="itemText"
+                                               Text="{Binding Name}"
+                                               FontSize="12" Foreground="{DynamicResource ThemeFileFg}"
+                                               Margin="0,1" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="RenameBox"
+                                             Visibility="Collapsed"
+                                             Text="{Binding Name, Mode=OneTime}"
+                                             FontSize="12"
+                                             Foreground="{DynamicResource ThemeFileFg}"
+                                             Background="{DynamicResource ThemeSettingsInputBg}"
+                                             BorderBrush="{DynamicResource ThemeSettingsAccent}"
+                                             BorderThickness="1"
+                                             CaretBrush="{DynamicResource ThemeFileFg}"
+                                             Padding="2,0" Margin="-3,0"
+                                             VerticalContentAlignment="Center"
+                                             KeyDown="RenameBox_KeyDown"
+                                             LostFocus="RenameBox_LostFocus"/>
+                                </Grid>
+                                <HierarchicalDataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsFolder}" Value="True">
+                                        <Setter TargetName="itemText"  Property="FontWeight" Value="SemiBold"/>
+                                        <Setter TargetName="RenameBox" Property="FontWeight" Value="SemiBold"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsRenaming}" Value="True">
+                                        <Setter TargetName="itemText"  Property="Visibility" Value="Collapsed"/>
+                                        <Setter TargetName="RenameBox" Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </HierarchicalDataTemplate.Triggers>
+                            </HierarchicalDataTemplate>
+                        </TreeView.ItemTemplate>
+                        <TreeView.ItemContainerStyle>
+                            <Style TargetType="TreeViewItem">
+                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                                <EventSetter Event="PreviewMouseMove" Handler="FileTreeItem_PreviewMouseMove"/>
+                                <EventSetter Event="DragOver"         Handler="FileTreeItem_DragOver"/>
+                                <EventSetter Event="DragLeave"        Handler="FileTreeItem_DragLeave"/>
+                                <EventSetter Event="Drop"             Handler="FileTreeItem_Drop"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="TreeViewItem">
+                                            <StackPanel>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="16"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <!-- Full-row background spans both columns -->
+                                                    <Border x:Name="RowBg"
+                                                            Grid.ColumnSpan="2"
+                                                            Background="Transparent"
+                                                            SnapsToDevicePixels="True"/>
+                                                    <!-- Expand/collapse toggle -->
+                                                    <ToggleButton x:Name="Expander"
+                                                                  Grid.Column="0"
+                                                                  Focusable="False"
+                                                                  IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                                                                  ClickMode="Press">
+                                                        <ToggleButton.Style>
+                                                            <Style TargetType="ToggleButton">
+                                                                <Setter Property="Background" Value="Transparent"/>
+                                                                <Setter Property="BorderThickness" Value="0"/>
+                                                                <Setter Property="Template">
+                                                                    <Setter.Value>
+                                                                        <ControlTemplate TargetType="ToggleButton">
+                                                                            <Border Background="Transparent" Width="16" Height="16">
+                                                                                <Path x:Name="Arrow"
+                                                                                      Data="M 5 3 L 11 8 L 5 13 Z"
+                                                                                      Fill="#888888"
+                                                                                      HorizontalAlignment="Center"
+                                                                                      VerticalAlignment="Center"/>
+                                                                            </Border>
+                                                                            <ControlTemplate.Triggers>
+                                                                                <Trigger Property="IsChecked" Value="True">
+                                                                                    <Setter TargetName="Arrow" Property="Data" Value="M 3 5 L 13 5 L 8 11 Z"/>
+                                                                                </Trigger>
+                                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                                    <Setter TargetName="Arrow" Property="Fill" Value="#555555"/>
+                                                                                </Trigger>
+                                                                            </ControlTemplate.Triggers>
+                                                                        </ControlTemplate>
+                                                                    </Setter.Value>
+                                                                </Setter>
+                                                            </Style>
+                                                        </ToggleButton.Style>
+                                                    </ToggleButton>
+                                                    <!-- Item content (file/folder name) -->
+                                                    <ContentPresenter x:Name="PART_Header"
+                                                                      Grid.Column="1"
+                                                                      ContentSource="Header"
+                                                                      HorizontalAlignment="Left"
+                                                                      VerticalAlignment="Center"
+                                                                      Margin="2,2"/>
+                                                </Grid>
+                                                <!-- Children shown when expanded -->
+                                                <ItemsPresenter x:Name="ItemsHost"
+                                                                Visibility="Collapsed"
+                                                                Margin="16,0,0,0"/>
+                                            </StackPanel>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsExpanded" Value="True">
+                                                    <Setter TargetName="ItemsHost" Property="Visibility" Value="Visible"/>
+                                                </Trigger>
+                                                <Trigger Property="HasItems" Value="False">
+                                                    <Setter TargetName="Expander" Property="Visibility" Value="Hidden"/>
+                                                </Trigger>
+                                                <!-- Hover -->
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="RowBg" Property="Background" Value="{DynamicResource ThemeFolderExplorerHoverBg}"/>
+                                                </Trigger>
+                                                <!-- Active selection (overrides hover) -->
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="RowBg" Property="Background" Value="{DynamicResource ThemeFileSelectedBg}"/>
+                                                </Trigger>
+                                                <!-- Inactive selection -->
+                                                <MultiTrigger>
+                                                    <MultiTrigger.Conditions>
+                                                        <Condition Property="IsSelected" Value="True"/>
+                                                        <Condition Property="IsSelectionActive" Value="False"/>
+                                                    </MultiTrigger.Conditions>
+                                                    <Setter TargetName="RowBg" Property="Background" Value="{DynamicResource ThemeFileInactiveSelectedBg}"/>
+                                                </MultiTrigger>
+                                                <!-- Drop target (overrides all) -->
+                                                <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
+                                                    <Setter TargetName="RowBg" Property="Background" Value="#FFF3CD"/>
+                                                    <Setter TargetName="RowBg" Property="BorderBrush" Value="#FFC107"/>
+                                                    <Setter TargetName="RowBg" Property="BorderThickness" Value="1"/>
+                                                </DataTrigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsFolder}" Value="True">
+                                        <Setter Property="ContextMenu" Value="{StaticResource FolderContextMenu}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsFolder}" Value="False">
+                                        <Setter Property="ContextMenu" Value="{StaticResource FileContextMenu}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TreeView.ItemContainerStyle>
+                    </TreeView>
+                </DockPanel>
+            </Grid>
+
+            <!-- Left GridSplitter -->
+            <GridSplitter Grid.Column="2"
+                          HorizontalAlignment="Stretch"
+                          Background="{DynamicResource ThemeSplitter}"
+                          ResizeBehavior="PreviousAndNext"
+                          ShowsPreview="False"/>
+
+            <!-- Main editor area: tab bar + editor -->
+            <Grid Grid.Column="3">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Tab bar -->
+                <Border Grid.Row="0" Background="{DynamicResource ThemeTabBarBg}"
+                        BorderBrush="{DynamicResource ThemeTabBorder}" BorderThickness="0,0,0,1">
+                    <ListBox x:Name="TabBar"
+                             ItemsSource="{Binding ViewModel.OpenTabs}"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                             SelectionChanged="TabBar_SelectionChanged"
+                             ItemContainerStyle="{StaticResource TabItemContainerStyle}">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type models:EditorTab}">
+                                <Border Height="33" MinWidth="80" MaxWidth="220">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="20"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="TabFileName"
+                                                   Grid.Column="0"
+                                                   Text="{Binding FileName}"
+                                                   VerticalAlignment="Center"
+                                                   Padding="10,0,4,0"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource ThemeTabInactiveFg}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <Grid Grid.Column="1" Width="16" Height="16"
+                                              VerticalAlignment="Center" HorizontalAlignment="Center">
+                                            <!-- Modified dot (shown when modified and tab not hovered) -->
+                                            <Ellipse x:Name="ModifiedDot"
+                                                     Width="8" Height="8"
+                                                     Fill="#6B69D6"
+                                                     Visibility="Collapsed"/>
+                                            <!-- Close button (shown when tab is hovered) -->
+                                            <Button x:Name="CloseBtn"
+                                                    Style="{StaticResource TabCloseButtonStyle}"
+                                                    Click="TabClose_Click"
+                                                    Visibility="Hidden"/>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <!-- Hovering: always show X -->
+                                    <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                        <Setter TargetName="CloseBtn" Property="Visibility" Value="Visible"/>
+                                        <Setter TargetName="ModifiedDot" Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <!-- Not hovering + modified: show dot -->
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding IsModified}" Value="True"/>
+                                            <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="False"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <MultiDataTrigger.Setters>
+                                            <Setter TargetName="ModifiedDot" Property="Visibility" Value="Visible"/>
+                                        </MultiDataTrigger.Setters>
+                                    </MultiDataTrigger>
+                                    <!-- Active tab: brighter foreground -->
+                                    <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                        <Setter TargetName="TabFileName" Property="Foreground" Value="{DynamicResource ThemeTabActiveFg}"/>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+
+                <!-- Editor + Find Bar overlay -->
+                <Grid Grid.Row="1" Background="{DynamicResource ThemeEditorBg}">
+                    <!-- Shown only while no tabs are open; ActivateTab toggles this and the Editor's
+                         visibility together so an open tab always covers it. -->
+                    <Image x:Name="EmptyStateImage"
+                           Source="/ReadyCode;component/Assets/READYCode-01-tra-1024x1024.png"
+                           Stretch="Uniform"
+                           Width="320" Height="320"
+                           Opacity="0.5"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Visibility="Visible"/>
+                    <avalonEdit:TextEditor x:Name="Editor"
+                             Margin="0"
+                             Padding="10"
+                             FontFamily="../Assets/Fonts/#Pet Me 64"
+                             FontSize="16"
+                             Foreground="#000000"
+                             Background="{DynamicResource ThemeEditorBg}"
+                             WordWrap="False"
+                             ShowLineNumbers="False"
+                             HorizontalScrollBarVisibility="Auto"
+                             VerticalScrollBarVisibility="Auto"
+                             ContextMenu="{StaticResource EditorContextMenu}"
+                             TextChanged="Editor_TextChanged"
+                             PreviewKeyDown="Editor_PreviewKeyDown"
+                             PreviewTextInput="Editor_PreviewTextInput"
+                             Visibility="Collapsed"/>
+                    <local:FindBarControl x:Name="FindBar"
+                                         HorizontalAlignment="Right"
+                                         VerticalAlignment="Top"
+                                         Margin="0,0,20,0"
+                                         Panel.ZIndex="10"
+                                         Width="440"/>
+                </Grid>
+            </Grid>
+
+            <!-- Right GridSplitter -->
+            <GridSplitter Grid.Column="4"
+                          HorizontalAlignment="Stretch"
+                          Background="{DynamicResource ThemeSplitter}"
+                          ResizeBehavior="PreviousAndNext"
+                          ShowsPreview="False"/>
+
+            <!-- Right panel: Special Characters and PETSCII Reference -->
+            <Grid Grid.Column="5">
+                <!-- PETSCII Reference panel -->
+                <DockPanel x:Name="PetsciiPanel" Background="{DynamicResource ThemeFolderExplorerBg}" Visibility="Collapsed">
+                    <Border DockPanel.Dock="Top"
+                            Background="{DynamicResource ThemeFolderExplorerHeaderBg}"
+                            BorderBrush="{DynamicResource ThemeFolderExplorerHeaderBorder}" BorderThickness="0,0,0,1"
+                            Height="32">
+                        <TextBlock Text="PETSCII REFERENCE"
+                                   FontSize="11" FontWeight="Bold" Foreground="{DynamicResource ThemeFileFg}"
+                                   VerticalAlignment="Center" Margin="10,0,0,0"/>
+                    </Border>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="PetsciiTablePanel" Margin="4,4"/>
+                    </ScrollViewer>
+                </DockPanel>
+
+                <!-- Special Characters panel -->
+                <DockPanel x:Name="SpecialCharsPanel" Background="{DynamicResource ThemeFolderExplorerBg}">
+                    <Border DockPanel.Dock="Top"
+                            Background="{DynamicResource ThemeFolderExplorerHeaderBg}"
+                            BorderBrush="{DynamicResource ThemeFolderExplorerHeaderBorder}" BorderThickness="0,0,0,1"
+                            Height="32">
+                        <TextBlock Text="QUICK KEYS"
+                                   FontSize="11" FontWeight="Bold" Foreground="{DynamicResource ThemeFileFg}"
+                                   VerticalAlignment="Center" Margin="10,0,0,0"/>
+                    </Border>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel>
+                            <!-- Screen Control section -->
+                            <TextBlock Text="SCREEN CONTROL"
+                                       FontSize="10" FontWeight="Bold"
+                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}"
+                                       Margin="8,8,8,2"/>
+                            <TextBlock Text="CTRL+1–8"
+                                       FontSize="9"
+                                       Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                       Margin="8,0,8,4"/>
+                            <WrapPanel Margin="6,0">
+                                <!-- HOME — PETSCII 19 → screen code 0x93 → PUA U+E093 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="19" Click="SpecialChar_Click"
+                                        ToolTip="Home: Ctrl+1; CHR$(19)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE093;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="HOME" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="1" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- CLR — PETSCII 147 → screen code 0xD3 → PUA U+E0D3 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="147" Click="SpecialChar_Click"
+                                        ToolTip="CLR: Ctrl+2; CHR$(147)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE0D3;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="CLR" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="2" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- Reverse On — PETSCII 18 → screen code 0x92 → PUA U+E092 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="18" Click="SpecialChar_Click"
+                                        ToolTip="Reverse On: Ctrl+3; CHR$(18)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE092;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="RVS ON" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="3" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- Reverse Off — PETSCII 146 → screen code 0xD2 → PUA U+E0D2 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="146" Click="SpecialChar_Click"
+                                        ToolTip="Reverse Off: Ctrl+4; CHR$(146)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE0D2;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="RVS OFF" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="4" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- Cursor Left — PETSCII 157 → screen code 0xDD → PUA U+E0DD -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="157" Click="SpecialChar_Click"
+                                        ToolTip="Cursor Left: Ctrl+5; CHR$(157)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE0DD;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="CUR &#x2190;" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="5" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- Cursor Right — PETSCII 29 → screen code 0x9D → PUA U+E09D -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="29" Click="SpecialChar_Click"
+                                        ToolTip="Cursor Right: Ctrl+6; CHR$(29)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE09D;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="CUR &#x2192;" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="6" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- Cursor Up — PETSCII 145 → screen code 0xD1 → PUA U+E0D1 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="145" Click="SpecialChar_Click"
+                                        ToolTip="Cursor Up: Ctrl+7; CHR$(145)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE0D1;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="CUR &#x2191;" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="7" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- Cursor Down — PETSCII 17 → screen code 0x91 → PUA U+E091 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="17" Click="SpecialChar_Click"
+                                        ToolTip="Cursor Down: Ctrl+8; CHR$(17)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE091;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="CUR &#x2193;" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="8" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                    </Grid>
+                                </Button>
+                            </WrapPanel>
+
+                            <!-- Divider -->
+                            <Rectangle Height="1" Margin="8,10,8,0"
+                                       Fill="{DynamicResource ThemeFolderExplorerHeaderBorder}"/>
+
+                            <!-- Printing Colors section -->
+                            <TextBlock Text="PRINTING COLORS"
+                                       FontSize="10" FontWeight="Bold"
+                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}"
+                                       Margin="8,8,8,2"/>
+
+                            <!-- CTRL+SHIFT+1–8 colors: Black White Red Cyan Purple Green Blue Yellow -->
+                            <TextBlock Text="CTRL+SHIFT+1–8"
+                                       FontSize="9"
+                                       Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                       Margin="8,0,8,4"/>
+                            <WrapPanel Margin="6,0">
+                                <!-- Black — PETSCII 144 → screen code 0xD0 → PUA U+E0D0 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="144" Click="SpecialChar_Click"
+                                        ToolTip="Black: Ctrl+Shift+1; CHR$(144); POKE(0)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE0D0;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       Foreground="#000000"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="BLACK" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="1" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                        <TextBlock Text="0" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                   Margin="0,0,3,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- White — PETSCII 5 → screen code 0x85 → PUA U+E085 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="5" Click="SpecialChar_Click"
+                                        ToolTip="White: Ctrl+Shift+2; CHR$(5); POKE(1)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE085;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       Foreground="#F7F7F7"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="WHITE" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="2" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                        <TextBlock Text="1" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                   Margin="0,0,3,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- Red — PETSCII 28 → screen code 0x9C → PUA U+E09C -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="28" Click="SpecialChar_Click"
+                                        ToolTip="Red: Ctrl+Shift+3; CHR$(28); POKE(2)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE09C;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       Foreground="#8D2F34"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="RED" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="3" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                        <TextBlock Text="2" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                   Margin="0,0,3,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- Cyan — PETSCII 159 → screen code 0xDF → PUA U+E0DF -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="159" Click="SpecialChar_Click"
+                                        ToolTip="Cyan: Ctrl+Shift+4; CHR$(159); POKE(3)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE0DF;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       Foreground="#6AD4CD"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="CYAN" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="4" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                        <TextBlock Text="3" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                   Margin="0,0,3,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- Purple — PETSCII 156 → screen code 0xDC → PUA U+E0DC -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="156" Click="SpecialChar_Click"
+                                        ToolTip="Purple: Ctrl+Shift+5; CHR$(156); POKE(4)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE0DC;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       Foreground="#9835A4"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="PURPLE" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="5" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                        <TextBlock Text="4" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                   Margin="0,0,3,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- Green — PETSCII 30 → screen code 0x9E → PUA U+E09E -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="30" Click="SpecialChar_Click"
+                                        ToolTip="Green: Ctrl+Shift+6; CHR$(30); POKE(5)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE09E;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       Foreground="#4CB442"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="GREEN" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="6" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                        <TextBlock Text="5" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                   Margin="0,0,3,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- Blue — PETSCII 31 → screen code 0x9F → PUA U+E09F -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="31" Click="SpecialChar_Click"
+                                        ToolTip="Blue: Ctrl+Shift+7; CHR$(31); POKE(6)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE09F;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       Foreground="#2C29B1"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="BLUE" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="7" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                        <TextBlock Text="6" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                   Margin="0,0,3,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- Yellow — PETSCII 158 → screen code 0xDE → PUA U+E0DE -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="158" Click="SpecialChar_Click"
+                                        ToolTip="Yellow: Ctrl+Shift+8; CHR$(158); POKE(7)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE0DE;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       Foreground="#EFEF5D"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="YELLOW" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="8" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                        <TextBlock Text="7" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                   Margin="0,0,3,2"/>
+                                    </Grid>
+                                </Button>
+                            </WrapPanel>
+
+                            <!-- CTRL+SHIFT+ALT+1–8 colors: Orange Brown Lt.Red Gray1 Gray2 Lt.Green Lt.Blue Gray3 -->
+                            <TextBlock Text="CTRL+SHIFT+ALT+1–8"
+                                       FontSize="9"
+                                       Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                       Margin="8,8,8,4"/>
+                            <WrapPanel Margin="6,0,6,8">
+                                <!-- Orange — PETSCII 129 → screen code 0xC1 → PUA U+E0C1 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="129" Click="SpecialChar_Click"
+                                        ToolTip="Orange: Ctrl+Shift+Alt+1; CHR$(129); POKE(8)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE0C1;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       Foreground="#984E20"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="ORANGE" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="1" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                        <TextBlock Text="8" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                   Margin="0,0,3,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- Brown — PETSCII 149 → screen code 0xD5 → PUA U+E0D5 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="149" Click="SpecialChar_Click"
+                                        ToolTip="Brown: Ctrl+Shift+Alt+2; CHR$(149); POKE(9)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE0D5;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       Foreground="#5B3800"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="BROWN" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="2" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                        <TextBlock Text="9" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                   Margin="0,0,3,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- Light Red — PETSCII 150 → screen code 0xD6 → PUA U+E0D6 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="150" Click="SpecialChar_Click"
+                                        ToolTip="Light Red: Ctrl+Shift+Alt+3; CHR$(150); POKE(10)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE0D6;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       Foreground="#D1676D"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="LT. RED" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="3" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                        <TextBlock Text="10" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                   Margin="0,0,3,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- Gray 1 — PETSCII 151 → screen code 0xD7 → PUA U+E0D7 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="151" Click="SpecialChar_Click"
+                                        ToolTip="Gray 1: Ctrl+Shift+Alt+4; CHR$(151); POKE(11)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE0D7;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       Foreground="#4A4A4A"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="GRAY 1" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="4" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                        <TextBlock Text="11" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                   Margin="0,0,3,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- Gray 2 — PETSCII 152 → screen code 0xD8 → PUA U+E0D8 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="152" Click="SpecialChar_Click"
+                                        ToolTip="Gray 2: Ctrl+Shift+Alt+5; CHR$(152); POKE(12)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE0D8;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       Foreground="#7B7B7B"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="GRAY 2" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="5" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                        <TextBlock Text="12" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                   Margin="0,0,3,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- Light Green — PETSCII 153 → screen code 0xD9 → PUA U+E0D9 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="153" Click="SpecialChar_Click"
+                                        ToolTip="Light Green: Ctrl+Shift+Alt+6; CHR$(153); POKE(13)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE0D9;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       Foreground="#9FEF93"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="LT. GREEN" FontFamily="Segoe UI" FontSize="8"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="6" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                        <TextBlock Text="13" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                   Margin="0,0,3,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- Light Blue — PETSCII 154 → screen code 0xDA → PUA U+E0DA -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="154" Click="SpecialChar_Click"
+                                        ToolTip="Light Blue: Ctrl+Shift+Alt+7; CHR$(154); POKE(14)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE0DA;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       Foreground="#6D6AEF"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="LT. BLUE" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="7" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                        <TextBlock Text="14" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                   Margin="0,0,3,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- Gray 3 — PETSCII 155 → screen code 0xDB → PUA U+E0DB -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="155" Click="SpecialChar_Click"
+                                        ToolTip="Gray 3: Ctrl+Shift+Alt+8; CHR$(155); POKE(15)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock Text="&#xE0DB;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="20"
+                                                       Foreground="#B2B2B2"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="GRAY 3" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="8" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                        <TextBlock Text="15" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                   Margin="0,0,3,2"/>
+                                    </Grid>
+                                </Button>
+                            </WrapPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
+            </Grid>
+
+            <!-- Right activity bar -->
+            <Border Grid.Column="6" Background="#3C3C3C"
+                    BorderBrush="#2D2D2D" BorderThickness="1,0,0,0">
+                <StackPanel VerticalAlignment="Top">
+                    <ToggleButton x:Name="SpecialCharsToggle"
+                                  Style="{StaticResource ActivityBarButtonRight}"
+                                  ToolTip="Quick Keys"
+                                  Click="SpecialCharsToggle_Click">
+                        <TextBlock Text="&#xE945;" FontSize="18" FontFamily="Segoe MDL2 Assets"
+                                   Foreground="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}"/>
+                    </ToggleButton>
+                    <ToggleButton x:Name="PetsciiToggle"
+                                  Style="{StaticResource ActivityBarButtonRight}"
+                                  ToolTip="PETSCII Reference"
+                                  Click="PetsciiToggle_Click">
+                        <TextBlock Text="&#xE0E6;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="18"
+                                   Foreground="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}"/>
+                    </ToggleButton>
+                </StackPanel>
+            </Border>
+
+        </Grid>
+    </DockPanel>
+</Window>

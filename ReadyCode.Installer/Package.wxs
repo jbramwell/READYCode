@@ -1,0 +1,77 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+
+  <Package
+    Name="READYCode"
+    Manufacturer="Moonspace Labs, LLC"
+    Version="$(var.InstallerVersion)"
+    UpgradeCode="977A8C62-FCB4-4AD9-9B4F-E11A226803BB"
+    Scope="perMachine">
+
+    <MajorUpgrade Schedule="afterInstallInitialize" AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer version of READYCode is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <WixVariable Id="WixUIDialogBmp" Value="Installer-Background.bmp" />
+    <WixVariable Id="WixUIBannerBmp" Value="Installer-Banner.bmp" />
+
+    <ui:WixUI Id="WixUI_InstallDir" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+    <Feature Id="ProductFeature" Title="READYCode" Level="1">
+      <ComponentGroupRef Id="HarvestedComponents" />
+      <ComponentRef Id="ApplicationShortcutDesktop" />
+      <ComponentRef Id="ApplicationShortcutStartMenu" />
+    </Feature>
+
+  </Package>
+
+  <Fragment>
+    <Icon Id="SetupIcon" SourceFile="..\ReadyCode\READYCode.ico" />
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="HarvestedComponents" Directory="INSTALLFOLDER">
+      <Files Include="..\READYCode\bin\Release\net8.0-windows\win-x64\**" />
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <!-- Desktop shortcut -->
+    <Component Id="ApplicationShortcutDesktop"
+               Guid="B20A44B8-D45F-46FF-B1A6-0B001818EA11"
+               Directory="DesktopFolder">
+      <Shortcut Id="DesktopShortcut"
+                Name="READYCode"
+                Target="[INSTALLFOLDER]READYCode.exe"
+                WorkingDirectory="INSTALLFOLDER" />
+      <RemoveFolder Id="RemoveDesktopFolder" Directory="DesktopFolder" On="uninstall" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\Moonspace Labs\READYCode"
+                     Name="DesktopShortcut"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <!-- Start Menu shortcut -->
+    <Component Id="ApplicationShortcutStartMenu"
+               Guid="29FB9582-5E61-4992-A610-F4E6B4B0C79E"
+               Directory="ProgramMenuFolder">
+      <Shortcut Id="StartMenuShortcut"
+                Name="READYCode"
+                Target="[INSTALLFOLDER]READYCode.exe"
+                WorkingDirectory="INSTALLFOLDER" />
+      <RemoveFolder Id="RemoveStartMenuFolder" Directory="ProgramMenuFolder" On="uninstall" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\Moonspace Labs\READYCode"
+                     Name="StartMenuShortcut"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+  </Fragment>
+
+</Wix>

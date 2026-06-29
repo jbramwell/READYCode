@@ -1,0 +1,68 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    
+    <!-- Versioning — increment ApplicationVersion (Build digit) for each Store submission -->
+    <ApplicationVersion>1.0.0.0</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0.0</ApplicationDisplayVersion>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+
+    <!-- MSIX packaging — Release only so Debug builds remain fast -->
+    <WindowsPackageType Condition="'$(Configuration)' == 'Release'">MSIX</WindowsPackageType>
+
+    <!-- Self-contained publish so users don't need .NET 8 installed.
+         Release-only: Debug builds stay in the standard output path so launch.json works unchanged. -->
+    <RuntimeIdentifier Condition="'$(Configuration)' == 'Release'">win-x64</RuntimeIdentifier>
+    <SelfContained Condition="'$(Configuration)' == 'Release'">true</SelfContained>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishReadyToRun Condition="'$(Configuration)' == 'Release'">true</PublishReadyToRun>
+
+    <!-- Code signing: replace with your certificate thumbprint after creating the dev cert.
+         See the packaging plan for the PowerShell command to generate it.
+         Alternatively use PackageCertificateKeyFile + PackageCertificatePassword for a .pfx file. -->
+    <PackageCertificateThumbprint>REPLACE_WITH_CERT_THUMBPRINT</PackageCertificateThumbprint>
+    <ApplicationIcon>READYCode.ico</ApplicationIcon>
+    <Platforms>AnyCPU;x64</Platforms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AvalonEdit" Version="6.3.1.120" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Gives access to System.Windows.Forms.ColorDialog without enabling
+         UseWindowsForms, which would inject conflicting implicit usings. -->
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\**\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- Also embedded (Content alone doesn't go into the .g.resources bundle), so
+         pack://application:,,,/ReadyCode;component/... URIs resolve in XAML -->
+    <Resource Include="Assets\**\*.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="READYCode.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Embedded so the editor and printing render PETSCII glyphs correctly even when the
+         font isn't installed on the machine - see Assets\Fonts\LICENSE-PetMe64.txt for terms. -->
+    <Resource Include="Assets\Fonts\PetMe64.ttf" />
+    <Content Include="Assets\Fonts\LICENSE-PetMe64.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

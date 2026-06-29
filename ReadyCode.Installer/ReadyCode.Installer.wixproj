@@ -1,0 +1,25 @@
+﻿<Project Sdk="WixToolset.Sdk/7.0.0">
+  <PropertyGroup>
+    <InstallerVersion>1.0.0.0</InstallerVersion>
+    <DefineConstants>InstallerVersion=$(InstallerVersion)</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup>
+    <AcceptEula>true</AcceptEula>
+    <Platform>x64</Platform>
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+  </PropertyGroup>
+  <PropertyGroup>
+    <OutputName>READYCode</OutputName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="WixToolset.UI.wixext" Version="7.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Package.en-us.wxl" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Installer-Background.bmp" />
+    <Content Include="Installer-Banner.bmp" />
+    <Content Include="License.rtf" />
+  </ItemGroup>
+</Project>

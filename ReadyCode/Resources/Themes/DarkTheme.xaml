@@ -1,0 +1,115 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Menu Bar -->
+    <SolidColorBrush x:Key="ThemeMenuBg"        Color="#3C3C3C"/>
+    <SolidColorBrush x:Key="ThemeMenuFg"        Color="#CCCCCC"/>
+
+    <!-- Menu Items / Dropdowns -->
+    <SolidColorBrush x:Key="ThemeMenuItemBg"          Color="#2D2D2D"/>
+    <SolidColorBrush x:Key="ThemeMenuItemFg"          Color="#CCCCCC"/>
+    <SolidColorBrush x:Key="ThemeMenuItemHoverBg"     Color="#094771"/>
+    <SolidColorBrush x:Key="ThemeMenuItemHoverFg"     Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="ThemeMenuItemHoverBorder" Color="#007ACC"/>
+    <SolidColorBrush x:Key="ThemeMenuItemDisabledFg"  Color="#6B6B6B"/>
+    <SolidColorBrush x:Key="ThemeMenuItemBorder"      Color="#454545"/>
+
+    <!-- Folder Explorer Panel -->
+    <SolidColorBrush x:Key="ThemeFolderExplorerBg"           Color="#252526"/>
+    <SolidColorBrush x:Key="ThemeFolderExplorerHeaderBg"     Color="#383838"/>
+    <SolidColorBrush x:Key="ThemeFolderExplorerHeaderBorder" Color="#252526"/>
+
+    <!-- Splitters -->
+    <SolidColorBrush x:Key="ThemeSplitter" Color="#3C3C3C"/>
+
+    <!-- Tab Bar -->
+    <SolidColorBrush x:Key="ThemeTabBarBg"      Color="#3C3C3C"/>
+    <SolidColorBrush x:Key="ThemeTabBorder"     Color="#3C3C3C"/>
+    <SolidColorBrush x:Key="ThemeTabActiveBg"   Color="#1E1E1E"/>
+    <SolidColorBrush x:Key="ThemeTabInactiveBg" Color="#2D2D2D"/>
+    <SolidColorBrush x:Key="ThemeTabItemBorder" Color="#3C3C3C"/>
+    <SolidColorBrush x:Key="ThemeTabActiveFg"   Color="#CCCCCC"/>
+    <SolidColorBrush x:Key="ThemeTabInactiveFg" Color="#999999"/>
+
+    <!-- File Tree Items -->
+    <SolidColorBrush x:Key="ThemeFileFg"                 Color="#CCCCCC"/>
+    <SolidColorBrush x:Key="ThemeFileSelectedBg"         Color="#22395C"/>
+    <SolidColorBrush x:Key="ThemeFileInactiveSelectedBg" Color="#37373D"/>
+
+    <!-- Folder Explorer Icons & Buttons -->
+    <SolidColorBrush x:Key="ThemeFolderExplorerIconFg"     Color="#C5C5C5"/>
+    <SolidColorBrush x:Key="ThemeFolderExplorerHoverBg"    Color="#454545"/>
+    <SolidColorBrush x:Key="ThemeFolderExplorerBtnHover"   Color="#4E4E4E"/>
+    <SolidColorBrush x:Key="ThemeFolderExplorerBtnPressed" Color="#5C5C5C"/>
+
+    <!-- Status Bar -->
+    <SolidColorBrush x:Key="ThemeStatusBarBg"     Color="#2C2C2C"/>
+    <SolidColorBrush x:Key="ThemeStatusBarFg"     Color="#CCCCCC"/>
+    <SolidColorBrush x:Key="ThemeStatusWarningBg" Color="#856300"/>
+    <SolidColorBrush x:Key="ThemeStatusWarningFg" Color="#000000"/>
+    <SolidColorBrush x:Key="ThemeStatusErrorBg"   Color="#6E1313"/>
+    <SolidColorBrush x:Key="ThemeStatusErrorFg"   Color="#FFFFFF"/>
+
+    <!-- Activity Bar -->
+    <SolidColorBrush x:Key="ThemeActivityBarIndicator" Color="#FFFFFF"/>
+
+    <!-- Editor -->
+    <SolidColorBrush x:Key="ThemeEditorBg"                Color="#121314"/>
+    <SolidColorBrush x:Key="ThemeEditorFg"                Color="#bfbfbf"/>
+    <SolidColorBrush x:Key="ThemeEditorLineNumberFg"      Color="#858585"/>
+    <SolidColorBrush x:Key="ThemeEditorKeywordFg"         Color="#569cd6"/>
+    <SolidColorBrush x:Key="ThemeEditorCommentFg"         Color="#7ee787"/>
+    <SolidColorBrush x:Key="ThemeEditorGuideLineFg"       Color="#454545"/>
+    <SolidColorBrush x:Key="ThemeEditorCurrentLineBorder" Color="#3C3C3C"/>
+
+    <!-- Find / Replace Highlighting -->
+    <SolidColorBrush x:Key="ThemeFindMatchBg"   Color="#e5ba7d"/>
+    <SolidColorBrush x:Key="ThemeFindMatchFg"   Color="#000000"/>
+    <SolidColorBrush x:Key="ThemeFindCurrentBg" Color="#FFF3F58B"/>
+    <SolidColorBrush x:Key="ThemeFindCurrentFg" Color="#000000"/>
+
+    <!-- Settings Window -->
+    <SolidColorBrush x:Key="ThemeSettingsContentBg"      Color="#1E1E1E"/>
+    <SolidColorBrush x:Key="ThemeSettingsTreeBg"         Color="#252526"/>
+    <SolidColorBrush x:Key="ThemeSettingsTreeFg"         Color="#CCCCCC"/>
+    <SolidColorBrush x:Key="ThemeSettingsTreeHoverBg"    Color="#2A2D2E"/>
+    <SolidColorBrush x:Key="ThemeSettingsTreeSelectedBg" Color="#094771"/>
+    <SolidColorBrush x:Key="ThemeSettingsTreeSelectedFg" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="ThemeSettingsDivider"        Color="#3C3C3C"/>
+    <SolidColorBrush x:Key="ThemeSettingsFooterBg"       Color="#2D2D2D"/>
+    <SolidColorBrush x:Key="ThemeSettingsFooterBorder"   Color="#3C3C3C"/>
+    <SolidColorBrush x:Key="ThemeSettingsBreadcrumbFg"   Color="#CCCCCC"/>
+    <SolidColorBrush x:Key="ThemeSettingsLabelFg"        Color="#CCCCCC"/>
+    <SolidColorBrush x:Key="ThemeSettingsDescFg"         Color="#888888"/>
+    <SolidColorBrush x:Key="ThemeSettingsRowBorder"      Color="#3C3C3C"/>
+    <SolidColorBrush x:Key="ThemeSettingsInputBg"        Color="#3C3C3C"/>
+    <SolidColorBrush x:Key="ThemeSettingsInputBorder"    Color="#555555"/>
+    <SolidColorBrush x:Key="ThemeSettingsBtnBg"          Color="#3C3C3C"/>
+    <SolidColorBrush x:Key="ThemeSettingsBtnHoverBg"     Color="#094771"/>
+    <SolidColorBrush x:Key="ThemeSettingsBtnBorder"      Color="#555555"/>
+    <SolidColorBrush x:Key="ThemeSettingsAccent"         Color="#0098FF"/>
+
+    <!-- Quick Keys Cards -->
+    <SolidColorBrush x:Key="ThemeCardBg" Color="#2D2D2D"/>
+
+    <!-- Quick Keys Panel -->
+    <SolidColorBrush x:Key="ThemeSpecialCharIconFg"         Color="#C8C8C8"/>
+    <SolidColorBrush x:Key="ThemeSpecialCharLabelFg"        Color="#999999"/>
+    <SolidColorBrush x:Key="ThemeSpecialCharShortcutFg"     Color="#666666"/>
+    <SolidColorBrush x:Key="ThemeSpecialCharBtnHoverBg"     Color="#2D3F5E"/>
+    <SolidColorBrush x:Key="ThemeSpecialCharBtnHoverBorder" Color="#007ACC"/>
+    <SolidColorBrush x:Key="ThemeSpecialCharBtnPressedBg"   Color="#1E3050"/>
+
+    <!-- PETSCII Reference Panel -->
+    <SolidColorBrush x:Key="ThemePetsciiRowEvenBg"  Color="#1E1E1E"/>
+    <SolidColorBrush x:Key="ThemePetsciiRowOddBg"   Color="#252526"/>
+    <SolidColorBrush x:Key="ThemePetsciiRowHoverBg" Color="#2D3F5E"/>
+    <SolidColorBrush x:Key="ThemePetsciiSeparator"  Color="#3C3C3C"/>
+    <SolidColorBrush x:Key="ThemePetsciiHeaderBg"   Color="#383838"/>
+    <SolidColorBrush x:Key="ThemePetsciiCodeFg"     Color="#999999"/>
+    <SolidColorBrush x:Key="ThemePetsciiNoteBg"     Color="#2D2D2D"/>
+    <SolidColorBrush x:Key="ThemePetsciiGlyphFg"    Color="#C8C8C8"/>
+    <SolidColorBrush x:Key="ThemePetsciiLabelBg"    Color="#505050"/>
+    <SolidColorBrush x:Key="ThemePetsciiLabelFg"    Color="#FFFFFF"/>
+
+</ResourceDictionary>

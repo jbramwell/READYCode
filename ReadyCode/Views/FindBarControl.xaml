@@ -1,0 +1,196 @@
+<UserControl x:Class="ReadyCode.Views.FindBarControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Visibility="Collapsed">
+
+    <UserControl.Resources>
+        <Style x:Key="FindToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeMenuItemFg}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Bd" CornerRadius="3"
+                                Background="Transparent"
+                                BorderBrush="Transparent"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeMenuItemHoverBg}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ThemeMenuItemHoverBorder}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeMenuItemHoverBg}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ThemeMenuItemHoverBorder}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="FindBtnStyle" TargetType="Button">
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeMenuItemFg}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="6,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" CornerRadius="3"
+                                Background="Transparent"
+                                BorderBrush="Transparent"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeMenuItemHoverBg}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ThemeMenuItemHoverBorder}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.7"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="FindNavBtnStyle" TargetType="Button" BasedOn="{StaticResource FindBtnStyle}">
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Padding" Value="2,0"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Border Background="{DynamicResource ThemeMenuItemBg}"
+            BorderBrush="{DynamicResource ThemeMenuItemBorder}"
+            BorderThickness="1,0,1,1"
+            CornerRadius="0,0,4,4"
+            Padding="6,5,6,5">
+        <Border.Effect>
+            <DropShadowEffect ShadowDepth="3" Direction="270" Opacity="0.4" BlurRadius="6"/>
+        </Border.Effect>
+
+        <StackPanel>
+            <!-- Find row -->
+            <DockPanel LastChildFill="True">
+
+                <!-- Expand / collapse replace toggle (leftmost) -->
+                <ToggleButton x:Name="ExpandBtn"
+                              DockPanel.Dock="Left"
+                              Style="{StaticResource FindToggleStyle}"
+                              Width="20"
+                              ToolTip="Toggle Replace"
+                              Checked="ExpandBtn_Checked"
+                              Unchecked="ExpandBtn_Unchecked">
+                    <TextBlock x:Name="ExpandArrow" Text="▸" FontSize="10"
+                               Foreground="{DynamicResource ThemeMenuItemFg}"/>
+                </ToggleButton>
+
+                <!-- Right-side controls -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="4,0,0,0">
+
+                    <!-- Option toggles -->
+                    <ToggleButton x:Name="MatchCaseBtn"
+                                  Style="{StaticResource FindToggleStyle}"
+                                  Content="Aa" ToolTip="Match Case (Alt+C)"
+                                  Checked="Option_Changed" Unchecked="Option_Changed"/>
+                    <ToggleButton x:Name="WholeWordBtn"
+                                  Style="{StaticResource FindToggleStyle}"
+                                  Content="ab" ToolTip="Match Whole Word (Alt+W)"
+                                  Checked="Option_Changed" Unchecked="Option_Changed"/>
+                    <ToggleButton x:Name="RegexBtn"
+                                  Style="{StaticResource FindToggleStyle}"
+                                  FontFamily="Consolas"
+                                  Content=".*" ToolTip="Use Regular Expression (Alt+R)"
+                                  Checked="Option_Changed" Unchecked="Option_Changed"/>
+
+                    <Rectangle Width="1" Margin="4,3" Fill="{DynamicResource ThemeMenuItemBorder}"/>
+
+                    <!-- Match count -->
+                    <TextBlock x:Name="MatchCountText"
+                               VerticalAlignment="Center"
+                               FontSize="11"
+                               Foreground="{DynamicResource ThemeMenuItemFg}"
+                               Margin="4,0"
+                               MinWidth="56"
+                               Text=""/>
+
+                    <!-- Prev / Next navigation -->
+                    <Button Style="{StaticResource FindNavBtnStyle}"
+                            Content="◀" ToolTip="Previous Match (Shift+Enter)"
+                            Click="PrevMatch_Click"/>
+                    <Button Style="{StaticResource FindNavBtnStyle}"
+                            Content="▶" ToolTip="Next Match (Enter)"
+                            Click="NextMatch_Click"/>
+
+                    <Rectangle Width="1" Margin="4,3" Fill="{DynamicResource ThemeMenuItemBorder}"/>
+
+                    <!-- Close -->
+                    <Button Style="{StaticResource FindNavBtnStyle}"
+                            Width="22" Content="✕" ToolTip="Close (Escape)"
+                            Click="Close_Click"/>
+                </StackPanel>
+
+                <!-- Search TextBox (fills remaining space) -->
+                <TextBox x:Name="SearchBox"
+                         Margin="4,0,0,0" Height="22"
+                         BorderThickness="1"
+                         BorderBrush="{DynamicResource ThemeSettingsInputBorder}"
+                         Background="{DynamicResource ThemeSettingsInputBg}"
+                         Foreground="{DynamicResource ThemeMenuItemFg}"
+                         CaretBrush="{DynamicResource ThemeMenuItemFg}"
+                         SelectionBrush="{DynamicResource ThemeMenuItemHoverBg}"
+                         FontFamily="Consolas" FontSize="12"
+                         Padding="4,2"
+                         VerticalContentAlignment="Center"
+                         KeyDown="SearchBox_KeyDown"
+                         TextChanged="SearchBox_TextChanged"/>
+            </DockPanel>
+
+            <!-- Replace row (hidden by default) -->
+            <DockPanel x:Name="ReplaceRow" Visibility="Collapsed"
+                       LastChildFill="True" Margin="0,4,0,0">
+
+                <!-- Spacer matching ExpandBtn width -->
+                <Rectangle DockPanel.Dock="Left" Width="20" Fill="Transparent"/>
+
+                <!-- Replace action buttons -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="4,0,0,0">
+                    <Button Style="{StaticResource FindBtnStyle}"
+                            Content="Replace" FontSize="11"
+                            ToolTip="Replace (Enter)" Click="Replace_Click"/>
+                    <Button Style="{StaticResource FindBtnStyle}"
+                            Content="Replace All" FontSize="11"
+                            Margin="4,0,0,0" ToolTip="Replace All" Click="ReplaceAll_Click"/>
+                    <!-- Align with the close button column above (22px + separator 9px) -->
+                    <Rectangle Width="31" Fill="Transparent"/>
+                </StackPanel>
+
+                <!-- Replace TextBox -->
+                <TextBox x:Name="ReplaceBox"
+                         Margin="4,0,0,0" Height="22"
+                         BorderThickness="1"
+                         BorderBrush="{DynamicResource ThemeSettingsInputBorder}"
+                         Background="{DynamicResource ThemeSettingsInputBg}"
+                         Foreground="{DynamicResource ThemeMenuItemFg}"
+                         CaretBrush="{DynamicResource ThemeMenuItemFg}"
+                         SelectionBrush="{DynamicResource ThemeMenuItemHoverBg}"
+                         FontFamily="Consolas" FontSize="12"
+                         Padding="4,2"
+                         VerticalContentAlignment="Center"
+                         KeyDown="ReplaceBox_KeyDown"/>
+            </DockPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

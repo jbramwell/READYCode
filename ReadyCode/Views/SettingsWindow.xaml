@@ -1,0 +1,606 @@
+<Window x:Class="ReadyCode.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Settings"
+        MinWidth="620"
+        MinHeight="420"
+        ResizeMode="NoResize"
+        WindowStyle="ThreeDBorderWindow"
+        AllowsTransparency="False"
+        Background="Transparent"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <Window.Resources>
+
+        <Style x:Key="SectionBreadcrumb" TargetType="TextBlock">
+            <Setter Property="FontSize"     Value="14"/>
+            <Setter Property="FontWeight"   Value="SemiBold"/>
+            <Setter Property="Foreground"   Value="{DynamicResource ThemeSettingsBreadcrumbFg}"/>
+            <Setter Property="Margin"       Value="0,0,0,12"/>
+        </Style>
+
+        <Style x:Key="SettingLabel" TargetType="TextBlock">
+            <Setter Property="FontSize"   Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeSettingsLabelFg}"/>
+            <Setter Property="Margin"     Value="0,0,0,1"/>
+        </Style>
+
+        <Style x:Key="SettingDesc" TargetType="TextBlock">
+            <Setter Property="FontSize"      Value="11"/>
+            <Setter Property="Foreground"    Value="{DynamicResource ThemeSettingsDescFg}"/>
+            <Setter Property="TextWrapping"  Value="Wrap"/>
+            <Setter Property="Margin"        Value="0,1,0,5"/>
+        </Style>
+
+        <Style x:Key="SettingRow" TargetType="Border">
+            <Setter Property="Padding"          Value="0,10,0,10"/>
+            <Setter Property="BorderBrush"      Value="{DynamicResource ThemeSettingsRowBorder}"/>
+            <Setter Property="BorderThickness"  Value="0,0,0,1"/>
+        </Style>
+
+        <Style x:Key="SettingRowLast" TargetType="Border">
+            <Setter Property="Padding" Value="0,10,0,0"/>
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Background"    Value="{DynamicResource ThemeSettingsInputBg}"/>
+            <Setter Property="Foreground"    Value="{DynamicResource ThemeSettingsLabelFg}"/>
+            <Setter Property="BorderBrush"   Value="{DynamicResource ThemeSettingsInputBorder}"/>
+            <Setter Property="CaretBrush"    Value="{DynamicResource ThemeSettingsLabelFg}"/>
+            <Setter Property="SelectionBrush" Value="{DynamicResource ThemeSettingsTreeSelectedBg}"/>
+            <Setter Property="Padding"       Value="4,3"/>
+        </Style>
+
+        <Style TargetType="RadioButton">
+            <Setter Property="Foreground"       Value="{DynamicResource ThemeSettingsLabelFg}"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <StackPanel Orientation="Horizontal"
+                                    Margin="{TemplateBinding Margin}">
+                            <Grid Width="16" Height="16" VerticalAlignment="Center">
+                                <Ellipse x:Name="Outer"
+                                         Stroke="{DynamicResource ThemeSettingsInputBorder}"
+                                         StrokeThickness="1.5"
+                                         Fill="{DynamicResource ThemeSettingsInputBg}"/>
+                                <Ellipse x:Name="Dot"
+                                         Width="6" Height="6"
+                                         Fill="{DynamicResource ThemeSettingsAccent}"
+                                         Visibility="Collapsed"/>
+                            </Grid>
+                            <ContentPresenter Margin="6,0,0,0"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True"/>
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Dot"   Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="Outer" Property="Stroke"     Value="{DynamicResource ThemeSettingsAccent}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Outer" Property="Stroke" Value="{DynamicResource ThemeSettingsAccent}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground"       Value="{DynamicResource ThemeSettingsLabelFg}"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <StackPanel Orientation="Horizontal"
+                                    Margin="{TemplateBinding Margin}">
+                            <Border x:Name="Box"
+                                    Width="14" Height="14"
+                                    VerticalAlignment="Center"
+                                    Background="{DynamicResource ThemeSettingsInputBg}"
+                                    BorderBrush="{DynamicResource ThemeSettingsInputBorder}"
+                                    BorderThickness="1.5"
+                                    CornerRadius="2">
+                                <Path x:Name="Check"
+                                      Data="M 2 6 L 5 10 L 12 2"
+                                      Stroke="White"
+                                      StrokeThickness="1.8"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      Visibility="Collapsed"/>
+                            </Border>
+                            <ContentPresenter Margin="6,0,0,0"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True"/>
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Check" Property="Visibility"  Value="Visible"/>
+                                <Setter TargetName="Box"   Property="Background"  Value="{DynamicResource ThemeSettingsAccent}"/>
+                                <Setter TargetName="Box"   Property="BorderBrush" Value="{DynamicResource ThemeSettingsAccent}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ThemeSettingsAccent}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="Button">
+            <Setter Property="Background"       Value="{DynamicResource ThemeSettingsBtnBg}"/>
+            <Setter Property="Foreground"       Value="{DynamicResource ThemeSettingsLabelFg}"/>
+            <Setter Property="BorderBrush"      Value="{DynamicResource ThemeSettingsBtnBorder}"/>
+            <Setter Property="BorderThickness"  Value="1"/>
+            <Setter Property="Padding"          Value="12,4"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}"
+                                CornerRadius="2">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background"   Value="{DynamicResource ThemeSettingsBtnHoverBg}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush"  Value="{DynamicResource ThemeSettingsTreeSelectedBg}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeSettingsTreeSelectedBg}"/>
+                            </Trigger>
+                            <Trigger Property="IsDefault" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ThemeSettingsTreeSelectedBg}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="TreeViewItem">
+            <Setter Property="Padding"                    Value="2,4"/>
+            <Setter Property="FontSize"                   Value="13"/>
+            <Setter Property="IsExpanded"                 Value="True"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Foreground"                 Value="{DynamicResource ThemeSettingsTreeFg}"/>
+            <Setter Property="Background"                 Value="Transparent"/>
+            <Setter Property="FocusVisualStyle"           Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TreeViewItem">
+                        <StackPanel>
+                            <Border x:Name="Bd"
+                                    Background="{TemplateBinding Background}"
+                                    Padding="{TemplateBinding Padding}"
+                                    CornerRadius="3">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="16"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ToggleButton x:Name="Expander"
+                                                  Grid.Column="0"
+                                                  Focusable="False"
+                                                  IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}"
+                                                  ClickMode="Press">
+                                        <ToggleButton.Template>
+                                            <ControlTemplate TargetType="ToggleButton">
+                                                <Border Background="Transparent" Width="16">
+                                                    <Path x:Name="Arrow"
+                                                          Data="M 4 2 L 9 6 L 4 10 Z"
+                                                          Fill="{DynamicResource ThemeSettingsTreeFg}"
+                                                          HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsChecked" Value="True">
+                                                        <Setter TargetName="Arrow" Property="Data" Value="M 2 4 L 10 4 L 6 10 Z"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </ToggleButton.Template>
+                                    </ToggleButton>
+                                    <ContentPresenter Grid.Column="1"
+                                                      ContentSource="Header"
+                                                      HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                      VerticalAlignment="Center"/>
+                                </Grid>
+                            </Border>
+                            <ItemsPresenter x:Name="ItemsHost" Margin="12,0,0,0"/>
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsExpanded" Value="False">
+                                <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed"/>
+                            </Trigger>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="Expander" Property="Visibility" Value="Hidden"/>
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                    <Condition Property="HasItems"    Value="False"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeSettingsTreeHoverBg}"/>
+                            </MultiTrigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeSettingsTreeSelectedBg}"/>
+                                <Setter Property="Foreground"                 Value="{DynamicResource ThemeSettingsTreeSelectedFg}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Close button: transparent with red hover, no border -->
+        <Style x:Key="TitleBarCloseButton" TargetType="Button">
+            <Setter Property="Foreground"       Value="{DynamicResource ThemeSettingsLabelFg}"/>
+            <Setter Property="Background"       Value="Transparent"/>
+            <Setter Property="BorderThickness"  Value="0"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E81123"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#C50F1F"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+    </Window.Resources>
+
+    <!-- Outer Border provides the window background and 1px frame border.
+         Window itself is transparent so AllowsTransparency eliminates the white-flash
+         that WPF's opaque swap-chain init causes on first composite. -->
+    <Border Background="{DynamicResource ThemeSettingsContentBg}"
+            BorderBrush="{DynamicResource ThemeSettingsDivider}"
+            BorderThickness="1">
+
+        <DockPanel>
+
+            <!-- Custom title bar (replaces native chrome lost with WindowStyle=None) -->
+
+            <!-- OK / Cancel footer -->
+            <Border DockPanel.Dock="Bottom"
+                    BorderBrush="{DynamicResource ThemeSettingsFooterBorder}"
+                    BorderThickness="0,1,0,0"
+                    Background="{DynamicResource ThemeSettingsFooterBg}">
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Margin="12,8">
+                    <Button Content="OK"
+                            Width="80"
+                            Margin="0,0,8,0"
+                            IsDefault="True"
+                            Click="Ok_Click"/>
+                    <Button Content="Cancel"
+                            Width="80"
+                            IsCancel="True"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Main layout: left tree | divider | right content -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="200" MinWidth="140"/>
+                    <ColumnDefinition Width="1"/>
+                    <ColumnDefinition Width="*"   MinWidth="300"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- ── Left navigation tree ── -->
+                <TreeView x:Name="SettingsTree"
+                          Grid.Column="0"
+                          Background="{DynamicResource ThemeSettingsTreeBg}"
+                          BorderThickness="0"
+                          Padding="4,8,4,8"
+                          SelectedItemChanged="SettingsTree_SelectedItemChanged">
+                    <TreeViewItem Header="Application"
+                                  Tag="app-general"
+                                  x:Name="TreeApplication">
+                        <TreeViewItem Header="General"
+                                      Tag="app-general"
+                                      x:Name="TreeAppGeneral"/>
+                    </TreeViewItem>
+                    <TreeViewItem Header="Text Editor"
+                                  Tag="general"
+                                  x:Name="TreeTextEditor">
+                        <TreeViewItem Header="General"
+                                      Tag="general"
+                                      x:Name="TreeGeneral"/>
+                        <TreeViewItem Header="Formatting"
+                                      Tag="formatting"
+                                      x:Name="TreeFormatting"/>
+                    </TreeViewItem>
+                    <TreeViewItem Header="Code"
+                                  Tag="code-minify"
+                                  x:Name="TreeCode">
+                        <TreeViewItem Header="Minify"
+                                      Tag="code-minify"
+                                      x:Name="TreeMinify"/>
+                    </TreeViewItem>
+                    <TreeViewItem Header="Commodore"
+                                  Tag="c64u"
+                                  x:Name="TreeCommodore">
+                        <TreeViewItem Header="Commodore 64 Ultimate"
+                                      Tag="c64u"
+                                      x:Name="TreeC64U"/>
+                        <TreeViewItem Header="VICE Emulator"
+                                      Tag="vice"
+                                      x:Name="TreeVice"/>
+                    </TreeViewItem>
+                </TreeView>
+
+                <!-- ── Vertical divider ── -->
+                <Border Grid.Column="1"
+                        Background="{DynamicResource ThemeSettingsDivider}"/>
+
+                <!-- ── Right settings panels ── -->
+                <ScrollViewer Grid.Column="2"
+                              Background="{DynamicResource ThemeSettingsContentBg}"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <Grid>
+
+                        <!-- APPLICATION › GENERAL -->
+                        <StackPanel x:Name="PanelAppGeneral"
+                                    Margin="24,20,24,20"
+                                    Visibility="Collapsed">
+
+                            <TextBlock Style="{StaticResource SectionBreadcrumb}"
+                                       Text="Application  ›  General"/>
+
+                            <Border Style="{StaticResource SettingRowLast}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SettingLabel}"
+                                               Text="Theme"/>
+                                    <TextBlock Style="{StaticResource SettingDesc}"
+                                               Text="Choose the color theme for the application."/>
+                                    <RadioButton Content="Light"
+                                                 GroupName="AppTheme"
+                                                 IsChecked="{Binding IsLightTheme}"
+                                                 FontSize="12"
+                                                 Margin="0,0,0,6"/>
+                                    <RadioButton Content="Dark"
+                                                 GroupName="AppTheme"
+                                                 IsChecked="{Binding IsDarkTheme}"
+                                                 FontSize="12"
+                                                 Margin="0,0,0,6"/>
+                                    <RadioButton Content="Commodore 64"
+                                                 GroupName="AppTheme"
+                                                 IsChecked="{Binding IsC64Theme}"
+                                                 FontSize="12"/>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+
+                        <!-- TEXT EDITOR › GENERAL -->
+                        <StackPanel x:Name="PanelGeneral"
+                                    Margin="24,20,24,20"
+                                    Visibility="Collapsed">
+
+                            <TextBlock Style="{StaticResource SectionBreadcrumb}"
+                                       Text="Text Editor  ›  General"/>
+
+                            <Border Style="{StaticResource SettingRowLast}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SettingLabel}"
+                                               Text="Font size"/>
+                                    <TextBlock Style="{StaticResource SettingDesc}"
+                                               Text="Font size used in the code editor. Enter a whole number between 6 and 72."/>
+                                    <TextBox Width="60"
+                                             HorizontalAlignment="Left"
+                                             Text="{Binding EditorFontSizeText, UpdateSourceTrigger=PropertyChanged}"/>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+
+                        <!-- TEXT EDITOR › FORMATTING -->
+                        <StackPanel x:Name="PanelFormatting"
+                                    Margin="24,20,24,20"
+                                    Visibility="Collapsed">
+
+                            <TextBlock Style="{StaticResource SectionBreadcrumb}"
+                                       Text="Text Editor  ›  Formatting"/>
+
+                            <Border Style="{StaticResource SettingRow}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SettingLabel}"
+                                               Text="Zero-pad line numbers to length"/>
+                                    <TextBlock Style="{StaticResource SettingDesc}"
+                                               Text="When you press Space, the typed line number is left-padded with zeros to this length (e.g. 4 turns &quot;10&quot; into &quot;0010&quot;). Use 0 to disable."/>
+                                    <TextBox Width="60"
+                                             HorizontalAlignment="Left"
+                                             Text="{Binding LineNumberPaddingText, UpdateSourceTrigger=PropertyChanged}"/>
+
+                                    <StackPanel>
+                                        <CheckBox Margin="0,8,0,0"
+                                                  FontSize="12"
+                                                  Content="Auto-number lines"
+                                                  IsChecked="{Binding AutoNumberLines}"/>
+                                        <TextBlock Style="{StaticResource SettingDesc}"
+                                                   Margin="20,2,0,0"
+                                                   Text="When enabled, pressing Enter after a line of code automatically inserts the next line number."/>
+                                    </StackPanel>
+
+                                    <TextBlock Margin="0,6,0,0"
+                                               Style="{StaticResource SettingLabel}"
+                                               Text="Auto-number increment"/>
+                                    <TextBlock Style="{StaticResource SettingDesc}"
+                                               Text="Amount added to the previous line number when auto-numbering (e.g. 10 produces 10, 20, 30…)."/>
+                                    <TextBox Width="60"
+                                             HorizontalAlignment="Left"
+                                             Text="{Binding AutoNumberIncrementText, UpdateSourceTrigger=PropertyChanged}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource SettingRowLast}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SettingLabel}"
+                                               Text="Column guide position"/>
+                                    <TextBlock Style="{StaticResource SettingDesc}"
+                                               Text="Column at which the vertical guide line appears (toggle via View › Column Guide)."/>
+                                    <TextBox Width="60"
+                                             HorizontalAlignment="Left"
+                                             Text="{Binding WrapColumnText, UpdateSourceTrigger=PropertyChanged}"/>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+
+                        <!-- CODE › MINIFY -->
+                        <StackPanel x:Name="PanelMinify"
+                                    Margin="24,20,24,20"
+                                    Visibility="Collapsed">
+
+                            <TextBlock Style="{StaticResource SectionBreadcrumb}"
+                                       Text="Code  ›  Minify"/>
+
+                            <Border Style="{StaticResource SettingRowLast}">
+                                <StackPanel>
+                                    <CheckBox Content="Minify code when transferring to/running on the C64U"
+                                              FontSize="12"
+                                              IsChecked="{Binding MinifyOnTransfer}"/>
+
+                                    <StackPanel Margin="20,10,0,0"
+                                                IsEnabled="{Binding MinifyOnTransfer}">
+                                        <CheckBox Content="Remove whitespace"
+                                                  FontSize="12"
+                                                  Margin="0,0,0,8"
+                                                  IsChecked="{Binding MinifyRemoveWhitespace}"/>
+                                        <CheckBox Content="Replace 0 with ."
+                                                  FontSize="12"
+                                                  Margin="0,0,0,8"
+                                                  IsChecked="{Binding MinifyReplaceZeroWithDot}"/>
+                                        <CheckBox Content="Use scientific notation"
+                                                  FontSize="12"
+                                                  Margin="0,0,0,8"
+                                                  IsChecked="{Binding MinifyUseScientificNotation}"/>
+                                        <CheckBox Content="Remove comments (REM statements)"
+                                                  FontSize="12"
+                                                  Margin="0,0,0,8"
+                                                  IsChecked="{Binding MinifyRemoveComments}"/>
+                                        <CheckBox Content="Simplify NEXT statements"
+                                                  FontSize="12"
+                                                  Margin="0,0,0,8"
+                                                  IsChecked="{Binding MinifySimplifyNext}"/>
+                                        <CheckBox Content="Renumber line numbers and remove zero padding"
+                                                  FontSize="12"
+                                                  IsChecked="{Binding MinifyRenumberLines}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+
+                        <!-- COMMODORE 64 ULTIMATE -->
+                        <StackPanel x:Name="PanelC64U"
+                                    Margin="24,20,24,20"
+                                    Visibility="Collapsed">
+
+                            <TextBlock Style="{StaticResource SectionBreadcrumb}"
+                                       Text="Commodore  ›  Commodore 64 Ultimate"/>
+
+                            <Border Style="{StaticResource SettingRowLast}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SettingLabel}"
+                                               Text="Commodore 64 Ultimate URL"/>
+                                    <TextBlock Style="{StaticResource SettingDesc}"
+                                               Text="Base URL of the C64 Ultimate's REST API (e.g. http://192.168.50.123/). Leave blank if you do not use a C64 Ultimate."/>
+                                    <TextBox VerticalContentAlignment="Center"
+                                             Text="{Binding C64UUrl, UpdateSourceTrigger=PropertyChanged}"/>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+
+                        <!-- COMMODORE › VICE EMULATOR -->
+                        <StackPanel x:Name="PanelVice"
+                                    Margin="24,20,24,20"
+                                    Visibility="Collapsed">
+
+                            <TextBlock Style="{StaticResource SectionBreadcrumb}"
+                                       Text="Commodore  ›  VICE Emulator"/>
+
+                            <Border Style="{StaticResource SettingRow}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SettingLabel}"
+                                               Text="VICE emulator path"/>
+                                    <TextBlock Style="{StaticResource SettingDesc}"
+                                               Text="Path to the VICE emulator executable (e.g. x64sc.exe). Used when launching VICE. Leave blank if you do not use VICE."/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Grid.Column="0"
+                                                 VerticalContentAlignment="Center"
+                                                 Text="{Binding ViceEmulatorPath, UpdateSourceTrigger=PropertyChanged}"/>
+                                        <Button Grid.Column="1"
+                                                Margin="8,0,0,0"
+                                                Content="Browse..."
+                                                Click="ViceBrowse_Click"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource SettingRow}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SettingLabel}"
+                                               Text="Monitor host"/>
+                                    <TextBlock Style="{StaticResource SettingDesc}"
+                                               Text="Host VICE's binary monitor listens on. Leave at the default unless VICE is running on another machine."/>
+                                    <TextBox Width="200"
+                                             HorizontalAlignment="Left"
+                                             Text="{Binding ViceMonitorHost, UpdateSourceTrigger=PropertyChanged}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource SettingRowLast}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SettingLabel}"
+                                               Text="Monitor port"/>
+                                    <TextBlock Style="{StaticResource SettingDesc}"
+                                               Text="Port VICE's binary monitor listens on."/>
+                                    <TextBox Width="80"
+                                             HorizontalAlignment="Left"
+                                             Text="{Binding ViceMonitorPortText, UpdateSourceTrigger=PropertyChanged}"/>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+
+                    </Grid>
+                </ScrollViewer>
+
+            </Grid>
+        </DockPanel>
+    </Border>
+</Window>

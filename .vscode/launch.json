@@ -1,0 +1,21 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug ReadyCode",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "Build ReadyCode",
+            "program": "${workspaceFolder}/ReadyCode/bin/Debug/net8.0-windows/ReadyCode.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}/ReadyCode",
+            "stopAtEntry": false,
+            "console": "internalConsole",
+            "serverReadyAction": {
+                "pattern": "\\bNow listening on:\\s+(https?://\\S+)",
+                "uriFormat": "{0}",
+                "action": "openExternally"
+            }
+        }
+    ]
+}
