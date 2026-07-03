@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <StoreAssociation xmlns="http://schemas.microsoft.com/appx/2010/storeassociation">
-  <Publisher>CN=C4DB9E1E-0B99-406B-8836-60CC15A8B436</Publisher>
-  <PublisherDisplayName>Moonspace Labs LLC</PublisherDisplayName>
+  <Publisher>CN=EEF9F8D2-C859-4D69-8A4A-2694AF79515B</Publisher>
+  <PublisherDisplayName>Moonspace Labs</PublisherDisplayName>
   <DeveloperAccountType>MSA</DeveloperAccountType>
   <GeneratePackageHash>http://www.w3.org/2001/04/xmlenc#sha256</GeneratePackageHash>
   <SupportedLocales>
@@ -361,26 +361,11 @@
     <Language Code="zu-za" InMinimumRequirementSet="true" />
   </SupportedLocales>
   <ProductReservedInfo>
-    <MainPackageIdentityName>MoonspaceLabsLLC.READYCode</MainPackageIdentityName>
+    <MainPackageIdentityName>MoonspaceLabs.READYCode</MainPackageIdentityName>
     <ReservedNames>
       <ReservedName>READYCode</ReservedName>
     </ReservedNames>
   </ProductReservedInfo>
-  <AccountPackageIdentityNames>
-    <MainPackageIdentityName>MoonspaceLabsLLC.FlippinReminder</MainPackageIdentityName>
-    <MainPackageIdentityName>MoonspaceLabsLLC.HangulHelper</MainPackageIdentityName>
-    <MainPackageIdentityName>MoonspaceLabsLLC.KidsEat4Less</MainPackageIdentityName>
-    <MainPackageIdentityName>MoonspaceLabsLLC.LiveMinder</MainPackageIdentityName>
-    <MainPackageIdentityName>MoonspaceLabsLLC.SafetyTip</MainPackageIdentityName>
-    <MainPackageIdentityName>MoonspaceLabsLLC.TwastheNightBeforeChristmas</MainPackageIdentityName>
-    <MainPackageIdentityName>MoonspaceLabsLLC.Windows8TipsandTricks</MainPackageIdentityName>
-    <MainPackageIdentityName>MoonspaceLabsLLC.ADevelopersLife</MainPackageIdentityName>
-    <MainPackageIdentityName>MoonspaceLabsLLC.Back-SeatGames</MainPackageIdentityName>
-    <MainPackageIdentityName>MoonspaceLabsLLC.GoodNews</MainPackageIdentityName>
-    <MainPackageIdentityName>MoonspaceLabsLLC.342272D58BC1A</MainPackageIdentityName>
-    <MainPackageIdentityName>MoonspaceLabsLLC.ParentCoach-SoccerEdition</MainPackageIdentityName>
-    <MainPackageIdentityName>MoonspaceLabsLLC.26918713A3559</MainPackageIdentityName>
-    <MainPackageIdentityName>MoonspaceLabsLLC.ThumbCounter</MainPackageIdentityName>
-  </AccountPackageIdentityNames>
-  <PackageInfoList LandingUrl="https://devcenterapi.dce.mp.microsoft.com/dashboard/Application?appId=9NPJ1J43MN07" />
+  <AccountPackageIdentityNames />
+  <PackageInfoList LandingUrl="https://devcenterapi.dce.mp.microsoft.com/dashboard/Application?appId=9N70DV3X3C6S" />
 </StoreAssociation>

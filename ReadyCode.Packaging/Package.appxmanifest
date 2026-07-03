@@ -7,13 +7,13 @@
   IgnorableNamespaces="uap rescap">
 
   <Identity
-    Name="MoonspaceLabsLLC.READYCode"
-    Publisher="CN=C4DB9E1E-0B99-406B-8836-60CC15A8B436"
-    Version="1.0.6.0" />
+    Name="MoonspaceLabs.READYCode"
+    Publisher="CN=EEF9F8D2-C859-4D69-8A4A-2694AF79515B"
+    Version="1.0.8.0" />
 
   <Properties>
     <DisplayName>READYCode</DisplayName>
-    <PublisherDisplayName>Moonspace Labs LLC</PublisherDisplayName>
+    <PublisherDisplayName>Moonspace Labs</PublisherDisplayName>
     <Logo>Images\StoreLogo.png</Logo>
   </Properties>
 
@@ -32,7 +32,7 @@
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
         DisplayName="READYCode"
-        Description="A Windows desktop code editor for writing Commodore 64 BASIC programs, built around the Commodore 64 Ultimate&apos;s local network API. ReadyCode lets you write BASIC in a modern editor - with C64-accurate PETSCII rendering, syntax highlighting, keyword completion, and line-number tooling - then tokenize it to a real .prg and either save it to disk (for VICE or any other C64 emulator) or push it straight to a C64 Ultimate over the network and run it immediately."
+        Description="A Windows desktop code editor for writing Commodore 64 BASIC programs, built around the Commodore 64 Ultimate&apos;s local network API. READYCode lets you write BASIC in a modern editor - with C64-accurate PETSCII rendering, syntax highlighting, keyword completion, and line-number tooling - then tokenize it to a real .prg and either save it to disk (for VICE or any other C64 emulator) or push it straight to a C64 Ultimate or VICE emulator session over the network and run it immediately."
         BackgroundColor="transparent"
         Square150x150Logo="Images\Square150x150Logo.png"
         Square44x44Logo="Images\Square44x44Logo.png">

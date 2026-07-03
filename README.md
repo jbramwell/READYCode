@@ -2,13 +2,9 @@
   <img src="ReadyCode/Assets/READYCode-Open Graph (1280x640).png" alt="READYCode Logo" width="600" />
 </div>
 
-# ReadyCode
+# READYCode
 
-A Windows desktop code editor for writing Commodore 64 BASIC programs, built around the Commodore 64
-Ultimate's local network API. ReadyCode lets you write BASIC in a modern editor - with C64-accurate
-PETSCII rendering, syntax highlighting, keyword completion, and line-number tooling - then tokenize it
-to a real `.prg` and either save it to disk (for VICE or any other C64 emulator) or push it straight to
-a C64 Ultimate over the network and run it immediately.
+A Windows desktop code editor for writing Commodore 64 BASIC programs, built around the Commodore 64 Ultimate's local network API. READYCode lets you write BASIC in a modern editor - with C64-accurate PETSCII rendering, syntax highlighting, keyword completion, and line-number tooling - then tokenize it to a real .prg and either save it to disk (for VICE or any other C64 emulator) or push it straight to a C64 Ultimate or VICE emulator over the network and run it immediately.
 
 ## Why this exists
 

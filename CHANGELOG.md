@@ -6,10 +6,14 @@ This is the initial release of the READYCode editor designed for the Commodore 6
 
 - PETSCII-aware text editor
 - Shortcut keys for entering special characters, such as "CLR", "HOME", etc.
+- Syntax highlighting specific to Commodore BASIC
 - Ability to "prettify" code by adding whitespace, renumbering lines, etc.
 - Ability to "minimize" code by removing whitespace, renumbering lines, etc.
 - Ability to tranfser (and run) code directly to the Commodore 64 Ultimate over a local network
 - Ability to transfer (and run) code directly to the VICE emulator running on the same machine or another machine over a local network
+- A PETSCII reference pane for quickly looking up PETSCII values
+- Light/Dark/C64 theme support
+- Printer support (with PETSCII graphics)
 - Lots more!
 
 ## The Installer (MSI)
