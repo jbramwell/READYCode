@@ -8,9 +8,9 @@
 
   <!--
     PARTNER CENTER VALUES — all three attributes below must be copied exactly from
-    your Partner Center dashboard after enrolling and reserving the "ReadyCode" app name.
+    your Partner Center dashboard after enrolling and reserving the "READYCode" app name.
 
-    Name         → Apps and games > ReadyCode > Product management > Product identity > Package/Identity Name
+    Name         → Apps and games > READYCode > Product management > Product identity > Package/Identity Name
     Publisher    → Account settings > Organization profile > Legal info > Publisher ID
     Version      → Must match ApplicationVersion in ReadyCode.csproj; increment Build digit each submission
   -->
@@ -43,7 +43,7 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="ReadyCode"
+        DisplayName="READYCode"
         Description="C64 BASIC editor and tokenizer for Windows"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
@@ -52,7 +52,7 @@
           Wide310x150Logo="Assets\Wide310x150Logo.png"
           Square71x71Logo="Assets\SmallTile.png"
           Square310x310Logo="Assets\LargeTile.png"
-          ShortName="ReadyCode">
+          ShortName="READYCode">
           <uap:ShowNameOnTiles>
             <uap:ShowOn Tile="square150x150Logo"/>
             <uap:ShowOn Tile="wide310x150Logo"/>

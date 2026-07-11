@@ -363,7 +363,7 @@ public partial class MainWindow : Window
             ActivateTab(tab);
             var result = MessageBox.Show(
                 $"Save changes to \"{tab.FileName}\"?",
-                "ReadyCode",
+                "READYCode",
                 MessageBoxButton.YesNoCancel,
                 MessageBoxImage.Question);
             if (result == MessageBoxResult.Cancel) { e.Cancel = true; base.OnClosing(e); return; }
@@ -676,7 +676,7 @@ public partial class MainWindow : Window
             ActivateTab(tab);
             var result = MessageBox.Show(
                 $"Save changes to \"{tab.FileName}\"?",
-                "ReadyCode",
+                "READYCode",
                 MessageBoxButton.YesNoCancel,
                 MessageBoxImage.Question);
             if (result == MessageBoxResult.Cancel) return false;

@@ -351,7 +351,7 @@ public class AppSettings
     /// Gets the file path for the settings file.
     /// </summary>
     private static string SettingsFilePath =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ReadyCode", "settings.json");
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "READYCode", "settings.json");
 
     #endregion
 }
