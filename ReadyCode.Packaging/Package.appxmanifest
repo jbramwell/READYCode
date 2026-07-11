@@ -9,7 +9,7 @@
   <Identity
     Name="MoonspaceLabs.READYCode"
     Publisher="CN=EEF9F8D2-C859-4D69-8A4A-2694AF79515B"
-    Version="1.1.0.0" />
+    Version="1.1.1.0" />
 
   <Properties>
     <DisplayName>READYCode</DisplayName>
