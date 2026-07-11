@@ -1648,7 +1648,7 @@
                     </Border>
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Auto">
-                        <Grid x:Name="MusicNotesGrid" Margin="4,4">
+                        <Grid x:Name="MusicNotesGrid" Margin="8,8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" MinWidth="32"/>
                                 <ColumnDefinition Width="Auto" MinWidth="48"/>

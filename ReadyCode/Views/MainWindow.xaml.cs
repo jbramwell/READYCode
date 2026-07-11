@@ -1176,8 +1176,15 @@ public partial class MainWindow : Window
                 otherPanel.Visibility = Visibility.Collapsed;
             }
             panel.Visibility = Visibility.Visible;
-            RightPanelCol.Width = new GridLength(ViewModel.Settings.RightPanelWidth);
-            RightSplitterCol.Width = new GridLength(4);
+
+            // Only restore the saved width when opening the panel from closed - switching
+            // between already-open tabs must not clobber a width resized via the splitter
+            // earlier this session.
+            if (RightPanelCol.Width.Value == 0)
+            {
+                RightPanelCol.Width = new GridLength(ViewModel.Settings.RightPanelWidth);
+                RightSplitterCol.Width = new GridLength(4);
+            }
         }
         else
         {
@@ -2692,8 +2699,9 @@ public partial class MainWindow : Window
         var headerFg    = R("ThemeFileFg");
         var sepBrush    = R("ThemePetsciiSeparator");
         var rowEvenBg   = R("ThemePetsciiRowEvenBg");
-        var rowOddBg    = R("ThemePetsciiRowOddBg");
         var cellFg      = R("ThemePetsciiCodeFg");
+        var labelBg  = R("ThemePanelHeaderBg");
+        var labelFg  = R("ThemePanelHeaderFg");
 
         MusicNotesGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         MusicNotesGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -2702,18 +2710,19 @@ public partial class MainWindow : Window
         {
             var border = new Border
             {
-                Background = headerBg,
+                Background = labelBg, //headerBg,
                 BorderBrush = sepBrush,
                 BorderThickness = new Thickness(0, 0, 1, 1),
                 Child = new TextBlock
                 {
                     Text = text,
-                    FontSize = 9,
+                    FontSize = 10,
                     FontWeight = FontWeights.Bold,
-                    Foreground = headerFg,
+                    Foreground = labelFg, //headerFg,
                     TextAlignment = TextAlignment.Center,
                     TextWrapping = TextWrapping.Wrap,
-                    Padding = new Thickness(3, 3, 3, 3)
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(4, 4, 4, 4)
                 }
             };
             Grid.SetColumn(border, column);
@@ -2739,13 +2748,12 @@ public partial class MainWindow : Window
         foreach (var note in SidNoteProvider.AllNotes)
         {
             MusicNotesGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            var rowBg = gridRow % 2 == 0 ? rowEvenBg : rowOddBg;
 
             void AddCell(string text, int column)
             {
                 var border = new Border
                 {
-                    Background = rowBg,
+                    Background = rowEvenBg,
                     BorderBrush = sepBrush,
                     BorderThickness = new Thickness(0, 0, 1, 1),
                     Child = new TextBlock
@@ -2757,6 +2765,7 @@ public partial class MainWindow : Window
                         Padding = new Thickness(3, 2, 3, 2)
                     }
                 };
+                
                 Grid.SetColumn(border, column);
                 Grid.SetRow(border, gridRow);
                 MusicNotesGrid.Children.Add(border);
