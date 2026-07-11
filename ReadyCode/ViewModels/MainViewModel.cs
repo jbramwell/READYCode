@@ -3,6 +3,7 @@
 
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows;
@@ -75,6 +76,7 @@ public class MainViewModel : INotifyPropertyChanged
         VicePowerOffCommand = new RelayCommand(async _ => await ViceMachineActionAsync(c => c.PowerOffAsync(Settings.ViceEmulatorPath), "VICE emulator closed."));
         ViceSystemInfoCommand = new RelayCommand(async _ => await ShowViceSystemInfoAsync());
 
+        HelpGitHubCommand = new RelayCommand(_ => OpenGitHubRepo());
         HelpAboutCommand = new RelayCommand(_ => ShowAboutDialog());
     }
 
@@ -419,6 +421,11 @@ public class MainViewModel : INotifyPropertyChanged
 
     // Help
     /// <summary>
+    /// Gets the command that opens the READYCode GitHub repository in the default browser.
+    /// </summary>
+    public ICommand HelpGitHubCommand { get; }
+
+    /// <summary>
     /// Gets the command that shows the About dialog.
     /// </summary>
     public ICommand HelpAboutCommand { get; }
@@ -505,6 +512,12 @@ public class MainViewModel : INotifyPropertyChanged
     #endregion
 
     #region Private Methods
+
+    // Opens the READYCode GitHub repository in the user's default browser.
+    private void OpenGitHubRepo()
+    {
+        Process.Start(new ProcessStartInfo(Settings.GitHubUrl) { UseShellExecute = true });
+    }
 
     // Shows the About dialog with application information.
     private static void ShowAboutDialog()

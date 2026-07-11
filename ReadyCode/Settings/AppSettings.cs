@@ -165,6 +165,11 @@ public class AppSettings
     public string LastFolderPath { get; set; } = "";
 
     /// <summary>
+    /// URL of the READYCode GitHub repository, opened by Help &gt; Visit READYCode on GitHub.
+    /// </summary>
+    public string GitHubUrl { get; set; } = "https://github.com/jbramwell/READYCode";
+
+    /// <summary>
     /// When true, code will be automatically minified (unnecessary whitespace
     /// removed, etc.) when transferred to the Commodore 64 Ultimate.
     /// </summary>

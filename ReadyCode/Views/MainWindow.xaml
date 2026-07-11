@@ -615,6 +615,8 @@
             </MenuItem>
 
             <MenuItem Header="_Help">
+                <MenuItem Header="Visit READYCode on _GitHub" Command="{Binding ViewModel.HelpGitHubCommand}"/>
+                <Separator/>
                 <MenuItem Header="_About READYCode" Command="{Binding ViewModel.HelpAboutCommand}"/>
             </MenuItem>
 
