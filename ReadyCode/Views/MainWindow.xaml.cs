@@ -185,6 +185,7 @@ public partial class MainWindow : Window
         {
             AdornerLayer.GetAdornerLayer(Editor.TextArea)?.Add(_ghostRenderer);
             BuildPetsciiTable();
+            BuildBasicKeywordsList();
         };
         ApplyEditorAppearance();
 
@@ -1140,7 +1141,9 @@ public partial class MainWindow : Window
         if (SpecialCharsToggle.IsChecked == true)
         {
             PetsciiToggle.IsChecked = false;
+            BasicKeywordsToggle.IsChecked = false;
             PetsciiPanel.Visibility = Visibility.Collapsed;
+            BasicKeywordsPanel.Visibility = Visibility.Collapsed;
             SpecialCharsPanel.Visibility = Visibility.Visible;
             RightPanelCol.Width = new GridLength(ViewModel.Settings.RightPanelWidth);
             RightSplitterCol.Width = new GridLength(4);
@@ -1153,7 +1156,7 @@ public partial class MainWindow : Window
             RightPanelCol.Width = new GridLength(0);
             RightSplitterCol.Width = new GridLength(0);
         }
-        ViewModel.IsRightPanelOpen = SpecialCharsToggle.IsChecked == true || PetsciiToggle.IsChecked == true;
+        ViewModel.IsRightPanelOpen = SpecialCharsToggle.IsChecked == true || PetsciiToggle.IsChecked == true || BasicKeywordsToggle.IsChecked == true;
     }
 
     private void PetsciiToggle_Click(object sender, RoutedEventArgs e)
@@ -1161,7 +1164,9 @@ public partial class MainWindow : Window
         if (PetsciiToggle.IsChecked == true)
         {
             SpecialCharsToggle.IsChecked = false;
+            BasicKeywordsToggle.IsChecked = false;
             SpecialCharsPanel.Visibility = Visibility.Collapsed;
+            BasicKeywordsPanel.Visibility = Visibility.Collapsed;
             PetsciiPanel.Visibility = Visibility.Visible;
             RightPanelCol.Width = new GridLength(ViewModel.Settings.RightPanelWidth);
             RightSplitterCol.Width = new GridLength(4);
@@ -1174,7 +1179,30 @@ public partial class MainWindow : Window
             RightPanelCol.Width = new GridLength(0);
             RightSplitterCol.Width = new GridLength(0);
         }
-        ViewModel.IsRightPanelOpen = SpecialCharsToggle.IsChecked == true || PetsciiToggle.IsChecked == true;
+        ViewModel.IsRightPanelOpen = SpecialCharsToggle.IsChecked == true || PetsciiToggle.IsChecked == true || BasicKeywordsToggle.IsChecked == true;
+    }
+
+    private void BasicKeywordsToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (BasicKeywordsToggle.IsChecked == true)
+        {
+            SpecialCharsToggle.IsChecked = false;
+            PetsciiToggle.IsChecked = false;
+            SpecialCharsPanel.Visibility = Visibility.Collapsed;
+            PetsciiPanel.Visibility = Visibility.Collapsed;
+            BasicKeywordsPanel.Visibility = Visibility.Visible;
+            RightPanelCol.Width = new GridLength(ViewModel.Settings.RightPanelWidth);
+            RightSplitterCol.Width = new GridLength(4);
+        }
+        else
+        {
+            if (RightPanelCol.Width.Value > 0)
+                ViewModel.Settings.RightPanelWidth = RightPanelCol.Width.Value;
+            BasicKeywordsPanel.Visibility = Visibility.Collapsed;
+            RightPanelCol.Width = new GridLength(0);
+            RightSplitterCol.Width = new GridLength(0);
+        }
+        ViewModel.IsRightPanelOpen = SpecialCharsToggle.IsChecked == true || PetsciiToggle.IsChecked == true || BasicKeywordsToggle.IsChecked == true;
     }
 
     #region View Commands
@@ -2495,16 +2523,17 @@ public partial class MainWindow : Window
         var hdrGrid = new Grid();
         hdrGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         hdrGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(42) });
+        hdrGrid.Background = labelBg;
 
         var hdrPrint = new TextBlock { Text = "PRINT", FontFamily = segoeUi, FontSize = 9,
-            FontWeight = FontWeights.SemiBold, Foreground = codeFg,
+            FontWeight = FontWeights.SemiBold, Foreground = labelFg,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
         Grid.SetColumn(hdrPrint, 0);
         hdrGrid.Children.Add(hdrPrint);
 
         var hdrChrs = new TextBlock { Text = "CHR$", FontFamily = segoeUi, FontSize = 9,
-            FontWeight = FontWeights.SemiBold, Foreground = codeFg,
+            FontWeight = FontWeights.SemiBold, Foreground = labelFg,
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
         Grid.SetColumn(hdrChrs, 1);
@@ -2521,9 +2550,10 @@ public partial class MainWindow : Window
 
         // Data rows 0–191
         int rowIdx = 0;
+
         for (int code = 0; code <= 191; code++)
         {
-            Brush bg = (rowIdx++ % 2 == 0) ? rowBg0 : rowBg1;
+            Brush bg = (rowIdx++ % 2 == 0) ? rowBg0 : rowBg0;
             FrameworkElement? printElem;
             bool clickable;
 
@@ -2553,6 +2583,7 @@ public partial class MainWindow : Window
                             FontWeight = FontWeights.SemiBold
                         }
                     };
+
                     clickable = true;
                 }
             }
@@ -2560,16 +2591,18 @@ public partial class MainWindow : Window
             {
                 byte sc = PetsciiScreenCodeMap.ToScreenCode((byte)code);
                 string glyph = ((char)(0xE000 + sc)).ToString();
+
                 printElem = new TextBlock
                 {
                     Text = glyph,
                     FontFamily = petMe64,
                     FontSize = 14,
                     Foreground = glyphFg,
-                    HorizontalAlignment = HorizontalAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Left,
                     VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(0, 1, 0, 1)
+                    Margin = new Thickness(6, 2, 4, 2)
                 };
+
                 clickable = true;
             }
 
@@ -2599,6 +2632,73 @@ public partial class MainWindow : Window
                     TextWrapping = TextWrapping.Wrap
                 }
             });
+        }
+    }
+
+    private void BuildBasicKeywordsList()
+    {
+        BasicKeywordsListPanel.Children.Clear();
+
+        Brush R(string key) => (Brush)FindResource(key);
+        var headerFg = R("ThemeSpecialCharLabelFg");
+        var nameFg   = R("ThemeFileFg");
+        var descFg   = R("ThemeSpecialCharShortcutFg");
+        var sepBrush = R("ThemeFolderExplorerHeaderBorder");
+        var labelBg  = R("ThemePetsciiLabelBg");
+        var labelFg  = R("ThemePetsciiLabelFg");
+
+         var itemsByCategory = BasicCompletionProvider.AllItems.ToLookup(i => i.Category);
+
+        bool firstCategory = true;
+        foreach (var category in BasicCompletionProvider.CategoryOrder)
+        {
+            // if (!firstCategory)
+            // {
+            //     BasicKeywordsListPanel.Children.Add(new Border
+            //     {
+            //         Height = 1,
+            //         Margin = new Thickness(8, 4, 8, 0),
+            //         Background = sepBrush
+            //     });
+            // }
+
+            firstCategory = false;
+
+            BasicKeywordsListPanel.Children.Add(new TextBlock
+            {
+                Text = category.ToUpperInvariant(),
+                FontSize = 10,
+                FontWeight = FontWeights.Bold,
+                Background = labelBg,
+                Foreground = labelFg,
+                Margin = new Thickness(8, 8, 8, 4),
+                Padding = new Thickness(8, 4, 0, 4),
+                MinHeight = 22,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+
+            foreach (var item in itemsByCategory[category].OrderBy(i => i.Text, StringComparer.OrdinalIgnoreCase))
+            {
+                var row = new StackPanel { Margin = new Thickness(8, 0, 8, 6) };
+
+                row.Children.Add(new TextBlock
+                {
+                    Text = item.Text,
+                    FontSize = 10,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = nameFg
+                });
+
+                row.Children.Add(new TextBlock
+                {
+                    Text = item.Description?.ToString() ?? string.Empty,
+                    FontSize = 9,
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = descFg,
+                    Margin = new Thickness(0, 1, 0, 0)
+                });
+                BasicKeywordsListPanel.Children.Add(row);
+            }
         }
     }
 
@@ -2867,6 +2967,7 @@ public partial class MainWindow : Window
     {
         ApplyTheme(ViewModel.Settings.Theme);
         BuildPetsciiTable();
+        BuildBasicKeywordsList();
 
         Editor.Background = (Brush)FindResource("ThemeEditorBg");
         Editor.Foreground = (Brush)FindResource("ThemeEditorFg");

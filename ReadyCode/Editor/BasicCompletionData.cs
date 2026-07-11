@@ -53,11 +53,13 @@ public class BasicCompletionData : ICompletionData
     /// <param name="text">The keyword text inserted when this entry is selected.</param>
     /// <param name="snippet">The snippet to insert, with '|' marking the caret position.</param>
     /// <param name="description">The description shown for this entry.</param>
-    public BasicCompletionData(string text, string snippet, string description)
+    /// <param name="category">The reference-panel category this keyword is grouped under.</param>
+    public BasicCompletionData(string text, string snippet, string description, string category)
     {
         Text = text;
         _snippet = snippet;
         Description = description;
+        Category = category;
     }
 
     #endregion
@@ -83,6 +85,11 @@ public class BasicCompletionData : ICompletionData
     /// Gets the description shown for this entry.
     /// </summary>
     public object Description { get; }
+
+    /// <summary>
+    /// Gets the reference-panel category this keyword is grouped under (e.g. "Math Functions").
+    /// </summary>
+    public string Category { get; }
 
     /// <summary>
     /// Gets the sort priority used by the completion window. Always zero.
