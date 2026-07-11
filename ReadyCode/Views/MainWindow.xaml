@@ -1635,6 +1635,33 @@
                         <StackPanel x:Name="BasicKeywordsListPanel" />
                     </ScrollViewer>
                 </DockPanel>
+
+                <!-- Music Notes panel -->
+                <DockPanel x:Name="MusicNotesPanel" Background="{DynamicResource ThemeFolderExplorerBg}" Visibility="Collapsed">
+                    <Border DockPanel.Dock="Top"
+                            Background="{DynamicResource ThemeFolderExplorerHeaderBg}"
+                            BorderBrush="{DynamicResource ThemeFolderExplorerHeaderBorder}" BorderThickness="0,0,0,1"
+                            Height="32">
+                        <TextBlock Text="MUSIC NOTES"
+                                   FontSize="11" FontWeight="Bold" Foreground="{DynamicResource ThemeFileFg}"
+                                   VerticalAlignment="Center" Margin="10,0,0,0"/>
+                    </Border>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Auto">
+                        <Grid x:Name="MusicNotesGrid" Margin="4,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" MinWidth="32"/>
+                                <ColumnDefinition Width="Auto" MinWidth="48"/>
+                                <ColumnDefinition Width="Auto" MinWidth="50"/>
+                                <ColumnDefinition Width="Auto" MinWidth="30"/>
+                                <ColumnDefinition Width="Auto" MinWidth="36"/>
+                                <ColumnDefinition Width="Auto" MinWidth="50"/>
+                                <ColumnDefinition Width="Auto" MinWidth="30"/>
+                                <ColumnDefinition Width="Auto" MinWidth="36"/>
+                            </Grid.ColumnDefinitions>
+                        </Grid>
+                    </ScrollViewer>
+                </DockPanel>
             </Grid>
 
             <!-- Right activity bar -->
@@ -1661,6 +1688,13 @@
                                   Click="BasicKeywordsToggle_Click">
                         <TextBlock Text="&#xE82D;" FontSize="18" FontFamily="Segoe MDL2 Assets"
                                    Margin="2,4,0,0"
+                                   Foreground="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}"/>
+                    </ToggleButton>
+                    <ToggleButton x:Name="MusicNotesToggle"
+                                  Style="{StaticResource ActivityBarButtonRight}"
+                                  ToolTip="Music Notes"
+                                  Click="MusicNotesToggle_Click">
+                        <TextBlock Text="&#x266B;" FontSize="20" FontFamily="Segoe UI Symbol"
                                    Foreground="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}"/>
                     </ToggleButton>
                 </StackPanel>

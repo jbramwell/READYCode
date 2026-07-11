@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -20,6 +21,7 @@ using ReadyCode.Editor;
 using ReadyCode.Minify;
 using ReadyCode.Models;
 using ReadyCode.Prettify;
+using ReadyCode.Sid;
 using ReadyCode.Tokenizer;
 using ReadyCode.ViewModels;
 
@@ -186,6 +188,7 @@ public partial class MainWindow : Window
             AdornerLayer.GetAdornerLayer(Editor.TextArea)?.Add(_ghostRenderer);
             BuildPetsciiTable();
             BuildBasicKeywordsList();
+            BuildMusicNotesTable();
         };
         ApplyEditorAppearance();
 
@@ -211,24 +214,17 @@ public partial class MainWindow : Window
             RightPanelCol.Width = new GridLength(ViewModel.Settings.RightPanelWidth);
             RightSplitterCol.Width = new GridLength(4);
 
-            // SpecialCharsPanel is visible by default in XAML while the other two default to
+            // SpecialCharsPanel is visible by default in XAML while the others default to
             // Collapsed, and setting IsChecked here doesn't fire the toggles' Click handlers -
-            // so panel visibility must be set explicitly to match the restored tab.
-            switch (ViewModel.Settings.ActiveRightPanel)
+            // so every panel's visibility must be set explicitly to match the restored tab.
+            var restoreTarget = RightPanelToggles.FirstOrDefault(t => t.SettingsKey == ViewModel.Settings.ActiveRightPanel);
+            if (restoreTarget.Toggle == null) restoreTarget = RightPanelToggles.First();
+
+            foreach (var (toggle, panel, _) in RightPanelToggles)
             {
-                case "Petscii":
-                    PetsciiToggle.IsChecked = true;
-                    SpecialCharsPanel.Visibility = Visibility.Collapsed;
-                    PetsciiPanel.Visibility = Visibility.Visible;
-                    break;
-                case "BasicKeywords":
-                    BasicKeywordsToggle.IsChecked = true;
-                    SpecialCharsPanel.Visibility = Visibility.Collapsed;
-                    BasicKeywordsPanel.Visibility = Visibility.Visible;
-                    break;
-                default:
-                    SpecialCharsToggle.IsChecked = true;
-                    break;
+                bool isTarget = ReferenceEquals(toggle, restoreTarget.Toggle);
+                toggle.IsChecked = isTarget;
+                panel.Visibility = isTarget ? Visibility.Visible : Visibility.Collapsed;
             }
         }
         if (!string.IsNullOrEmpty(ViewModel.Settings.LastFolderPath) &&
@@ -326,13 +322,10 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         ViewModel.Settings.IsLeftPanelOpen = ExplorerToggle.IsChecked == true;
-        ViewModel.Settings.IsRightPanelOpen = SpecialCharsToggle.IsChecked == true || PetsciiToggle.IsChecked == true || BasicKeywordsToggle.IsChecked == true;
-        if (PetsciiToggle.IsChecked == true)
-            ViewModel.Settings.ActiveRightPanel = "Petscii";
-        else if (BasicKeywordsToggle.IsChecked == true)
-            ViewModel.Settings.ActiveRightPanel = "BasicKeywords";
-        else if (SpecialCharsToggle.IsChecked == true)
-            ViewModel.Settings.ActiveRightPanel = "QuickKeys";
+        var activePanel = RightPanelToggles.FirstOrDefault(t => t.Toggle.IsChecked == true);
+        ViewModel.Settings.IsRightPanelOpen = activePanel.SettingsKey != null;
+        if (activePanel.SettingsKey != null)
+            ViewModel.Settings.ActiveRightPanel = activePanel.SettingsKey;
         if (LeftPanelCol.Width.Value > 0)
             ViewModel.Settings.LeftPanelWidth = LeftPanelCol.Width.Value;
         if (RightPanelCol.Width.Value > 0)
@@ -1161,15 +1154,28 @@ public partial class MainWindow : Window
         ViewModel.IsLeftPanelOpen = ExplorerToggle.IsChecked == true;
     }
 
-    private void SpecialCharsToggle_Click(object sender, RoutedEventArgs e)
+    // All right-panel toggle/panel/settings-key triples, in activity-bar order. Centralized so
+    // adding a new tab only means adding one entry here rather than touching every call site
+    // that needs to enumerate, save, or restore which right-panel tab is active.
+    private IEnumerable<(ToggleButton Toggle, DockPanel Panel, string SettingsKey)> RightPanelToggles => new (ToggleButton, DockPanel, string)[]
     {
-        if (SpecialCharsToggle.IsChecked == true)
+        (SpecialCharsToggle,   SpecialCharsPanel,   "QuickKeys"),
+        (PetsciiToggle,        PetsciiPanel,        "Petscii"),
+        (BasicKeywordsToggle,  BasicKeywordsPanel,  "BasicKeywords"),
+        (MusicNotesToggle,     MusicNotesPanel,     "MusicNotes"),
+    };
+
+    private void ActivateRightPanel(ToggleButton toggle, DockPanel panel)
+    {
+        if (toggle.IsChecked == true)
         {
-            PetsciiToggle.IsChecked = false;
-            BasicKeywordsToggle.IsChecked = false;
-            PetsciiPanel.Visibility = Visibility.Collapsed;
-            BasicKeywordsPanel.Visibility = Visibility.Collapsed;
-            SpecialCharsPanel.Visibility = Visibility.Visible;
+            foreach (var (otherToggle, otherPanel, _) in RightPanelToggles)
+            {
+                if (ReferenceEquals(otherToggle, toggle)) continue;
+                otherToggle.IsChecked = false;
+                otherPanel.Visibility = Visibility.Collapsed;
+            }
+            panel.Visibility = Visibility.Visible;
             RightPanelCol.Width = new GridLength(ViewModel.Settings.RightPanelWidth);
             RightSplitterCol.Width = new GridLength(4);
         }
@@ -1177,58 +1183,20 @@ public partial class MainWindow : Window
         {
             if (RightPanelCol.Width.Value > 0)
                 ViewModel.Settings.RightPanelWidth = RightPanelCol.Width.Value;
-            SpecialCharsPanel.Visibility = Visibility.Collapsed;
+            panel.Visibility = Visibility.Collapsed;
             RightPanelCol.Width = new GridLength(0);
             RightSplitterCol.Width = new GridLength(0);
         }
-        ViewModel.IsRightPanelOpen = SpecialCharsToggle.IsChecked == true || PetsciiToggle.IsChecked == true || BasicKeywordsToggle.IsChecked == true;
+        ViewModel.IsRightPanelOpen = RightPanelToggles.Any(t => t.Toggle.IsChecked == true);
     }
 
-    private void PetsciiToggle_Click(object sender, RoutedEventArgs e)
-    {
-        if (PetsciiToggle.IsChecked == true)
-        {
-            SpecialCharsToggle.IsChecked = false;
-            BasicKeywordsToggle.IsChecked = false;
-            SpecialCharsPanel.Visibility = Visibility.Collapsed;
-            BasicKeywordsPanel.Visibility = Visibility.Collapsed;
-            PetsciiPanel.Visibility = Visibility.Visible;
-            RightPanelCol.Width = new GridLength(ViewModel.Settings.RightPanelWidth);
-            RightSplitterCol.Width = new GridLength(4);
-        }
-        else
-        {
-            if (RightPanelCol.Width.Value > 0)
-                ViewModel.Settings.RightPanelWidth = RightPanelCol.Width.Value;
-            PetsciiPanel.Visibility = Visibility.Collapsed;
-            RightPanelCol.Width = new GridLength(0);
-            RightSplitterCol.Width = new GridLength(0);
-        }
-        ViewModel.IsRightPanelOpen = SpecialCharsToggle.IsChecked == true || PetsciiToggle.IsChecked == true || BasicKeywordsToggle.IsChecked == true;
-    }
+    private void SpecialCharsToggle_Click(object sender, RoutedEventArgs e) => ActivateRightPanel(SpecialCharsToggle, SpecialCharsPanel);
 
-    private void BasicKeywordsToggle_Click(object sender, RoutedEventArgs e)
-    {
-        if (BasicKeywordsToggle.IsChecked == true)
-        {
-            SpecialCharsToggle.IsChecked = false;
-            PetsciiToggle.IsChecked = false;
-            SpecialCharsPanel.Visibility = Visibility.Collapsed;
-            PetsciiPanel.Visibility = Visibility.Collapsed;
-            BasicKeywordsPanel.Visibility = Visibility.Visible;
-            RightPanelCol.Width = new GridLength(ViewModel.Settings.RightPanelWidth);
-            RightSplitterCol.Width = new GridLength(4);
-        }
-        else
-        {
-            if (RightPanelCol.Width.Value > 0)
-                ViewModel.Settings.RightPanelWidth = RightPanelCol.Width.Value;
-            BasicKeywordsPanel.Visibility = Visibility.Collapsed;
-            RightPanelCol.Width = new GridLength(0);
-            RightSplitterCol.Width = new GridLength(0);
-        }
-        ViewModel.IsRightPanelOpen = SpecialCharsToggle.IsChecked == true || PetsciiToggle.IsChecked == true || BasicKeywordsToggle.IsChecked == true;
-    }
+    private void PetsciiToggle_Click(object sender, RoutedEventArgs e) => ActivateRightPanel(PetsciiToggle, PetsciiPanel);
+
+    private void BasicKeywordsToggle_Click(object sender, RoutedEventArgs e) => ActivateRightPanel(BasicKeywordsToggle, BasicKeywordsPanel);
+
+    private void MusicNotesToggle_Click(object sender, RoutedEventArgs e) => ActivateRightPanel(MusicNotesToggle, MusicNotesPanel);
 
     #region View Commands
 
@@ -2714,6 +2682,99 @@ public partial class MainWindow : Window
         }
     }
 
+    private void BuildMusicNotesTable()
+    {
+        MusicNotesGrid.RowDefinitions.Clear();
+        MusicNotesGrid.Children.Clear();
+
+        Brush R(string key) => (Brush)FindResource(key);
+        var headerBg    = R("ThemePetsciiHeaderBg");
+        var headerFg    = R("ThemeFileFg");
+        var sepBrush    = R("ThemePetsciiSeparator");
+        var rowEvenBg   = R("ThemePetsciiRowEvenBg");
+        var rowOddBg    = R("ThemePetsciiRowOddBg");
+        var cellFg      = R("ThemePetsciiCodeFg");
+
+        MusicNotesGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        MusicNotesGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        void AddHeaderCell(string text, int column, int row, int columnSpan, int rowSpan)
+        {
+            var border = new Border
+            {
+                Background = headerBg,
+                BorderBrush = sepBrush,
+                BorderThickness = new Thickness(0, 0, 1, 1),
+                Child = new TextBlock
+                {
+                    Text = text,
+                    FontSize = 9,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = headerFg,
+                    TextAlignment = TextAlignment.Center,
+                    TextWrapping = TextWrapping.Wrap,
+                    Padding = new Thickness(3, 3, 3, 3)
+                }
+            };
+            Grid.SetColumn(border, column);
+            Grid.SetRow(border, row);
+            Grid.SetColumnSpan(border, columnSpan);
+            Grid.SetRowSpan(border, rowSpan);
+            MusicNotesGrid.Children.Add(border);
+        }
+
+        AddHeaderCell("MUSICAL NOTE", column: 0, row: 0, columnSpan: 2, rowSpan: 1);
+        AddHeaderCell("NOTE",   column: 0, row: 1, columnSpan: 1, rowSpan: 1);
+        AddHeaderCell("OCTAVE", column: 1, row: 1, columnSpan: 1, rowSpan: 1);
+        AddHeaderCell("OSCILLATOR FREQ (NTSC)", column: 2, row: 0, columnSpan: 3, rowSpan: 1);
+        AddHeaderCell("OSCILLATOR FREQ (PAL)",  column: 5, row: 0, columnSpan: 3, rowSpan: 1);
+        AddHeaderCell("DECIMAL", column: 2, row: 1, columnSpan: 1, rowSpan: 1);
+        AddHeaderCell("HI",      column: 3, row: 1, columnSpan: 1, rowSpan: 1);
+        AddHeaderCell("LOW",     column: 4, row: 1, columnSpan: 1, rowSpan: 1);
+        AddHeaderCell("DECIMAL", column: 5, row: 1, columnSpan: 1, rowSpan: 1);
+        AddHeaderCell("HI",      column: 6, row: 1, columnSpan: 1, rowSpan: 1);
+        AddHeaderCell("LOW",     column: 7, row: 1, columnSpan: 1, rowSpan: 1);
+
+        int gridRow = 2;
+        foreach (var note in SidNoteProvider.AllNotes)
+        {
+            MusicNotesGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var rowBg = gridRow % 2 == 0 ? rowEvenBg : rowOddBg;
+
+            void AddCell(string text, int column)
+            {
+                var border = new Border
+                {
+                    Background = rowBg,
+                    BorderBrush = sepBrush,
+                    BorderThickness = new Thickness(0, 0, 1, 1),
+                    Child = new TextBlock
+                    {
+                        Text = text,
+                        FontSize = 9,
+                        Foreground = cellFg,
+                        TextAlignment = TextAlignment.Center,
+                        Padding = new Thickness(3, 2, 3, 2)
+                    }
+                };
+                Grid.SetColumn(border, column);
+                Grid.SetRow(border, gridRow);
+                MusicNotesGrid.Children.Add(border);
+            }
+
+            AddCell(note.Note.ToString(),        0);
+            AddCell(note.Octave,                 1);
+            AddCell(note.DecimalNtsc.ToString(), 2);
+            AddCell(note.HiNtsc.ToString(),      3);
+            AddCell(note.LowNtsc.ToString(),     4);
+            AddCell(note.DecimalPal?.ToString() ?? "—", 5);
+            AddCell(note.HiPal?.ToString()      ?? "—", 6);
+            AddCell(note.LowPal?.ToString()     ?? "—", 7);
+
+            gridRow++;
+        }
+    }
+
     private void TrackRecentFile(string path)
     {
         ViewModel.Settings.AddRecentFile(path);
@@ -2980,6 +3041,7 @@ public partial class MainWindow : Window
         ApplyTheme(ViewModel.Settings.Theme);
         BuildPetsciiTable();
         BuildBasicKeywordsList();
+        BuildMusicNotesTable();
 
         Editor.Background = (Brush)FindResource("ThemeEditorBg");
         Editor.Foreground = (Brush)FindResource("ThemeEditorFg");

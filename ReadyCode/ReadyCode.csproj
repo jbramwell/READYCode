@@ -65,4 +65,10 @@
     </Content>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Embedded so the SID note frequency table (Music Notes panel) is read from the
+         assembly at runtime instead of relying on a loose file next to the executable. -->
+    <EmbeddedResource Include="Assets\Data\sid_notes.csv" />
+  </ItemGroup>
+
 </Project>
