@@ -2787,8 +2787,11 @@ public partial class MainWindow : Window
             }
         }
 
-        // Auto-number: fires on Enter only when the line has content beyond the line number
-        if (isEnter && ViewModel.Settings.AutoNumberLines && match.Success)
+        // Auto-number: fires on Enter only when the line has content beyond the line number.
+        // Shift+Enter suppresses auto-numbering so the user can insert a plain newline.
+        bool isShiftEnter = isEnter && Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+        
+        if (isEnter && !isShiftEnter && ViewModel.Settings.AutoNumberLines && match.Success)
         {
             // A line that is only a line number (+ optional whitespace) should not trigger auto-numbering
             string afterNumber = lineText.Substring(match.Groups[2].Index + match.Groups[2].Length);
