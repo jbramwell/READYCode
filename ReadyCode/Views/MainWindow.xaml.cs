@@ -210,7 +210,26 @@ public partial class MainWindow : Window
         {
             RightPanelCol.Width = new GridLength(ViewModel.Settings.RightPanelWidth);
             RightSplitterCol.Width = new GridLength(4);
-            SpecialCharsToggle.IsChecked = true;
+
+            // SpecialCharsPanel is visible by default in XAML while the other two default to
+            // Collapsed, and setting IsChecked here doesn't fire the toggles' Click handlers -
+            // so panel visibility must be set explicitly to match the restored tab.
+            switch (ViewModel.Settings.ActiveRightPanel)
+            {
+                case "Petscii":
+                    PetsciiToggle.IsChecked = true;
+                    SpecialCharsPanel.Visibility = Visibility.Collapsed;
+                    PetsciiPanel.Visibility = Visibility.Visible;
+                    break;
+                case "BasicKeywords":
+                    BasicKeywordsToggle.IsChecked = true;
+                    SpecialCharsPanel.Visibility = Visibility.Collapsed;
+                    BasicKeywordsPanel.Visibility = Visibility.Visible;
+                    break;
+                default:
+                    SpecialCharsToggle.IsChecked = true;
+                    break;
+            }
         }
         if (!string.IsNullOrEmpty(ViewModel.Settings.LastFolderPath) &&
             Directory.Exists(ViewModel.Settings.LastFolderPath))
@@ -307,7 +326,13 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         ViewModel.Settings.IsLeftPanelOpen = ExplorerToggle.IsChecked == true;
-        ViewModel.Settings.IsRightPanelOpen = SpecialCharsToggle.IsChecked == true || PetsciiToggle.IsChecked == true;
+        ViewModel.Settings.IsRightPanelOpen = SpecialCharsToggle.IsChecked == true || PetsciiToggle.IsChecked == true || BasicKeywordsToggle.IsChecked == true;
+        if (PetsciiToggle.IsChecked == true)
+            ViewModel.Settings.ActiveRightPanel = "Petscii";
+        else if (BasicKeywordsToggle.IsChecked == true)
+            ViewModel.Settings.ActiveRightPanel = "BasicKeywords";
+        else if (SpecialCharsToggle.IsChecked == true)
+            ViewModel.Settings.ActiveRightPanel = "QuickKeys";
         if (LeftPanelCol.Width.Value > 0)
             ViewModel.Settings.LeftPanelWidth = LeftPanelCol.Width.Value;
         if (RightPanelCol.Width.Value > 0)

@@ -154,6 +154,11 @@ public class AppSettings
     public bool IsRightPanelOpen { get; set; } = false;
 
     /// <summary>
+    /// Remembers which right-panel tab was last active: "QuickKeys", "Petscii", or "BasicKeywords".
+    /// </summary>
+    public string ActiveRightPanel { get; set; } = "QuickKeys";
+
+    /// <summary>
     /// Remembers the last folder path used in Open/Save dialogs, to start
     /// from that location next time.
     /// </summary>
