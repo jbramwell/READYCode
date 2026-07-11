@@ -2408,8 +2408,8 @@ public partial class MainWindow : Window
 
         Brush R(string key) => (Brush)FindResource(key);
 
-        var labelBg  = R("ThemePetsciiLabelBg");
-        var labelFg  = R("ThemePetsciiLabelFg");
+        var labelBg  = R("ThemePanelHeaderBg");
+        var labelFg  = R("ThemePanelHeaderFg");
         var glyphFg  = R("ThemePetsciiGlyphFg");
         var hoverBg  = R("ThemePetsciiRowHoverBg");
         var rowBg0   = R("ThemePetsciiRowEvenBg");
@@ -2525,15 +2525,15 @@ public partial class MainWindow : Window
         hdrGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(42) });
         hdrGrid.Background = labelBg;
 
-        var hdrPrint = new TextBlock { Text = "PRINT", FontFamily = segoeUi, FontSize = 9,
-            FontWeight = FontWeights.SemiBold, Foreground = labelFg,
+        var hdrPrint = new TextBlock { Text = "PRINT", FontFamily = segoeUi, FontSize = 10,
+            FontWeight = FontWeights.Bold, Foreground = labelFg,
             HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
         Grid.SetColumn(hdrPrint, 0);
         hdrGrid.Children.Add(hdrPrint);
 
-        var hdrChrs = new TextBlock { Text = "CHR$", FontFamily = segoeUi, FontSize = 9,
-            FontWeight = FontWeights.SemiBold, Foreground = labelFg,
+        var hdrChrs = new TextBlock { Text = "CHR$", FontFamily = segoeUi, FontSize = 10,
+            FontWeight = FontWeights.Bold, Foreground = labelFg,
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
         Grid.SetColumn(hdrChrs, 1);
@@ -2644,26 +2644,12 @@ public partial class MainWindow : Window
         var nameFg   = R("ThemeFileFg");
         var descFg   = R("ThemeSpecialCharShortcutFg");
         var sepBrush = R("ThemeFolderExplorerHeaderBorder");
-        var labelBg  = R("ThemePetsciiLabelBg");
-        var labelFg  = R("ThemePetsciiLabelFg");
+        var labelBg  = R("ThemePanelHeaderBg");
+        var labelFg  = R("ThemePanelHeaderFg");
+        var itemsByCategory = BasicCompletionProvider.AllItems.ToLookup(i => i.Category);
 
-         var itemsByCategory = BasicCompletionProvider.AllItems.ToLookup(i => i.Category);
-
-        bool firstCategory = true;
         foreach (var category in BasicCompletionProvider.CategoryOrder)
         {
-            // if (!firstCategory)
-            // {
-            //     BasicKeywordsListPanel.Children.Add(new Border
-            //     {
-            //         Height = 1,
-            //         Margin = new Thickness(8, 4, 8, 0),
-            //         Background = sepBrush
-            //     });
-            // }
-
-            firstCategory = false;
-
             BasicKeywordsListPanel.Children.Add(new TextBlock
             {
                 Text = category.ToUpperInvariant(),

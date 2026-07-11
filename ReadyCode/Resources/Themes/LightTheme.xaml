@@ -109,7 +109,7 @@
     <SolidColorBrush x:Key="ThemePetsciiCodeFg"     Color="#444444"/>
     <SolidColorBrush x:Key="ThemePetsciiNoteBg"     Color="#F0F0F0"/>
     <SolidColorBrush x:Key="ThemePetsciiGlyphFg"    Color="#1F1F1F"/>
-    <SolidColorBrush x:Key="ThemePetsciiLabelBg"    Color="#1A1A1A"/>
-    <SolidColorBrush x:Key="ThemePetsciiLabelFg"    Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="ThemePanelHeaderBg"     Color="#1A1A1A"/>
+    <SolidColorBrush x:Key="ThemePanelHeaderFg"     Color="#FFFFFF"/>
 
 </ResourceDictionary>

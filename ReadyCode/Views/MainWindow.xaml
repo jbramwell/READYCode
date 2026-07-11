@@ -1066,8 +1066,8 @@
                             <!-- Screen Control section -->
                             <TextBlock Text="SCREEN CONTROL"
                                        FontSize="10" FontWeight="Bold"
-                                       Foreground="{DynamicResource ThemePetsciiLabelFg}"
-                                       Background="{DynamicResource ThemePetsciiLabelBg}"
+                                       Foreground="{DynamicResource ThemePanelHeaderFg}"
+                                       Background="{DynamicResource ThemePanelHeaderBg}"
                                        MinHeight="22"
                                        VerticalAlignment="Center"
                                        Padding="8,4,0,4"
@@ -1226,8 +1226,8 @@
                             <!-- Printing Colors section -->
                             <TextBlock Text="PRINTING COLORS"
                                        FontSize="10" FontWeight="Bold"
-                                       Foreground="{DynamicResource ThemePetsciiLabelFg}"
-                                       Background="{DynamicResource ThemePetsciiLabelBg}"
+                                       Foreground="{DynamicResource ThemePanelHeaderFg}"
+                                       Background="{DynamicResource ThemePanelHeaderBg}"
                                        MinHeight="22"
                                        VerticalAlignment="Center"
                                        Padding="8,4,0,4"
@@ -1652,14 +1652,15 @@
                                   Style="{StaticResource ActivityBarButtonRight}"
                                   ToolTip="PETSCII Reference"
                                   Click="PetsciiToggle_Click">
-                        <TextBlock Text="&#xE0E6;" FontFamily="../Assets/Fonts/#Pet Me 64" FontSize="18"
+                        <TextBlock Text="&#x2663;" FontSize="24" FontWeight="Bold" FontFamily="Segoe UI Symbol"
                                    Foreground="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}"/>
                     </ToggleButton>
                     <ToggleButton x:Name="BasicKeywordsToggle"
                                   Style="{StaticResource ActivityBarButtonRight}"
                                   ToolTip="BASIC Keywords"
                                   Click="BasicKeywordsToggle_Click">
-                        <TextBlock Text="&#xE943;" FontSize="18" FontFamily="Segoe MDL2 Assets"
+                        <TextBlock Text="&#xE82D;" FontSize="18" FontFamily="Segoe MDL2 Assets"
+                                   Margin="2,4,0,0"
                                    Foreground="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}"/>
                     </ToggleButton>
                 </StackPanel>
