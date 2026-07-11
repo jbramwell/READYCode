@@ -364,6 +364,11 @@ public partial class MainWindow : Window
         var tab = new EditorTab();
         ViewModel.OpenTabs.Add(tab);
         ActivateTab(tab);
+
+        // ActivateTab already focuses the editor, but invoking via the File menu lets the
+        // menu's own focus-restore logic run afterward and steal it back - defer one more
+        // focus call so the editor keeps focus regardless of invocation path (menu or Ctrl+N).
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () => Editor.Focus());
     }
 
     private void FileOpen_Click(object sender, RoutedEventArgs e)
