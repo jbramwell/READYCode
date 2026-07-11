@@ -41,10 +41,14 @@ jobs:
         shell: pwsh
         run: |
           $content = Get-Content -Path "./CHANGELOG.md" -Raw
-          "CHANGELOG<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          $content | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
+          # Extract text between the first ## heading and the second ## heading
+          $match = [regex]::Match($content, '(?s)(## \[.*?)(?=\n## \[|\z)')
+          $section = $match.Groups[1].Value.Trim()
+
+          "CHANGELOG<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          $section | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
