@@ -1,8 +1,6 @@
 # Change Log
 
-## v1.1.0
-
-11 July 2026
+## [v1.1.0] - 2026-07-11
 
 This release of READYCode v1.1 contains a few new features and improvements as well as a few bug fixes. As always, please [open an issue](https://github.com/jbramwell/READYCode/issues/new/choose) if you run into any problems or have feature requests.
 
@@ -25,9 +23,7 @@ This release of READYCode v1.1 contains a few new features and improvements as w
 - **Right Panel State** - Fixed an issue where right panels were not correctly restoring their open/closed state after restarting the app
 - **Right Panel Sizing** - Fixed an issue where right panel tabs were resetting their size when switching between tabs
 
-## v1.0.0
-
-29 Jun 2026
+## [v1.0.0] - 2026-06-29
 
 This is the initial release of the READYCode editor designed for the Commodore 64 Ultimate and the VICE emulator. Initial features include:
 
