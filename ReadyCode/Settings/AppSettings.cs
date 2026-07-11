@@ -14,9 +14,19 @@ public class AppSettings
     #region Public Properties
 
     /// <summary>
+    /// Whether the C64U menu is shown in the main menu bar.
+    /// </summary>
+    public bool ShowC64UMenu { get; set; } = true;
+
+    /// <summary>
     /// Base URL of the Commodore 64 Ultimate's REST API (e.g. http://192.168.50.123/).
     /// </summary>
     public string C64UUrl { get; set; } = "http://{YOUR-C64U-IP-ADDRESS-GOES-HERE}/";
+
+    /// <summary>
+    /// Whether the VICE menu is shown in the main menu bar.
+    /// </summary>
+    public bool ShowViceMenu { get; set; } = true;
 
     /// <summary>
     /// Path to the VICE emulator executable, used when launching VICE.

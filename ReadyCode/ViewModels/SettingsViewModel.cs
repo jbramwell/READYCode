@@ -16,7 +16,9 @@ public class SettingsViewModel : INotifyPropertyChanged
     #region Private Fields
 
     private string _wrapColumnText;
+    private bool _showC64UMenu;
     private string _c64UUrl;
+    private bool _showViceMenu;
     private string _viceEmulatorPath;
     private string _viceMonitorHost;
     private string _viceMonitorPortText;
@@ -47,7 +49,9 @@ public class SettingsViewModel : INotifyPropertyChanged
     {
         _theme = settings.Theme;
         _wrapColumnText = settings.ColumnGuideColumn.ToString();
+        _showC64UMenu = settings.ShowC64UMenu;
         _c64UUrl = settings.C64UUrl;
+        _showViceMenu = settings.ShowViceMenu;
         _viceEmulatorPath = settings.ViceEmulatorPath;
         _viceMonitorHost = settings.ViceMonitorHost;
         _viceMonitorPortText = settings.ViceMonitorPort.ToString();
@@ -127,12 +131,30 @@ public class SettingsViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Gets or sets whether the C64U menu is shown in the main menu bar.
+    /// </summary>
+    public bool ShowC64UMenu
+    {
+        get => _showC64UMenu;
+        set { if (_showC64UMenu == value) return; _showC64UMenu = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>
     /// Gets or sets the C64 Ultimate's base URL, as entered text.
     /// </summary>
     public string C64UUrl
     {
         get => _c64UUrl;
         set { if (_c64UUrl == value) return; _c64UUrl = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>
+    /// Gets or sets whether the VICE menu is shown in the main menu bar.
+    /// </summary>
+    public bool ShowViceMenu
+    {
+        get => _showViceMenu;
+        set { if (_showViceMenu == value) return; _showViceMenu = value; OnPropertyChanged(); }
     }
 
     /// <summary>
@@ -309,7 +331,9 @@ public class SettingsViewModel : INotifyPropertyChanged
     {
         settings.Theme = _theme;
         settings.ColumnGuideColumn = int.Parse(WrapColumnText);
+        settings.ShowC64UMenu = ShowC64UMenu;
         settings.C64UUrl = C64UUrl.Trim();
+        settings.ShowViceMenu = ShowViceMenu;
         settings.ViceEmulatorPath = ViceEmulatorPath.Trim();
         settings.ViceMonitorHost = ViceMonitorHost.Trim();
         settings.ViceMonitorPort = int.Parse(ViceMonitorPortText);

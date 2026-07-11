@@ -528,6 +528,12 @@
                             <TextBlock Style="{StaticResource SectionBreadcrumb}"
                                        Text="Commodore  ›  Commodore 64 Ultimate"/>
 
+                            <Border Style="{StaticResource SettingRow}">
+                                <CheckBox Content="Show C64U Menu"
+                                          FontSize="12"
+                                          IsChecked="{Binding ShowC64UMenu}"/>
+                            </Border>
+
                             <Border Style="{StaticResource SettingRowLast}">
                                 <StackPanel>
                                     <TextBlock Style="{StaticResource SettingLabel}"
@@ -548,6 +554,12 @@
 
                             <TextBlock Style="{StaticResource SectionBreadcrumb}"
                                        Text="Commodore  ›  VICE Emulator"/>
+
+                            <Border Style="{StaticResource SettingRow}">
+                                <CheckBox Content="Show VICE Menu"
+                                          FontSize="12"
+                                          IsChecked="{Binding ShowViceMenu}"/>
+                            </Border>
 
                             <Border Style="{StaticResource SettingRow}">
                                 <StackPanel>

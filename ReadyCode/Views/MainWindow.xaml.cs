@@ -2270,6 +2270,7 @@ public partial class MainWindow : Window
             ViewModel.Settings.Save();
             ApplyEditorAppearance();
             UpdateScreenPositionStatus();
+            ViewModel.RefreshMenuVisibility();
         }
     }
 

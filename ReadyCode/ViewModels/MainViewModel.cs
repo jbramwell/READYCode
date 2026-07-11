@@ -203,6 +203,36 @@ public class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Gets or sets whether the C64U menu is shown in the main menu bar.
+    /// </summary>
+    public bool ShowC64UMenu
+    {
+        get => Settings.ShowC64UMenu;
+        set
+        {
+            if (Settings.ShowC64UMenu == value) return;
+            Settings.ShowC64UMenu = value;
+            OnPropertyChanged();
+            Settings.Save();
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets whether the VICE menu is shown in the main menu bar.
+    /// </summary>
+    public bool ShowViceMenu
+    {
+        get => Settings.ShowViceMenu;
+        set
+        {
+            if (Settings.ShowViceMenu == value) return;
+            Settings.ShowViceMenu = value;
+            OnPropertyChanged();
+            Settings.Save();
+        }
+    }
+
+    /// <summary>
     /// Gets the text shown in the status bar for the current file: either its file path,
     /// or "New File" if there is none.
     /// </summary>
@@ -406,6 +436,17 @@ public class MainViewModel : INotifyPropertyChanged
     {
         StatusMessage = message;
         StatusType = type;
+    }
+
+    /// <summary>
+    /// Re-raises property-changed notifications for the C64U/VICE menu visibility settings.
+    /// Call after settings are written directly to <see cref="Settings"/> (bypassing the
+    /// <see cref="ShowC64UMenu"/>/<see cref="ShowViceMenu"/> setters) so bound menu items refresh.
+    /// </summary>
+    public void RefreshMenuVisibility()
+    {
+        OnPropertyChanged(nameof(ShowC64UMenu));
+        OnPropertyChanged(nameof(ShowViceMenu));
     }
 
     /// <summary>
