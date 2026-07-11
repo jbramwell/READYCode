@@ -6,7 +6,7 @@
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "Build ReadyCode",
-            "program": "${workspaceFolder}/ReadyCode/bin/Debug/net8.0-windows/ReadyCode.exe",
+            "program": "${workspaceFolder}/ReadyCode/bin/Debug/net8.0-windows/win-x64/ReadyCode.exe",
             "args": [],
             "cwd": "${workspaceFolder}/ReadyCode",
             "stopAtEntry": false,

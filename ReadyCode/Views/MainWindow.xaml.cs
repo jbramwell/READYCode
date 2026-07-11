@@ -869,11 +869,15 @@ public partial class MainWindow : Window
             return;
         }
 
+        int bytesBefore = new PrgConverter().ConvertToPrg(doc.Text).Length - 2;
+        int bytesAfter  = new PrgConverter().ConvertToPrg(minified).Length - 2;
+        int bytesSaved  = bytesBefore - bytesAfter;
+
         doc.BeginUpdate();
         try { doc.Text = minified; }
         finally { doc.EndUpdate(); }
 
-        ViewModel.SetStatus("Code minified.");
+        ViewModel.SetStatus($"Code minified: {bytesBefore:N0} → {bytesAfter:N0} bytes ({bytesSaved:N0} saved).");
     }
 
     // ── Prettify ─────────────────────────────────────────────────────────────
