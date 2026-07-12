@@ -128,6 +128,7 @@ public partial class MainWindow : Window
         EditGoToLineCommand  = new RelayCommand(_ => ExecuteGoToLine(), _ => HasNonEmptyActiveTab());
         PreferencesSettingsCommand = new RelayCommand(_ => SettingsPreferences_Click(this, new RoutedEventArgs()));
         FileOpenFolderCommand = new RelayCommand(_ => OpenFolderDialog());
+        FileCloseFolderCommand = new RelayCommand(_ => CloseFolder(), _ => HasFolderOpen());
         InsertSpecialCharCommand = new RelayCommand(p => {
             if (p is string s && int.TryParse(s, out int code))
                 InsertSpecialChar((char)code);
@@ -288,6 +289,8 @@ public partial class MainWindow : Window
     public ICommand PreferencesSettingsCommand { get; }
     /// <summary>Gets the command that opens a folder in the folder explorer.</summary>
     public ICommand FileOpenFolderCommand { get; }
+    /// <summary>Gets the command that closes the currently open folder.</summary>
+    public ICommand FileCloseFolderCommand { get; }
     /// <summary>Gets the command that inserts a special character at the caret.</summary>
     public ICommand InsertSpecialCharCommand { get; }
     /// <summary>Gets the command that closes the active tab.</summary>
@@ -617,6 +620,9 @@ public partial class MainWindow : Window
     // Gates Cut/Copy, which need an actual text selection rather than just non-empty content.
     private bool HasSelection() => ViewModel.ActiveTab != null && Editor.SelectionLength > 0;
 
+    // Gates Close Folder, which only makes sense once a folder has been opened.
+    private bool HasFolderOpen() => !string.IsNullOrEmpty(ViewModel.Settings.LastFolderPath);
+
     #region Tab Management
 
     private void ActivateTab(EditorTab? tab)
@@ -860,6 +866,10 @@ public partial class MainWindow : Window
                 if (e.Key == Key.C) { ExecuteCommentSelection();   e.Handled = true; return; }
                 if (e.Key == Key.U) { ExecuteUncommentSelection(); e.Handled = true; return; }
                 if (e.Key == Key.O) { OpenFolderDialog();          e.Handled = true; return; }
+            }
+            else if (Keyboard.Modifiers == ModifierKeys.None)
+            {
+                if (e.Key == Key.F) { CloseFolder(); e.Handled = true; return; }
             }
         }
     }
@@ -2254,6 +2264,16 @@ public partial class MainWindow : Window
                 LeftSplitterCol.Width = new GridLength(4);
             }
         }
+    }
+
+    private void CloseFolder()
+    {
+        if (!HasFolderOpen()) return;
+
+        ViewModel.FolderItems.Clear();
+        ViewModel.ExplorerTitle = "EXPLORER";
+        ViewModel.Settings.LastFolderPath = "";
+        ViewModel.Settings.Save();
     }
 
     #endregion

@@ -486,7 +486,8 @@
                     <MenuItem Header="(none)" IsEnabled="False"/>
                 </MenuItem>
                 <Separator/>
-                <MenuItem Header="_Close" Command="{Binding TabCloseCurrentCommand}" InputGestureText="Ctrl+F4"/>
+                <MenuItem Header="_Close Editor" Command="{Binding TabCloseCurrentCommand}" InputGestureText="Ctrl+F4"/>
+                <MenuItem Header="Close _Folder" Command="{Binding FileCloseFolderCommand}" InputGestureText="Ctrl+K F"/>
                 <Separator/>
                 <MenuItem Header="_Save"            Command="{Binding FileSaveCommand}"         InputGestureText="Ctrl+S">
                     <MenuItem.Icon><TextBlock Text="&#xE74E;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
