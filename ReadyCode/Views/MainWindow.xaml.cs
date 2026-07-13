@@ -33,6 +33,11 @@ namespace ReadyCode.Views;
 /// </summary>
 public partial class MainWindow : Window
 {
+    // Snapshot of a closed tab's state, kept in _closedTabHistory so Ctrl+Shift+T can restore
+    // it exactly - including unsaved content, since the tab may never have matched disk.
+    private sealed record ClosedTabSnapshot(
+        string? FilePath, string Text, bool WasModified, int CaretOffset, double ScrollOffsetY);
+
     #region Private Fields
 
     // Custom clipboard format that stores raw UTF-16LE bytes so PETSCII control
@@ -58,6 +63,11 @@ public partial class MainWindow : Window
     private bool _tabSwitching;
     private bool _activatingTab;
     private bool _ctrlKChordPending;
+
+    // Closed-tab history for Ctrl+Shift+T, most-recently-closed last. In-memory only (starts
+    // empty each run) and capped at 20 entries, oldest evicted first.
+    private const int _maxClosedTabHistory = 20;
+    private readonly List<ClosedTabSnapshot> _closedTabHistory = new();
 
     // Chord shortcut state (Ctrl+K → Ctrl+C / Ctrl+K → Ctrl+U)
     private bool _chordCtrlKActive;
@@ -137,6 +147,7 @@ public partial class MainWindow : Window
                 InsertSpecialChar((char)code);
         });
         TabCloseCurrentCommand = new RelayCommand(_ => { if (ViewModel.ActiveTab != null) CloseTab(ViewModel.ActiveTab); }, _ => HasActiveTab());
+        TabReopenClosedCommand = new RelayCommand(_ => ReopenClosedTab(), _ => HasClosedTabHistory());
 
         EditFindCommand    = new RelayCommand(_ => OpenFind(), _ => HasNonEmptyActiveTab());
         EditReplaceCommand = new RelayCommand(_ => OpenReplace(), _ => HasNonEmptyActiveTab());
@@ -301,6 +312,8 @@ public partial class MainWindow : Window
     public ICommand InsertSpecialCharCommand { get; }
     /// <summary>Gets the command that closes the active tab.</summary>
     public ICommand TabCloseCurrentCommand { get; }
+    /// <summary>Gets the command that reopens the most recently closed tab.</summary>
+    public ICommand TabReopenClosedCommand { get; }
 
     // Find / Replace (MainWindow-owned so they can access the editor and FindBar directly)
     /// <summary>Gets the command that opens the find bar.</summary>
@@ -656,6 +669,9 @@ public partial class MainWindow : Window
     // Gates Close Folder, which only makes sense once a folder has been opened.
     private bool HasFolderOpen() => !string.IsNullOrEmpty(ViewModel.Settings.LastFolderPath);
 
+    // Gates Reopen Closed Tab, which only makes sense once a tab has actually been closed.
+    private bool HasClosedTabHistory() => _closedTabHistory.Count > 0;
+
     #region Tab Management
 
     private void ActivateTab(EditorTab? tab)
@@ -736,6 +752,16 @@ public partial class MainWindow : Window
             if (result == MessageBoxResult.Yes && !SaveTabWithDialog(tab)) return false;
         }
 
+        bool isActiveTab = ReferenceEquals(ViewModel.ActiveTab, tab);
+        _closedTabHistory.Add(new ClosedTabSnapshot(
+            tab.FilePath,
+            tab.Document.Text,
+            tab.IsModified,
+            isActiveTab ? Editor.CaretOffset : tab.CaretOffset,
+            isActiveTab ? Editor.VerticalOffset : tab.ScrollOffsetY));
+        if (_closedTabHistory.Count > _maxClosedTabHistory)
+            _closedTabHistory.RemoveAt(0);
+
         int idx = ViewModel.OpenTabs.IndexOf(tab);
         ViewModel.OpenTabs.Remove(tab);
 
@@ -748,6 +774,24 @@ public partial class MainWindow : Window
             ActivateTab(ViewModel.OpenTabs[Math.Min(idx, ViewModel.OpenTabs.Count - 1)]);
         }
         return true;
+    }
+
+    // Restores the most recently closed tab (Ctrl+Shift+T), including any unsaved content it
+    // had at close time. No-op if nothing has been closed yet this session.
+    private void ReopenClosedTab()
+    {
+        if (_closedTabHistory.Count == 0) return;
+
+        ClosedTabSnapshot snapshot = _closedTabHistory[^1];
+        _closedTabHistory.RemoveAt(_closedTabHistory.Count - 1);
+
+        var tab = new EditorTab { FilePath = snapshot.FilePath };
+        tab.Document.Text = snapshot.Text;
+        tab.CaretOffset = Math.Min(snapshot.CaretOffset, tab.Document.TextLength);
+        tab.ScrollOffsetY = snapshot.ScrollOffsetY;
+        ViewModel.OpenTabs.Add(tab);
+        ActivateTab(tab);
+        tab.IsModified = snapshot.WasModified; // reset any spurious change event from document setup
     }
 
     #endregion

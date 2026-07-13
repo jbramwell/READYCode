@@ -427,6 +427,7 @@
 
         <!-- Tab management -->
         <KeyBinding Key="F4" Modifiers="Ctrl" Command="{Binding TabCloseCurrentCommand}"/>
+        <KeyBinding Key="T"  Modifiers="Ctrl+Shift" Command="{Binding TabReopenClosedCommand}"/>
 
         <!-- View Menu -->
         <KeyBinding Key="B" Modifiers="Ctrl"       Command="{Binding ViewPrimarySideBarCommand}"/>
@@ -493,16 +494,17 @@
                     <MenuItem.Icon><TextBlock Text="&#xE7C3;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
                 </MenuItem>
                 <Separator/>
-                <MenuItem Header="Open _File..."    Command="{Binding FileOpenCommand}"         InputGestureText="Ctrl+O">
+                <MenuItem Header="_Open File..."    Command="{Binding FileOpenCommand}"         InputGestureText="Ctrl+O">
                     <MenuItem.Icon><TextBlock Text="&#xE8E5;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
                 </MenuItem>
                 <MenuItem Header="Open _Folder..."  Command="{Binding FileOpenFolderCommand}" InputGestureText="Ctrl+K Ctrl+O"/>
                 <MenuItem Header="Open _Recent" x:Name="RecentFilesMenuItem">
                     <MenuItem Header="(none)" IsEnabled="False"/>
                 </MenuItem>
+                <MenuItem Header="Reopen Closed _Tab" Command="{Binding TabReopenClosedCommand}" InputGestureText="Ctrl+Shift+T"/>
                 <Separator/>
                 <MenuItem Header="_Close Editor" Command="{Binding TabCloseCurrentCommand}" InputGestureText="Ctrl+F4"/>
-                <MenuItem Header="Close _Folder" Command="{Binding FileCloseFolderCommand}" InputGestureText="Ctrl+K F"/>
+                <MenuItem Header="Close Fo_lder" Command="{Binding FileCloseFolderCommand}" InputGestureText="Ctrl+K F"/>
                 <Separator/>
                 <MenuItem Header="_Save"            Command="{Binding FileSaveCommand}"         InputGestureText="Ctrl+S">
                     <MenuItem.Icon><TextBlock Text="&#xE74E;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
@@ -514,7 +516,7 @@
                 <MenuItem Header="_Export..."  Command="{Binding FileExportCommand}"/>
                 <MenuItem Header="_Import..."  Command="{Binding FileImportCommand}"/>
                 <Separator/>
-                <MenuItem Header="P_age Setup..." Command="{Binding ViewModel.FilePageSetupCommand}"/>
+                <MenuItem Header="Pa_ge Setup..." Command="{Binding ViewModel.FilePageSetupCommand}"/>
                 <MenuItem Header="Print Pre_view..." Command="{Binding ViewModel.FilePrintPreviewCommand}"/>
                 <MenuItem Header="_Print..."      Command="{Binding ViewModel.FilePrintCommand}"     InputGestureText="Ctrl+P">
                     <MenuItem.Icon><TextBlock Text="&#xE749;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
@@ -550,17 +552,17 @@
                 <MenuItem Header="Comment _Selection"   Command="{Binding EditCommentCommand}"   InputGestureText="Ctrl+K Ctrl+C"/>
                 <MenuItem Header="U_ncomment Selection" Command="{Binding EditUncommentCommand}" InputGestureText="Ctrl+K Ctrl+U"/>
                 <Separator/>
-                <MenuItem Header="Make _Uppercase" Command="{Binding EditMakeUppercaseCommand}" InputGestureText="Ctrl+Shift+U"/>
+                <MenuItem Header="M_ake Uppercase" Command="{Binding EditMakeUppercaseCommand}" InputGestureText="Ctrl+Shift+U"/>
                 <MenuItem Header="Make _Lowercase" Command="{Binding EditMakeLowercaseCommand}"/>
                 <Separator/>
                 <MenuItem Header="Minif_y Code"   Command="{Binding EditMinifyCommand}"   InputGestureText="Ctrl+M"/>
-                <MenuItem Header="Prettif_y Code" Command="{Binding EditPrettifyCommand}" InputGestureText="Ctrl+Shift+M"/>
+                <MenuItem Header="Prett_ify Code" Command="{Binding EditPrettifyCommand}" InputGestureText="Ctrl+Shift+M"/>
                 <Separator/>
                 <MenuItem Header="_Find"    Command="{Binding EditFindCommand}"    InputGestureText="Ctrl+F">
                     <MenuItem.Icon><TextBlock Text="&#xE721;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
                 </MenuItem>
                 <Separator/>
-                <MenuItem Header="_Replace" Command="{Binding EditReplaceCommand}" InputGestureText="Ctrl+H"/>
+                <MenuItem Header="R_eplace" Command="{Binding EditReplaceCommand}" InputGestureText="Ctrl+H"/>
             </MenuItem>
 
             <MenuItem Header="_View">
@@ -588,7 +590,7 @@
                           IsChecked="{Binding ViewModel.WordWrap, Mode=TwoWay}"
                           InputGestureText="Alt+Z"/>
                 <Separator/>
-                <MenuItem Header="Code Statistics"
+                <MenuItem Header="Code S_tatistics"
                           Command="{Binding ViewCodeStatisticsCommand}"/>
             </MenuItem>
 
@@ -601,7 +603,7 @@
                 <MenuItem Header="R_eset"     Command="{Binding ViewModel.C64UResetCommand}"/>
                 <MenuItem Header="Re_boot"    Command="{Binding ViewModel.C64URebootCommand}"/>
                 <MenuItem Header="_Pause"     Command="{Binding ViewModel.C64UPauseCommand}"/>
-                <MenuItem Header="R_esume"    Command="{Binding ViewModel.C64UResumeCommand}"/>
+                <MenuItem Header="Res_ume"    Command="{Binding ViewModel.C64UResumeCommand}"/>
                 <MenuItem Header="Power _Off" Command="{Binding ViewModel.C64UPowerOffCommand}"/>
                 <Separator/>
                 <MenuItem Header="_About My C64U" Command="{Binding ViewModel.C64USystemInfoCommand}"/>
@@ -616,14 +618,14 @@
                 <MenuItem Header="R_eset"     Command="{Binding ViewModel.ViceResetCommand}"/>
                 <MenuItem Header="Re_boot"    Command="{Binding ViewModel.ViceRebootCommand}"/>
                 <MenuItem Header="_Pause"     Command="{Binding ViewModel.VicePauseCommand}"/>
-                <MenuItem Header="R_esume"    Command="{Binding ViewModel.ViceResumeCommand}"/>
+                <MenuItem Header="Res_ume"    Command="{Binding ViewModel.ViceResumeCommand}"/>
                 <MenuItem Header="Power _Off" Command="{Binding ViewModel.VicePowerOffCommand}"/>
                 <Separator/>
                 <MenuItem Header="_About VICE" Command="{Binding ViewModel.ViceSystemInfoCommand}"/>
             </MenuItem>
 
             <MenuItem Header="_Preferences">
-                <MenuItem Header="Show _Status Bar"
+                <MenuItem Header="Show Status _Bar"
                           IsCheckable="True"
                           IsChecked="{Binding ViewModel.ShowStatusBar, Mode=TwoWay}"/>
                 <Separator/>
