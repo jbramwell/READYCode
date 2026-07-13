@@ -88,7 +88,7 @@
 
         <!-- Context menu for the text editor -->
         <ContextMenu x:Key="EditorContextMenu">
-            <MenuItem Header="Transfer" InputGestureText="Ctrl+T" Click="EditorContextTransfer_Click"/>
+            <MenuItem Header="Transfer" InputGestureText="Ctrl+F5" Click="EditorContextTransfer_Click"/>
             <MenuItem Header="Run"      InputGestureText="F5"     Click="EditorContextRun_Click"/>
             <Separator/>
             <MenuItem Header="Cut"   InputGestureText="Ctrl+X"   Click="EditCut_Click"/>
@@ -435,12 +435,12 @@
         <KeyBinding Key="Z" Modifiers="Alt"        Command="{Binding ViewWordWrapCommand}"/>
 
         <!-- C64U Menu -->
-        <KeyBinding Key="T" Modifiers="Ctrl" Command="{Binding ViewModel.C64UTransferCommand}"/>
+        <KeyBinding Key="F5" Modifiers="Ctrl" Command="{Binding ViewModel.C64UTransferCommand}"/>
         <KeyBinding Key="F5" Command="{Binding ViewModel.C64URunCommand}"/>
 
         <!-- VICE Menu -->
-        <KeyBinding Key="T" Modifiers="Ctrl+Shift" Command="{Binding ViewModel.ViceTransferCommand}"/>
-        <KeyBinding Key="F5" Modifiers="Ctrl+Shift" Command="{Binding ViewModel.ViceRunCommand}"/>
+        <KeyBinding Key="F5" Modifiers="Ctrl+Alt" Command="{Binding ViewModel.ViceTransferCommand}"/>
+        <KeyBinding Key="F5" Modifiers="Alt" Command="{Binding ViewModel.ViceRunCommand}"/>
 
         <!-- Screen Control (Ctrl+1–8) -->
         <KeyBinding Key="D1" Modifiers="Ctrl" Command="{Binding InsertSpecialCharCommand}" CommandParameter="19"/>
@@ -593,7 +593,7 @@
             </MenuItem>
 
             <MenuItem Header="C64_U" Visibility="{Binding ViewModel.ShowC64UMenu, Converter={StaticResource BoolToVisibility}}">
-                <MenuItem Header="_Transfer" Command="{Binding ViewModel.C64UTransferCommand}" InputGestureText="Ctrl+T"/>
+                <MenuItem Header="_Transfer" Command="{Binding ViewModel.C64UTransferCommand}" InputGestureText="Ctrl+F5"/>
                 <MenuItem Header="_Run"      Command="{Binding ViewModel.C64URunCommand}" InputGestureText="F5">
                     <MenuItem.Icon><TextBlock Text="&#xE768;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
                 </MenuItem>
@@ -608,8 +608,8 @@
             </MenuItem>
 
             <MenuItem Header="VI_CE" Visibility="{Binding ViewModel.ShowViceMenu, Converter={StaticResource BoolToVisibility}}">
-                <MenuItem Header="_Transfer" Command="{Binding ViewModel.ViceTransferCommand}" InputGestureText="Ctrl+Shift+T"/>
-                <MenuItem Header="_Run"      Command="{Binding ViewModel.ViceRunCommand}" InputGestureText="Ctrl+Shift+F5">
+                <MenuItem Header="_Transfer" Command="{Binding ViewModel.ViceTransferCommand}" InputGestureText="Ctrl+Alt+F5"/>
+                <MenuItem Header="_Run"      Command="{Binding ViewModel.ViceRunCommand}" InputGestureText="Alt+F5">
                     <MenuItem.Icon><TextBlock Text="&#xE768;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
                 </MenuItem>
                 <Separator/>
