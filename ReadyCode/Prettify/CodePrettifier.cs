@@ -85,8 +85,9 @@ public static class CodePrettifier
     }
 
     /// <summary>
-    /// Replaces a leading bare period (e.g. ".5") with an explicit leading zero ("0.5")
-    /// outside string literals.
+    /// Replaces a leading bare period (e.g. ".5") with an explicit leading zero ("0.5"), and a
+    /// standalone period (CBM BASIC shorthand for the literal 0, e.g. "CT=.") with "0", outside
+    /// string literals.
     /// </summary>
     public static string ReplacePeriodWithZero(string source)
     {
@@ -96,7 +97,8 @@ public static class CodePrettifier
             var (lineNum, code) = CodeMinifier.SplitBasicLine(line);
             if (lineNum == null) { result.Add(line); continue; }
             string transformed = TransformOutsideStrings(code,
-                s => Regex.Replace(s, @"(?<![0-9])\.(\d)", "0.$1"));
+                s => Regex.Replace(s, @"(?<![0-9])\.(\d)?",
+                    m => m.Groups[1].Success ? "0." + m.Groups[1].Value : "0"));
             result.Add(lineNum + " " + transformed);
         }
         return JoinLines(result);
@@ -195,11 +197,64 @@ public static class CodePrettifier
                 continue;
             }
 
-            // ── Statement separator ':' — resets to "start of statement" ────
+            // ── Statement separator ':' — spaced like the operators below, and
+            // also resets to "start of statement" ────────────────────────────
             if (c == ':')
             {
-                sb.Append(c); i++;
+                if (!prevIsSpace) sb.Append(' ');
+                sb.Append(':'); i++;
+                sb.Append(' ');
                 prevIsSpace = true;
+                continue;
+            }
+
+            // ── "<>", "<=", ">=" — two-char operators; space around the pair,
+            // not between the two characters ──────────────────────────────────
+            if ((c == '<' && i + 1 < code.Length && (code[i + 1] == '>' || code[i + 1] == '=')) ||
+                (c == '>' && i + 1 < code.Length && code[i + 1] == '='))
+            {
+                if (!prevIsSpace) sb.Append(' ');
+                sb.Append(c).Append(code[i + 1]); i += 2;
+                sb.Append(' ');
+                prevIsSpace = true;
+                continue;
+            }
+
+            // ── Comparison operators ─────────────────────────────────────────
+            if (c == '=' || c == '>' || c == '<')
+            {
+                if (!prevIsSpace) sb.Append(' ');
+                sb.Append(c); i++;
+                sb.Append(' ');
+                prevIsSpace = true;
+                continue;
+            }
+
+            // ── Math operators (always binary here) ──────────────────────────
+            if (c == '*' || c == '/' || c == '+' || c == '^')
+            {
+                if (!prevIsSpace) sb.Append(' ');
+                sb.Append(c); i++;
+                sb.Append(' ');
+                prevIsSpace = true;
+                continue;
+            }
+
+            // ── Minus — binary ("A-B" -> "A - B") gets spaced both sides, but
+            // unary ("=-CI" -> "= -CI") stays glued to its operand so it doesn't
+            // read as subtraction from nothing ────────────────────────────────
+            if (c == '-')
+            {
+                if (!prevIsSpace) sb.Append(' ');
+                sb.Append('-'); i++;
+
+                int back = i - 2; // the char immediately before this '-' in the source
+                while (back >= 0 && code[back] == ' ') back--;
+                bool isBinary = back >= 0 &&
+                    (char.IsLetterOrDigit(code[back]) || code[back] is ')' or '$' or '%');
+
+                if (isBinary) { sb.Append(' '); prevIsSpace = true; }
+                else prevIsSpace = false;
                 continue;
             }
 
