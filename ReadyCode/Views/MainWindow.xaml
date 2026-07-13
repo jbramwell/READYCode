@@ -91,6 +91,8 @@
             <MenuItem Header="Transfer" InputGestureText="Ctrl+F5" Click="EditorContextTransfer_Click"/>
             <MenuItem Header="Run"      InputGestureText="F5"     Click="EditorContextRun_Click"/>
             <Separator/>
+            <MenuItem Header="Go to Line Number" InputGestureText="F12" Click="EditorContextGoToLineNumber_Click"/>
+            <Separator/>
             <MenuItem Header="Cut"   InputGestureText="Ctrl+X"   Click="EditCut_Click"/>
             <MenuItem Header="Copy"  InputGestureText="Ctrl+C"   Click="EditCopy_Click"/>
             <MenuItem Header="Paste" InputGestureText="Ctrl+V"   Click="EditPaste_Click"/>
@@ -413,6 +415,7 @@
 
         <!-- Edit Menu -->
         <KeyBinding Key="G" Modifiers="Ctrl" Command="{Binding EditGoToLineCommand}"/>
+        <KeyBinding Key="F12" Command="{Binding GoToDefinitionCommand}"/>
         <KeyBinding Key="Z" Modifiers="Ctrl" Command="{Binding EditUndoCommand}"/>
         <KeyBinding Key="Y" Modifiers="Ctrl" Command="{Binding EditRedoCommand}"/>
         <KeyBinding Key="X" Modifiers="Ctrl" Command="{Binding EditCutCommand}"/>
@@ -1037,6 +1040,7 @@
                              PreviewTextInput="Editor_PreviewTextInput"
                              MouseHover="Editor_MouseHover"
                              MouseHoverStopped="Editor_MouseHoverStopped"
+                             PreviewMouseRightButtonDown="Editor_PreviewMouseRightButtonDown"
                              Visibility="Collapsed"/>
                     <local:FindBarControl x:Name="FindBar"
                                          HorizontalAlignment="Right"

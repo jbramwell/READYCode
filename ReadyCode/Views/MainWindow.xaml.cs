@@ -142,6 +142,7 @@ public partial class MainWindow : Window
         EditMinifyCommand    = new RelayCommand(_ => ExecuteMinifyCode(), _ => HasNonEmptyActiveTab());
         EditPrettifyCommand  = new RelayCommand(_ => ExecutePrettifyCode(), _ => HasNonEmptyActiveTab());
         EditGoToLineCommand  = new RelayCommand(_ => ExecuteGoToLine(), _ => HasNonEmptyActiveTab());
+        GoToDefinitionCommand = new RelayCommand(_ => ExecuteGoToGotoTarget(), _ => HasNonEmptyActiveTab());
         PreferencesSettingsCommand = new RelayCommand(_ => SettingsPreferences_Click(this, new RoutedEventArgs()));
         FileOpenFolderCommand = new RelayCommand(_ => OpenFolderDialog());
         FileCloseFolderCommand = new RelayCommand(_ => CloseFolder(), _ => HasFolderOpen());
@@ -305,6 +306,8 @@ public partial class MainWindow : Window
     public ICommand EditPrettifyCommand  { get; }
     /// <summary>Gets the command that opens the Go To Line dialog.</summary>
     public ICommand EditGoToLineCommand  { get; }
+    /// <summary>Gets the command that jumps to the BASIC line targeted by the GOTO/GOSUB line number under the caret.</summary>
+    public ICommand GoToDefinitionCommand { get; }
     /// <summary>Gets the command that opens the Preferences dialog.</summary>
     public ICommand PreferencesSettingsCommand { get; }
     /// <summary>Gets the command that opens a folder in the folder explorer.</summary>
@@ -1201,6 +1204,15 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (!JumpToBasicLine(target))
+            ViewModel.SetStatus($"BASIC line {target} not found.", StatusType.Warning);
+    }
+
+    // Moves the caret to the start of the document line whose leading BASIC line number equals
+    // `target`, scrolling it into view. Returns false if no such line exists.
+    private bool JumpToBasicLine(int target)
+    {
+        var document = Editor.Document;
         for (int i = 1; i <= document.LineCount; i++)
         {
             if (TryGetBasicLineNumber(document, i, out int n) && n == target)
@@ -1210,11 +1222,90 @@ public partial class MainWindow : Window
                 Editor.ScrollToLine(i);
                 Editor.TextArea.Caret.BringCaretToView();
                 Editor.Focus();
-                return;
+                return true;
             }
         }
+        return false;
+    }
 
-        ViewModel.SetStatus($"BASIC line {target} not found.", StatusType.Warning);
+    // F12 / "Go to Line Number": if the caret sits on a GOTO/GOSUB line-number target (standard
+    // or computed, e.g. "ON X GOTO 100,200,300"), jumps to that BASIC line.
+    private void ExecuteGoToGotoTarget()
+    {
+        var document = Editor.Document;
+        var line = document.GetLineByOffset(Editor.CaretOffset);
+        string lineText = document.GetText(line);
+        int col = Editor.CaretOffset - line.Offset;
+
+        if (!TryGetGotoTarget(lineText, col, out int target))
+        {
+            ViewModel.SetStatus("Not on a GOTO/GOSUB line number.", StatusType.Warning);
+            return;
+        }
+
+        if (!JumpToBasicLine(target))
+            ViewModel.SetStatus($"BASIC line {target} not found.", StatusType.Warning);
+    }
+
+    // Finds a GOTO/GOSUB/THEN keyword on the line (skipping string literals, stopping at REM),
+    // then checks whether column `col` falls within one of the digit-only line numbers in the
+    // comma-separated target list that follows (a plain GOTO/GOSUB has exactly one; a computed
+    // "ON expr GOTO/GOSUB n1,n2,..." can have several; "THEN 420" is shorthand for
+    // "THEN GOTO 420", an implied GOTO). Reuses the same keyword-boundary scan as
+    // the hover tooltip feature so this agrees with it on packed, space-free code.
+    private static bool TryGetGotoTarget(string lineText, int col, out int targetLineNumber)
+    {
+        targetLineNumber = 0;
+        if (col < 0 || col > lineText.Length) return false;
+
+        bool inString = false;
+        int i = 0;
+
+        while (i < lineText.Length)
+        {
+            char c = lineText[i];
+
+            if (c == '"') { inString = !inString; i++; continue; }
+            if (inString) { i++; continue; }
+
+            if (char.IsLetter(c))
+            {
+                int kwLen = MatchHoverKeywordLength(lineText, i);
+                if (kwLen == 0) { i++; continue; }
+
+                if (kwLen == 3 && string.Equals(lineText.Substring(i, 3), "REM", StringComparison.OrdinalIgnoreCase))
+                    return false; // rest of the line is a comment
+
+                // "THEN 420" is CBM BASIC shorthand for "THEN GOTO 420" - an implied GOTO.
+                bool isTarget =
+                    (kwLen == 4 && string.Equals(lineText.Substring(i, 4), "GOTO",  StringComparison.OrdinalIgnoreCase)) ||
+                    (kwLen == 4 && string.Equals(lineText.Substring(i, 4), "THEN",  StringComparison.OrdinalIgnoreCase)) ||
+                    (kwLen == 5 && string.Equals(lineText.Substring(i, 5), "GOSUB", StringComparison.OrdinalIgnoreCase));
+
+                i += kwLen;
+                if (!isTarget) continue;
+
+                while (true)
+                {
+                    while (i < lineText.Length && lineText[i] == ' ') i++;
+                    int numStart = i;
+                    while (i < lineText.Length && char.IsDigit(lineText[i])) i++;
+                    if (i == numStart) break; // not followed by a number - no target list here
+
+                    if (col >= numStart && col < i)
+                        return int.TryParse(lineText.AsSpan(numStart, i - numStart), out targetLineNumber);
+
+                    while (i < lineText.Length && lineText[i] == ' ') i++;
+                    if (i < lineText.Length && lineText[i] == ',') { i++; continue; }
+                    break;
+                }
+                continue;
+            }
+
+            i++;
+        }
+
+        return false;
     }
 
     private bool TryGetBasicLineNumber(ICSharpCode.AvalonEdit.Document.TextDocument document, int lineIndex, out int basicLineNumber)
@@ -1235,6 +1326,12 @@ public partial class MainWindow : Window
     {
         if (ViewModel.C64UTransferCommand.CanExecute(null))
             ViewModel.C64UTransferCommand.Execute(null);
+    }
+
+    private void EditorContextGoToLineNumber_Click(object sender, RoutedEventArgs e)
+    {
+        if (GoToDefinitionCommand.CanExecute(null))
+            GoToDefinitionCommand.Execute(null);
     }
 
     private void EditorContextRun_Click(object sender, RoutedEventArgs e)
@@ -2992,6 +3089,26 @@ public partial class MainWindow : Window
     private void Editor_MouseHoverStopped(object sender, MouseEventArgs e)
     {
         CloseHoverToolTip();
+    }
+
+    // Right-clicking doesn't move the caret by default in AvalonEdit, so context-menu actions
+    // like "Go to Line Number" would silently act on whatever row the caret was last on instead
+    // of the row actually clicked. Move it here, before the context menu opens - unless the
+    // click landed inside an existing selection, in which case leave the selection intact so
+    // Copy/Cut still act on it.
+    private void Editor_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var position = Editor.GetPositionFromPoint(e.GetPosition(Editor));
+        if (position == null) return;
+
+        int offset = Editor.Document.GetOffset(position.Value.Line, position.Value.Column);
+
+        if (Editor.SelectionLength > 0 &&
+            offset >= Editor.SelectionStart && offset <= Editor.SelectionStart + Editor.SelectionLength)
+            return;
+
+        Editor.CaretOffset = offset;
+        Editor.SelectionLength = 0;
     }
 
     private void CloseHoverToolTip()
