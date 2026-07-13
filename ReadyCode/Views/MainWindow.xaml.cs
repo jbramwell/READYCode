@@ -45,6 +45,7 @@ public partial class MainWindow : Window
 
     private readonly BasicKeywordColorizer _keywordColorizer = new();
     private readonly LineNumberColorizer _lineNumberColorizer = new();
+    private readonly NumberLiteralColorizer _numberLiteralColorizer = new();
     private readonly RemCommentColorizer _remCommentColorizer = new();
     private readonly FindHighlightColorizer _findHighlightColorizer = new();
     private List<(int Offset, int Length)> _findMatches = new();
@@ -166,6 +167,7 @@ public partial class MainWindow : Window
 
         Editor.TextArea.TextView.LineTransformers.Add(_lineNumberColorizer);
         Editor.TextArea.TextView.LineTransformers.Add(_keywordColorizer);
+        Editor.TextArea.TextView.LineTransformers.Add(_numberLiteralColorizer);
         Editor.TextArea.TextView.LineTransformers.Add(_remCommentColorizer);
         Editor.TextArea.TextView.LineTransformers.Add(_findHighlightColorizer);
         _currentLineBorderRenderer = new CurrentLineBorderRenderer(Editor);
@@ -3079,6 +3081,7 @@ public partial class MainWindow : Window
         _lineNumberColorizer.LineNumberBrush       = (Brush)FindResource("ThemeEditorLineNumberFg");
         _lineNumberColorizer.ActiveLineNumberBrush = (Brush)FindResource("ThemeEditorFg");
         _keywordColorizer.KeywordBrush          = (Brush)FindResource("ThemeEditorKeywordFg");
+        _numberLiteralColorizer.NumberBrush     = (Brush)FindResource("ThemeEditorNumberLiteralFg");
         _remCommentColorizer.CommentBrush       = (Brush)FindResource("ThemeEditorCommentFg");
         _findHighlightColorizer.MatchBrush          = (Brush)FindResource("ThemeFindMatchBg");
         _findHighlightColorizer.MatchFgBrush        = (Brush)FindResource("ThemeFindMatchFg");

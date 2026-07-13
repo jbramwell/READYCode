@@ -57,8 +57,9 @@
     <SolidColorBrush x:Key="ThemeEditorBg"                Color="#121314"/>
     <SolidColorBrush x:Key="ThemeEditorFg"                Color="#bfbfbf"/>
     <SolidColorBrush x:Key="ThemeEditorLineNumberFg"      Color="#858585"/>
-    <SolidColorBrush x:Key="ThemeEditorKeywordFg"         Color="#569cd6"/>
+    <SolidColorBrush x:Key="ThemeEditorKeywordFg"         Color="#9CDCFE"/>
     <SolidColorBrush x:Key="ThemeEditorCommentFg"         Color="#7ee787"/>
+    <SolidColorBrush x:Key="ThemeEditorNumberLiteralFg"   Color="#C586C0"/>
     <SolidColorBrush x:Key="ThemeEditorGuideLineFg"       Color="#454545"/>
     <SolidColorBrush x:Key="ThemeEditorCurrentLineBorder" Color="#3C3C3C"/>
 
