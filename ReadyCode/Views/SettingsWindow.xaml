@@ -375,6 +375,24 @@
                             <TextBlock Style="{StaticResource SectionBreadcrumb}"
                                        Text="Application  ›  General"/>
 
+                            <Border Style="{StaticResource SettingRow}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SettingLabel}"
+                                               Text="On startup"/>
+                                    <TextBlock Style="{StaticResource SettingDesc}"
+                                               Text="Choose what happens to your tabs when READYCode starts."/>
+                                    <RadioButton Content="Open tabs from previous session"
+                                                 GroupName="StartupBehavior"
+                                                 IsChecked="{Binding IsRestoreOpenTabsOnStartup}"
+                                                 FontSize="12"
+                                                 Margin="0,0,0,6"/>
+                                    <RadioButton Content="Do not open tabs from previous session"
+                                                 GroupName="StartupBehavior"
+                                                 IsChecked="{Binding IsDoNotRestoreOpenTabsOnStartup}"
+                                                 FontSize="12"/>
+                                </StackPanel>
+                            </Border>
+
                             <Border Style="{StaticResource SettingRowLast}">
                                 <StackPanel>
                                     <TextBlock Style="{StaticResource SettingLabel}"

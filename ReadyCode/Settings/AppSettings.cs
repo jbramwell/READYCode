@@ -100,6 +100,17 @@ public class AppSettings
     public List<string> RecentFiles { get; set; } = new();
 
     /// <summary>
+    /// When true, tabs open at the end of the previous session are reopened on startup.
+    /// </summary>
+    public bool RestoreOpenTabsOnStartup { get; set; } = true;
+
+    /// <summary>
+    /// File paths of the tabs open when the app last closed, in tab order. Only populated when
+    /// <see cref="RestoreOpenTabsOnStartup"/> is true.
+    /// </summary>
+    public List<string> OpenTabPaths { get; set; } = new();
+
+    /// <summary>
     /// UI color theme: "Light", "Dark", or "C64".
     /// </summary>
     public string Theme { get; set; } = "Light";

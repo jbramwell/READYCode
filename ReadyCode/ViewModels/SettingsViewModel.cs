@@ -26,6 +26,7 @@ public class SettingsViewModel : INotifyPropertyChanged
     private bool _autoNumberLines;
     private string _autoNumberIncrementText;
     private string _editorFontSizeText;
+    private bool _restoreOpenTabsOnStartup;
     private string _theme;
     private bool _showOverflowLine;
     private bool _minifyOnTransfer;
@@ -47,6 +48,7 @@ public class SettingsViewModel : INotifyPropertyChanged
     /// <param name="settings">The application settings to read the initial field values from.</param>
     public SettingsViewModel(AppSettings settings)
     {
+        _restoreOpenTabsOnStartup = settings.RestoreOpenTabsOnStartup;
         _theme = settings.Theme;
         _wrapColumnText = settings.ColumnGuideColumn.ToString();
         _showC64UMenu = settings.ShowC64UMenu;
@@ -72,6 +74,36 @@ public class SettingsViewModel : INotifyPropertyChanged
     #endregion
 
     #region Public Properties
+
+    /// <summary>
+    /// Gets or sets whether tabs from the previous session are reopened on startup.
+    /// </summary>
+    public bool IsRestoreOpenTabsOnStartup
+    {
+        get => _restoreOpenTabsOnStartup;
+        set
+        {
+            if (!value) return;
+            _restoreOpenTabsOnStartup = true;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsDoNotRestoreOpenTabsOnStartup));
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets whether tabs from the previous session are NOT reopened on startup.
+    /// </summary>
+    public bool IsDoNotRestoreOpenTabsOnStartup
+    {
+        get => !_restoreOpenTabsOnStartup;
+        set
+        {
+            if (!value) return;
+            _restoreOpenTabsOnStartup = false;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsRestoreOpenTabsOnStartup));
+        }
+    }
 
     /// <summary>
     /// Gets or sets whether the Light theme is selected.
@@ -329,6 +361,7 @@ public class SettingsViewModel : INotifyPropertyChanged
     /// </summary>
     public void ApplyTo(AppSettings settings)
     {
+        settings.RestoreOpenTabsOnStartup = _restoreOpenTabsOnStartup;
         settings.Theme = _theme;
         settings.ColumnGuideColumn = int.Parse(WrapColumnText);
         settings.ShowC64UMenu = ShowC64UMenu;

@@ -254,6 +254,17 @@ public partial class MainWindow : Window
         {
             ViewModel.LoadFolder(ViewModel.Settings.LastFolderPath);
         }
+
+        if (ViewModel.Settings.RestoreOpenTabsOnStartup)
+        {
+            // Skip missing files quietly - OpenFileByPath's own error dialog would otherwise
+            // pop up once per moved/deleted file on every launch.
+            foreach (string path in ViewModel.Settings.OpenTabPaths)
+            {
+                if (File.Exists(path))
+                    OpenFileByPath(path);
+            }
+        }
     }
 
     #endregion
@@ -373,6 +384,10 @@ public partial class MainWindow : Window
             ViewModel.Settings.MainWindowWidth  = bounds.Width;
             ViewModel.Settings.MainWindowHeight = bounds.Height;
         }
+
+        ViewModel.Settings.OpenTabPaths = ViewModel.Settings.RestoreOpenTabsOnStartup
+            ? ViewModel.OpenTabs.Where(t => t.FilePath != null).Select(t => t.FilePath!).ToList()
+            : new List<string>();
 
         ViewModel.Settings.Save();
         base.OnClosed(e);
