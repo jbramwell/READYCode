@@ -1035,6 +1035,8 @@
                              TextChanged="Editor_TextChanged"
                              PreviewKeyDown="Editor_PreviewKeyDown"
                              PreviewTextInput="Editor_PreviewTextInput"
+                             MouseHover="Editor_MouseHover"
+                             MouseHoverStopped="Editor_MouseHoverStopped"
                              Visibility="Collapsed"/>
                     <local:FindBarControl x:Name="FindBar"
                                          HorizontalAlignment="Right"

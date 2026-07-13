@@ -76,6 +76,9 @@ public partial class MainWindow : Window
     private CompletionWindow? _completionWindow;
     private readonly GhostTextRenderer _ghostRenderer;
 
+    // Hover tooltips
+    private ToolTip? _hoverToolTip;
+
     // Drag-and-drop state
     private Point _dragStartPoint;
     private FileTreeItem? _dragItem;
@@ -2955,6 +2958,207 @@ public partial class MainWindow : Window
 
         if (!_activatingTab && !ViewModel.IsModified)
             ViewModel.IsModified = true;
+    }
+
+    // Shows a hover tooltip over either a user variable ("(variable) {type} {name}") or a BASIC
+    // keyword ("{Keyword} - {Description}", reusing the same descriptions as the BASIC Keywords
+    // reference panel). No tooltip for text inside a string literal or REM comment, or for an
+    // unquoted value in a DATA statement's argument list (those are literals, not references).
+    private void Editor_MouseHover(object sender, MouseEventArgs e)
+    {
+        var position = Editor.GetPositionFromPoint(e.GetPosition(Editor));
+        if (position == null) { CloseHoverToolTip(); return; }
+
+        var line = Editor.Document.GetLineByNumber(position.Value.Line);
+        string lineText = Editor.Document.GetText(line);
+        int col = position.Value.Column - 1; // AvalonEdit columns are 1-based
+
+        if (!TryGetHoverTooltip(lineText, col, out string tooltipText))
+        {
+            CloseHoverToolTip();
+            return;
+        }
+
+        _hoverToolTip = new ToolTip
+        {
+            Content = tooltipText,
+            PlacementTarget = Editor,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.Mouse,
+            IsOpen = true
+        };
+        e.Handled = true;
+    }
+
+    private void Editor_MouseHoverStopped(object sender, MouseEventArgs e)
+    {
+        CloseHoverToolTip();
+    }
+
+    private void CloseHoverToolTip()
+    {
+        if (_hoverToolTip == null) return;
+        _hoverToolTip.IsOpen = false;
+        _hoverToolTip = null;
+    }
+
+    // Same longest-first keyword list BasicKeywordColorizer/NumberLiteralColorizer/
+    // DataLiteralColorizer use, so this scan agrees with them on where a keyword ends and a
+    // variable name begins - critical for packed code with no spaces (e.g. "IFKPTHENKK=1"),
+    // where a variable can sit directly against a keyword on either side.
+    private static readonly string[] _hoverKeywords =
+        BasicTokens.TokenMap.Keys
+            .Where(k => char.IsLetter(k[0]))
+            .OrderByDescending(k => k.Length)
+            .ToArray();
+
+    // Builds the hover tooltip text for the token at column `col` on the given line - either
+    // "(variable) {type} {name}" for a user variable, or "{Keyword} - {Description}" (reusing
+    // the BASIC Keywords reference panel's descriptions) for a BASIC keyword. Returns false for
+    // string/comment content, DATA-statement literal values, or when `col` isn't on a token.
+    //
+    // Scans the line left to right exactly like the syntax colorizers do: at every letter,
+    // greedily try the longest matching keyword first; runs of letters/digits that never match
+    // a keyword (plus an optional trailing $ or %) are variable names. This intentionally
+    // mirrors the colorizers' keyword-collision quirk (e.g. the "OR" inside "SCORE" still reads
+    // as a keyword) so the tooltip never disagrees with what's on screen.
+    private static bool TryGetHoverTooltip(string lineText, int col, out string tooltipText)
+    {
+        tooltipText = "";
+        if (col < 0 || col > lineText.Length) return false;
+
+        bool inString = false;
+        bool inDataArgs = false;
+        int rawStart = -1;
+        int i = 0;
+
+        while (i < lineText.Length)
+        {
+            char c = lineText[i];
+
+            if (c == '"')
+            {
+                if (rawStart >= 0 && TryClassifyRawRun(lineText, rawStart, i, col, inDataArgs, out tooltipText))
+                    return true;
+                rawStart = -1;
+                inString = !inString;
+                i++;
+                continue;
+            }
+
+            if (inString) { i++; continue; }
+
+            if (c == ':')
+            {
+                if (rawStart >= 0 && TryClassifyRawRun(lineText, rawStart, i, col, inDataArgs, out tooltipText))
+                    return true;
+                rawStart = -1;
+                inDataArgs = false;
+                i++;
+                continue;
+            }
+
+            if (char.IsLetter(c))
+            {
+                int kwLen = MatchHoverKeywordLength(lineText, i);
+                if (kwLen > 0)
+                {
+                    if (rawStart >= 0 && TryClassifyRawRun(lineText, rawStart, i, col, inDataArgs, out tooltipText))
+                        return true;
+                    rawStart = -1;
+
+                    if (col >= i && col < i + kwLen)
+                        return TryGetKeywordTooltip(lineText.Substring(i, kwLen), out tooltipText);
+
+                    if (kwLen == 3 && string.Equals(lineText.Substring(i, 3), "REM", StringComparison.OrdinalIgnoreCase))
+                        return false; // everything from here to end of line is a comment
+                    if (kwLen == 4 && string.Equals(lineText.Substring(i, 4), "DATA", StringComparison.OrdinalIgnoreCase))
+                        inDataArgs = true;
+
+                    i += kwLen;
+                    continue;
+                }
+
+                if (rawStart < 0) rawStart = i;
+                i++;
+                continue;
+            }
+
+            if (char.IsDigit(c))
+            {
+                // Digits only extend an already-started identifier; a standalone digit run
+                // (a line number or numeric literal) isn't a variable.
+                i++;
+                continue;
+            }
+
+            if (rawStart >= 0 && TryClassifyRawRun(lineText, rawStart, i, col, inDataArgs, out tooltipText))
+                return true;
+            rawStart = -1;
+            i++;
+        }
+
+        return rawStart >= 0 &&
+               TryClassifyRawRun(lineText, rawStart, lineText.Length, col, inDataArgs, out tooltipText);
+    }
+
+    // Checks whether the raw (non-keyword) run [start, end) - extended by one trailing $ or %
+    // if present - contains `col`. DATA-statement values are excluded (they're literals, not
+    // variable references); everything else in range is reported as a variable.
+    private static bool TryClassifyRawRun(string lineText, int start, int end, int col, bool inDataArgs,
+        out string tooltipText)
+    {
+        tooltipText = "";
+
+        if (end < lineText.Length && (lineText[end] == '$' || lineText[end] == '%'))
+            end++;
+
+        if (col < start || col >= end || inDataArgs) return false;
+
+        string name = lineText.Substring(start, end - start);
+        string typeLabel = name[^1] switch { '%' => "Integer", '$' => "String", _ => "Float" };
+        tooltipText = $"(variable) {typeLabel} {name}";
+        return true;
+    }
+
+    // Looks up a matched keyword's description from the same table that feeds the BASIC
+    // Keywords reference panel and autocomplete, and formats it as "{Keyword} - {Description}".
+    private static bool TryGetKeywordTooltip(string keyword, out string tooltipText)
+    {
+        var item = BasicCompletionProvider.AllItems.FirstOrDefault(
+            it => string.Equals(it.Text, keyword, StringComparison.OrdinalIgnoreCase));
+
+        if (item == null)
+        {
+            tooltipText = "";
+            return false;
+        }
+
+        tooltipText = $"{item.Text}\r\n{item.Description}";
+        return true;
+    }
+
+    // Returns the length of the longest BASIC keyword matching at position i, or 0 if none match.
+    private static int MatchHoverKeywordLength(string text, int i)
+    {
+        foreach (string keyword in _hoverKeywords)
+        {
+            int kwLen = keyword.Length;
+            if (i + kwLen > text.Length) continue;
+
+            bool isMatch = true;
+            for (int k = 0; k < kwLen; k++)
+            {
+                if (char.ToUpperInvariant(text[i + k]) != keyword[k])
+                {
+                    isMatch = false;
+                    break;
+                }
+            }
+
+            if (isMatch) return kwLen;
+        }
+
+        return 0;
     }
 
     /// <summary>

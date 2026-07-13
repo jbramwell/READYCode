@@ -16,14 +16,20 @@ namespace ReadyCode.Editor;
 /// letter position exactly like <see cref="BasicKeywordColorizer"/> does, so a digit run is
 /// only treated as a variable-name suffix when it immediately follows an unmatched (raw)
 /// letter - not when it follows the tail of a matched keyword (e.g. "100" in "GOTO100" is
-/// still a number, even though "0" follows the letter "O").
+/// still a number, even though "0" follows the letter "O"). Also colors a lone period with no
+/// adjacent digits (e.g. "KP=.") since CBM BASIC treats it as shorthand for the literal 0.
 /// </summary>
 public class NumberLiteralColorizer : DocumentColorizingTransformer
 {
     #region Private Fields
 
     private static readonly Regex _leadingLineNumberPattern = new(@"^(\s*)(\d+)", RegexOptions.Compiled);
-    private static readonly Regex _numberPattern = new(@"\d+(\.\d+)?([Ee][+-]?\d+)?", RegexOptions.Compiled);
+
+    // A period with no adjacent digits (e.g. the "." in "KP=.") is CBM BASIC shorthand for the
+    // literal 0, so it's a numeric literal too - matched via the second alternative below (which
+    // also covers a leading-decimal literal like ".5").
+    private static readonly Regex _numberPattern =
+        new(@"(\d+(\.\d+)?|\.\d*)([Ee][+-]?\d+)?", RegexOptions.Compiled);
 
     // Mirrors BasicKeywordColorizer's keyword list so both colorizers agree on where a
     // keyword match ends and a raw (variable-name) letter begins.
@@ -79,13 +85,18 @@ public class NumberLiteralColorizer : DocumentColorizingTransformer
                 continue;
             }
 
-            if (char.IsDigit(c))
+            if (char.IsDigit(c) || c == '.')
             {
                 if (afterRawLetter)
                 {
-                    // Part of a variable name's digit suffix (e.g. the "1" in "A1") - skip
-                    // the whole run without coloring it.
-                    while (i < text.Length && char.IsDigit(text[i])) i++;
+                    // Whatever follows an unmatched identifier letter isn't a fresh literal
+                    // (e.g. the "1" in "A1") - skip it without coloring. Only digits actually
+                    // attach to a variable name this way; a lone period can't, but is skipped
+                    // the same way here for a simple, symmetric guard.
+                    if (char.IsDigit(c))
+                        while (i < text.Length && char.IsDigit(text[i])) i++;
+                    else
+                        i++;
                 }
                 else
                 {
