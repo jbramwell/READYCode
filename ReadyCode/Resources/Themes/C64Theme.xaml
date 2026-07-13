@@ -60,6 +60,7 @@
     <SolidColorBrush x:Key="ThemeEditorKeywordFg"         Color="#FFFFFF"/>
     <SolidColorBrush x:Key="ThemeEditorCommentFg"         Color="#8888FF"/>
     <SolidColorBrush x:Key="ThemeEditorNumberLiteralFg"   Color="#66FFEE"/>
+    <SolidColorBrush x:Key="ThemeEditorStringFg"          Color="#FFAA55"/>
     <SolidColorBrush x:Key="ThemeEditorGuideLineFg"       Color="#3333AA"/>
     <SolidColorBrush x:Key="ThemeEditorCurrentLineBorder" Color="#3333CC"/>
 

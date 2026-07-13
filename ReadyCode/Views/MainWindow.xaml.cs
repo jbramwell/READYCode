@@ -46,6 +46,8 @@ public partial class MainWindow : Window
     private readonly BasicKeywordColorizer _keywordColorizer = new();
     private readonly LineNumberColorizer _lineNumberColorizer = new();
     private readonly NumberLiteralColorizer _numberLiteralColorizer = new();
+    private readonly StringLiteralColorizer _stringLiteralColorizer = new();
+    private readonly DataLiteralColorizer _dataLiteralColorizer = new();
     private readonly RemCommentColorizer _remCommentColorizer = new();
     private readonly FindHighlightColorizer _findHighlightColorizer = new();
     private List<(int Offset, int Length)> _findMatches = new();
@@ -168,6 +170,8 @@ public partial class MainWindow : Window
         Editor.TextArea.TextView.LineTransformers.Add(_lineNumberColorizer);
         Editor.TextArea.TextView.LineTransformers.Add(_keywordColorizer);
         Editor.TextArea.TextView.LineTransformers.Add(_numberLiteralColorizer);
+        Editor.TextArea.TextView.LineTransformers.Add(_stringLiteralColorizer);
+        Editor.TextArea.TextView.LineTransformers.Add(_dataLiteralColorizer);
         Editor.TextArea.TextView.LineTransformers.Add(_remCommentColorizer);
         Editor.TextArea.TextView.LineTransformers.Add(_findHighlightColorizer);
         _currentLineBorderRenderer = new CurrentLineBorderRenderer(Editor);
@@ -3082,6 +3086,8 @@ public partial class MainWindow : Window
         _lineNumberColorizer.ActiveLineNumberBrush = (Brush)FindResource("ThemeEditorFg");
         _keywordColorizer.KeywordBrush          = (Brush)FindResource("ThemeEditorKeywordFg");
         _numberLiteralColorizer.NumberBrush     = (Brush)FindResource("ThemeEditorNumberLiteralFg");
+        _stringLiteralColorizer.StringBrush     = (Brush)FindResource("ThemeEditorStringFg");
+        _dataLiteralColorizer.StringBrush       = (Brush)FindResource("ThemeEditorStringFg");
         _remCommentColorizer.CommentBrush       = (Brush)FindResource("ThemeEditorCommentFg");
         _findHighlightColorizer.MatchBrush          = (Brush)FindResource("ThemeFindMatchBg");
         _findHighlightColorizer.MatchFgBrush        = (Brush)FindResource("ThemeFindMatchFg");
