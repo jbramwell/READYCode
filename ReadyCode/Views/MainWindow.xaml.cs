@@ -3045,7 +3045,13 @@ public partial class MainWindow : Window
                 continue;
             }
 
-            if (inString) { i++; continue; }
+            if (inString)
+            {
+                if (i == col)
+                    return TryGetControlCharTooltip(c, out tooltipText);
+                i++;
+                continue;
+            }
 
             if (c == ':')
             {
@@ -3134,6 +3140,67 @@ public partial class MainWindow : Window
         }
 
         tooltipText = $"{item.Text}\r\n{item.Description}";
+        return true;
+    }
+
+    // Full display names for PETSCII control codes that can appear inside a string literal,
+    // matching the names already shown on the corresponding Quick Keys buttons (see
+    // MainWindow.xaml) plus the handful of control codes with no dedicated button.
+    private static readonly Dictionary<int, string> _petsciiControlCharNames = new()
+    {
+        [5]   = "White",
+        [6]   = "Disable Shift+C=",
+        [7]   = "Enable Shift+C=",
+        [13]  = "Return",
+        [14]  = "Lower Case",
+        [17]  = "Cursor Down",
+        [18]  = "Reverse On",
+        [19]  = "Home",
+        [20]  = "Insert/Delete",
+        [28]  = "Red",
+        [29]  = "Cursor Right",
+        [30]  = "Green",
+        [31]  = "Blue",
+        [129] = "Orange",
+        [133] = "Function 1",
+        [134] = "Function 3",
+        [135] = "Function 5",
+        [136] = "Function 7",
+        [137] = "Function 2",
+        [138] = "Function 4",
+        [139] = "Function 6",
+        [140] = "Function 8",
+        [141] = "Shift+Return",
+        [142] = "Upper Case",
+        [144] = "Black",
+        [145] = "Cursor Up",
+        [146] = "Reverse Off",
+        [147] = "CLR",
+        [148] = "Insert/Delete",
+        [149] = "Brown",
+        [150] = "Light Red",
+        [151] = "Gray 1",
+        [152] = "Gray 2",
+        [153] = "Light Green",
+        [154] = "Light Blue",
+        [155] = "Gray 3",
+        [156] = "Purple",
+        [157] = "Cursor Left",
+        [158] = "Yellow",
+        [159] = "Cyan",
+    };
+
+    // Looks up a string-literal character's PETSCII control-code name and formats it as
+    // "{Name} - CHR$({code})". Returns false for ordinary printable characters.
+    private static bool TryGetControlCharTooltip(char c, out string tooltipText)
+    {
+        if (!_petsciiControlCharNames.TryGetValue(c, out string? name))
+        {
+            tooltipText = "";
+            return false;
+        }
+
+        tooltipText = $"{name} - CHR$({(int)c})";
         return true;
     }
 
