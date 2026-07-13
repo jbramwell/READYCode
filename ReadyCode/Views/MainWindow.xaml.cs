@@ -665,6 +665,20 @@ public partial class MainWindow : Window
         _tabSwitching = false;
     }
 
+    // Cycles the active tab forward (right) or backward (left) through ViewModel.OpenTabs,
+    // wrapping around at either end. A no-op with 0 or 1 tabs open.
+    private void SwitchToAdjacentTab(bool forward)
+    {
+        var tabs = ViewModel.OpenTabs;
+        if (tabs.Count < 2 || ViewModel.ActiveTab == null) return;
+
+        int currentIndex = tabs.IndexOf(ViewModel.ActiveTab);
+        if (currentIndex < 0) return;
+
+        int nextIndex = (currentIndex + (forward ? 1 : -1) + tabs.Count) % tabs.Count;
+        ActivateTab(tabs[nextIndex]);
+    }
+
     private void TabBar_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_tabSwitching) return;
@@ -825,6 +839,12 @@ public partial class MainWindow : Window
                      Key.LeftShift or Key.RightShift or
                      Key.LeftAlt or Key.RightAlt or Key.System)
             return;
+
+        // Ctrl+Tab / Ctrl+Shift+Tab: cycle the active tab right/left, wrapping at either end.
+        if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Control)
+        { SwitchToAdjacentTab(forward: true);  e.Handled = true; return; }
+        if (e.Key == Key.Tab && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        { SwitchToAdjacentTab(forward: false); e.Handled = true; return; }
 
         // Find bar shortcuts (F3 / Shift+F3 / Escape)
         if (FindBar.Visibility == Visibility.Visible)
