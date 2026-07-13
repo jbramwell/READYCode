@@ -56,10 +56,10 @@ public static class BasicTokens
         { "NEW", 0xA2 },
 
         // More Keywords
-        { "TAB(", 0xA3 },
+        { "TAB", 0xA3 },
         { "TO", 0xA4 },
         { "FN", 0xA5 },
-        { "SPC(", 0xA6 },
+        { "SPC", 0xA6 },
         { "THEN", 0xA7 },
         { "NOT", 0xA8 },
         { "STEP", 0xA9 },

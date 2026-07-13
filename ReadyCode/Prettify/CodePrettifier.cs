@@ -29,7 +29,7 @@ public static class CodePrettifier
     {
         "SGN", "INT", "ABS", "USR", "FRE", "POS", "SQR", "RND", "LOG", "EXP",
         "COS", "SIN", "TAN", "ATN", "PEEK", "LEN", "STR$", "VAL", "ASC",
-        "CHR$", "LEFT$", "RIGHT$", "MID$", "FN", "TAB(", "SPC(",
+        "CHR$", "LEFT$", "RIGHT$", "MID$", "FN", "TAB", "SPC",
         // File-I/O: no space between keyword and file number
         "PRINT#", "INPUT#", "GET#",
     };

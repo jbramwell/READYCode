@@ -84,8 +84,8 @@ public static class BasicCompletionProvider
         Item("USR",    "USR(|)",           "Call user machine-code function via $0311 vector.  USR(n)",     "System & Memory"),
 
         // ── Output / input keywords with TAB/SPC ────────────────────────────────
-        Item("SPC(",   "SPC(|)",           "Print n spaces.  Used inside PRINT.  SPC(n)",                   "Input & Output"),
-        Item("TAB(",   "TAB(|)",           "Move PRINT cursor to column n.  Used inside PRINT.  TAB(n)",    "Input & Output"),
+        Item("SPC",   "SPC(|)",           "Print n spaces.  Used inside PRINT.  SPC(n)",                   "Input & Output"),
+        Item("TAB",   "TAB(|)",           "Move PRINT cursor to column n.  Used inside PRINT.  TAB(n)",    "Input & Output"),
 
         // ── Statements ───────────────────────────────────────────────────────────
         Item("CLR",    "CLR",              "Clear all variables, arrays, and GOSUB stack",                              "Program Editing"),
