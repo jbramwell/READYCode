@@ -467,6 +467,17 @@
         <KeyBinding Key="D6" Modifiers="Ctrl+Shift+Alt" Command="{Binding InsertSpecialCharCommand}" CommandParameter="153"/>
         <KeyBinding Key="D7" Modifiers="Ctrl+Shift+Alt" Command="{Binding InsertSpecialCharCommand}" CommandParameter="154"/>
         <KeyBinding Key="D8" Modifiers="Ctrl+Shift+Alt" Command="{Binding InsertSpecialCharCommand}" CommandParameter="155"/>
+
+        <!-- Function Keys SHIFT+F1-F8. Shift+F3 only reaches this binding when the Find bar is
+             closed - Window_PreviewKeyDown claims it for Find Previous while the bar is open. -->
+        <KeyBinding Key="F1" Modifiers="Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="133"/>
+        <KeyBinding Key="F2" Modifiers="Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="137"/>
+        <KeyBinding Key="F3" Modifiers="Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="134"/>
+        <KeyBinding Key="F4" Modifiers="Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="138"/>
+        <KeyBinding Key="F5" Modifiers="Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="135"/>
+        <KeyBinding Key="F6" Modifiers="Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="139"/>
+        <KeyBinding Key="F7" Modifiers="Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="136"/>
+        <KeyBinding Key="F8" Modifiers="Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="140"/>
     </Window.InputBindings>
 
     <DockPanel>
@@ -1616,6 +1627,185 @@
                                                    Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
                                                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                                    Margin="0,0,3,2"/>
+                                    </Grid>
+                                </Button>
+                            </WrapPanel>
+
+                            <!-- Function Keys section -->
+                            <TextBlock Text="FUNCTION KEYS"
+                                       FontSize="10" FontWeight="Bold"
+                                       Foreground="{DynamicResource ThemePanelHeaderFg}"
+                                       Background="{DynamicResource ThemePanelHeaderBg}"
+                                       MinHeight="22"
+                                       VerticalAlignment="Center"
+                                       Padding="8,4,0,4"
+                                       Margin="8,8"/>
+
+                            <!-- SHIFT+F1-F8 (Shift+F3 does Find Previous instead while the Find bar is open) -->
+                            <TextBlock Text="SHIFT+F1–F8"
+                                       FontSize="9"
+                                       Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                       Margin="8,0,8,4"/>
+                            <WrapPanel Margin="6,0">
+                                <!-- F1 — PETSCII 133 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="133" Click="SpecialChar_Click"
+                                        ToolTip="Function 1: Shift+F1; CHR$(133)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Border Background="{DynamicResource ThemePanelHeaderBg}" CornerRadius="2" Padding="6,2,6,2">
+                                                <TextBlock Text="F1" FontFamily="Segoe UI" FontSize="14" FontWeight="Bold"
+                                                           Foreground="{DynamicResource ThemePanelHeaderFg}" HorizontalAlignment="Center"/>
+                                            </Border>
+                                            <TextBlock Text="FUNC 1" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="F1" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- F2 — PETSCII 137 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="137" Click="SpecialChar_Click"
+                                        ToolTip="Function 2: Shift+F2; CHR$(137)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Border Background="{DynamicResource ThemePanelHeaderBg}" CornerRadius="2" Padding="6,2,6,2">
+                                                <TextBlock Text="F2" FontFamily="Segoe UI" FontSize="14" FontWeight="Bold"
+                                                           Foreground="{DynamicResource ThemePanelHeaderFg}" HorizontalAlignment="Center"/>
+                                            </Border>
+                                            <TextBlock Text="FUNC 2" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="F2" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- F3 — PETSCII 134. Shift+F3 inserts this only when the Find bar is closed;
+                                     while it's open, Shift+F3 does Find Previous instead. -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="134" Click="SpecialChar_Click"
+                                        ToolTip="Function 3: Shift+F3; CHR$(134)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Border Background="{DynamicResource ThemePanelHeaderBg}" CornerRadius="2" Padding="6,2,6,2">
+                                                <TextBlock Text="F3" FontFamily="Segoe UI" FontSize="14" FontWeight="Bold"
+                                                           Foreground="{DynamicResource ThemePanelHeaderFg}" HorizontalAlignment="Center"/>
+                                            </Border>
+                                            <TextBlock Text="FUNC 3" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="F3" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- F4 — PETSCII 138 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="138" Click="SpecialChar_Click"
+                                        ToolTip="Function 4: Shift+F4; CHR$(138)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Border Background="{DynamicResource ThemePanelHeaderBg}" CornerRadius="2" Padding="6,2,6,2">
+                                                <TextBlock Text="F4" FontFamily="Segoe UI" FontSize="14" FontWeight="Bold"
+                                                           Foreground="{DynamicResource ThemePanelHeaderFg}" HorizontalAlignment="Center"/>
+                                            </Border>
+                                            <TextBlock Text="FUNC 4" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="F4" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- F5 — PETSCII 135 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="135" Click="SpecialChar_Click"
+                                        ToolTip="Function 5: Shift+F5; CHR$(135)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Border Background="{DynamicResource ThemePanelHeaderBg}" CornerRadius="2" Padding="6,2,6,2">
+                                                <TextBlock Text="F5" FontFamily="Segoe UI" FontSize="14" FontWeight="Bold"
+                                                           Foreground="{DynamicResource ThemePanelHeaderFg}" HorizontalAlignment="Center"/>
+                                            </Border>
+                                            <TextBlock Text="FUNC 5" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="F5" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- F6 — PETSCII 139 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="139" Click="SpecialChar_Click"
+                                        ToolTip="Function 6: Shift+F6; CHR$(139)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Border Background="{DynamicResource ThemePanelHeaderBg}" CornerRadius="2" Padding="6,2,6,2">
+                                                <TextBlock Text="F6" FontFamily="Segoe UI" FontSize="14" FontWeight="Bold"
+                                                           Foreground="{DynamicResource ThemePanelHeaderFg}" HorizontalAlignment="Center"/>
+                                            </Border>
+                                            <TextBlock Text="FUNC 6" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="F6" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- F7 — PETSCII 136 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="136" Click="SpecialChar_Click"
+                                        ToolTip="Function 7: Shift+F7; CHR$(136)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Border Background="{DynamicResource ThemePanelHeaderBg}" CornerRadius="2" Padding="6,2,6,2">
+                                                <TextBlock Text="F7" FontFamily="Segoe UI" FontSize="14" FontWeight="Bold"
+                                                           Foreground="{DynamicResource ThemePanelHeaderFg}" HorizontalAlignment="Center"/>
+                                            </Border>
+                                            <TextBlock Text="FUNC 7" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="F7" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
+                                    </Grid>
+                                </Button>
+                                <!-- F8 — PETSCII 140 -->
+                                <Button Style="{StaticResource SpecialCharButtonStyle}"
+                                        Tag="140" Click="SpecialChar_Click"
+                                        ToolTip="Function 8: Shift+F8; CHR$(140)">
+                                    <Grid Width="58" Height="54">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Border Background="{DynamicResource ThemePanelHeaderBg}" CornerRadius="2" Padding="6,2,6,2">
+                                                <TextBlock Text="F8" FontFamily="Segoe UI" FontSize="14" FontWeight="Bold"
+                                                           Foreground="{DynamicResource ThemePanelHeaderFg}" HorizontalAlignment="Center"/>
+                                            </Border>
+                                            <TextBlock Text="FUNC 8" FontFamily="Segoe UI" FontSize="9"
+                                                       Foreground="{DynamicResource ThemeSpecialCharLabelFg}" HorizontalAlignment="Center"
+                                                       Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="F8" FontFamily="Segoe UI" FontSize="8" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource ThemeSpecialCharShortcutFg}"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                   Margin="3,0,0,2"/>
                                     </Grid>
                                 </Button>
                             </WrapPanel>
