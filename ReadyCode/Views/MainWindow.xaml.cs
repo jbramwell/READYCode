@@ -3059,7 +3059,28 @@ public partial class MainWindow : Window
             {
                 if (int.TryParse(match.Groups[2].Value, out int currentNumber))
                 {
-                    int nextNumber    = currentNumber + ViewModel.Settings.AutoNumberIncrement;
+                    int nextNumber = currentNumber + ViewModel.Settings.AutoNumberIncrement;
+
+                    // If the naive increment would land on or past an already-existing line
+                    // number below, split the gap instead: use the midpoint between the
+                    // current and next line numbers. If there's no room for a number in
+                    // between, don't auto-number at all - fall through to a plain newline,
+                    // same as Shift+Enter.
+                    DocumentLine? nextDocLine = line.NextLine;
+                    if (nextDocLine != null)
+                    {
+                        Match nextMatch = _leadingLineNumberPattern.Match(document.GetText(nextDocLine));
+                        
+                        if (nextMatch.Success &&
+                            int.TryParse(nextMatch.Groups[2].Value, out int nextExistingNumber) &&
+                            nextNumber >= nextExistingNumber)
+                        {
+                            int midpoint = (currentNumber + nextExistingNumber) / 2;
+                            if (midpoint <= currentNumber) return;
+                            nextNumber = midpoint;
+                        }
+                    }
+
                     int padding       = ViewModel.Settings.LineNumberPadding;
                     string nextLabel  = padding > 0
                         ? nextNumber.ToString().PadLeft(padding, '0')
