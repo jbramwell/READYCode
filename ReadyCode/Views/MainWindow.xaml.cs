@@ -410,6 +410,33 @@ public partial class MainWindow : Window
             OpenFileByPath(dialog.FileName);
     }
 
+    // Dropping files from Explorer is only allowed when every dropped file is a .prg - the
+    // drop is rejected as a whole (no partial-open) if any other file type is included.
+    private void Window_PreviewDragOver(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+
+        e.Effects = IsAllPrgFileDrop(e, out _) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void Window_PreviewDrop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+
+        e.Handled = true;
+        if (!IsAllPrgFileDrop(e, out string[] paths)) return;
+
+        foreach (string path in paths)
+            OpenFileByPath(path);
+    }
+
+    private static bool IsAllPrgFileDrop(DragEventArgs e, out string[] paths)
+    {
+        paths = (string[])e.Data.GetData(DataFormats.FileDrop)!;
+        return paths.Length > 0 && paths.All(p => p.EndsWith(".prg", StringComparison.OrdinalIgnoreCase));
+    }
+
     private void OpenFileByPath(string path)
     {
         // If already open, activate that tab instead of opening a duplicate

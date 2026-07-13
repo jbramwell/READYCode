@@ -10,7 +10,11 @@
         mc:Ignorable="d"
         Title="{Binding ViewModel.Title}" Height="700" Width="1000"
         WindowStartupLocation="CenterScreen"
-        PreviewKeyDown="Window_PreviewKeyDown">
+        PreviewKeyDown="Window_PreviewKeyDown"
+        AllowDrop="True"
+        PreviewDragEnter="Window_PreviewDragOver"
+        PreviewDragOver="Window_PreviewDragOver"
+        PreviewDrop="Window_PreviewDrop">
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
