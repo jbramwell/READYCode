@@ -170,6 +170,11 @@ public class AppSettings
     public string ActiveRightPanel { get; set; } = "QuickKeys";
 
     /// <summary>
+    /// Remembers which left-panel tab was last active: "Explorer" or "C64U".
+    /// </summary>
+    public string ActiveLeftPanel { get; set; } = "Explorer";
+
+    /// <summary>
     /// Remembers the last folder path used in Open/Save dialogs, to start
     /// from that location next time.
     /// </summary>

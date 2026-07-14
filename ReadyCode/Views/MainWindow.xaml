@@ -138,6 +138,134 @@
             <MenuItem Header="Delete"     InputGestureText="Delete" Click="FileContextDelete_Click"/>
         </ContextMenu>
 
+        <!-- Context menu for folder items in the C64U tree -->
+        <ContextMenu x:Key="C64UFolderContextMenu">
+            <MenuItem Header="New Folder..." Click="C64UFolderContextNewFolder_Click"/>
+            <MenuItem Header="Refresh"       Click="C64UFolderContextRefresh_Click"/>
+            <Separator/>
+            <MenuItem Header="Rename..."  InputGestureText="F2"     Click="C64UContextRename_Click"/>
+            <MenuItem Header="Delete"     InputGestureText="Delete" Click="C64UContextDelete_Click"/>
+        </ContextMenu>
+
+        <!-- Context menu for .bas/.prg items in the C64U tree -->
+        <ContextMenu x:Key="C64URunnableFileContextMenu">
+            <MenuItem Header="Open in editor" Click="C64UFileContextOpen_Click"/>
+            <MenuItem Header="Run on C64U"    Click="C64UFileContextRun_Click"/>
+            <MenuItem Header="Load (no run)"  Click="C64UFileContextLoad_Click"/>
+            <Separator/>
+            <MenuItem Header="Download to PC" Click="C64UFileContextDownload_Click"/>
+            <MenuItem Header="Rename..."  InputGestureText="F2"     Click="C64UContextRename_Click"/>
+            <MenuItem Header="Delete"     InputGestureText="Delete" Click="C64UContextDelete_Click"/>
+        </ContextMenu>
+
+        <!-- Context menu for non-runnable items (disk images, etc.) in the C64U tree -->
+        <ContextMenu x:Key="C64UOtherFileContextMenu">
+            <MenuItem Header="Download to PC" Click="C64UFileContextDownload_Click"/>
+            <MenuItem Header="Rename..."  InputGestureText="F2"     Click="C64UContextRename_Click"/>
+            <MenuItem Header="Delete"     InputGestureText="Delete" Click="C64UContextDelete_Click"/>
+        </ContextMenu>
+
+        <!-- Shared visual template for Explorer/C64U tree items: expand arrow, hover/selection/drop
+             highlighting. Each tree's own ItemContainerStyle derives from this and adds its own
+             context menu selection (and, for the Explorer, drag-reorder event wiring). -->
+        <Style x:Key="ExplorerTreeItemStyle" TargetType="TreeViewItem">
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TreeViewItem">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="16"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <!-- Full-row background spans both columns -->
+                                <Border x:Name="RowBg"
+                                        Grid.ColumnSpan="2"
+                                        Background="Transparent"
+                                        SnapsToDevicePixels="True"/>
+                                <!-- Expand/collapse toggle -->
+                                <ToggleButton x:Name="Expander"
+                                              Grid.Column="0"
+                                              Focusable="False"
+                                              IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                                              ClickMode="Press">
+                                    <ToggleButton.Style>
+                                        <Style TargetType="ToggleButton">
+                                            <Setter Property="Background" Value="Transparent"/>
+                                            <Setter Property="BorderThickness" Value="0"/>
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="ToggleButton">
+                                                        <Border Background="Transparent" Width="16" Height="16">
+                                                            <Path x:Name="Arrow"
+                                                                  Data="M 5 3 L 11 8 L 5 13 Z"
+                                                                  Fill="#888888"
+                                                                  HorizontalAlignment="Center"
+                                                                  VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsChecked" Value="True">
+                                                                <Setter TargetName="Arrow" Property="Data" Value="M 3 5 L 13 5 L 8 11 Z"/>
+                                                            </Trigger>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="Arrow" Property="Fill" Value="#555555"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </ToggleButton.Style>
+                                </ToggleButton>
+                                <!-- Item content (file/folder name) -->
+                                <ContentPresenter x:Name="PART_Header"
+                                                  Grid.Column="1"
+                                                  ContentSource="Header"
+                                                  HorizontalAlignment="Left"
+                                                  VerticalAlignment="Center"
+                                                  Margin="2,2"/>
+                            </Grid>
+                            <!-- Children shown when expanded -->
+                            <ItemsPresenter x:Name="ItemsHost"
+                                            Visibility="Collapsed"
+                                            Margin="16,0,0,0"/>
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsExpanded" Value="True">
+                                <Setter TargetName="ItemsHost" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="Expander" Property="Visibility" Value="Hidden"/>
+                            </Trigger>
+                            <!-- Hover -->
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="RowBg" Property="Background" Value="{DynamicResource ThemeFolderExplorerHoverBg}"/>
+                            </Trigger>
+                            <!-- Active selection (overrides hover) -->
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="RowBg" Property="Background" Value="{DynamicResource ThemeFileSelectedBg}"/>
+                            </Trigger>
+                            <!-- Inactive selection -->
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsSelected" Value="True"/>
+                                    <Condition Property="IsSelectionActive" Value="False"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="RowBg" Property="Background" Value="{DynamicResource ThemeFileInactiveSelectedBg}"/>
+                            </MultiTrigger>
+                            <!-- Drop target (overrides all) -->
+                            <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
+                                <Setter TargetName="RowBg" Property="Background" Value="#FFF3CD"/>
+                                <Setter TargetName="RowBg" Property="BorderBrush" Value="#FFC107"/>
+                                <Setter TargetName="RowBg" Property="BorderThickness" Value="1"/>
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Small icon button for Explorer panel header -->
         <Style x:Key="ExplorerHeaderButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
@@ -714,11 +842,18 @@
                         <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="18"
                                    Foreground="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}"/>
                     </ToggleButton>
+                    <ToggleButton x:Name="C64UToggle"
+                                  Style="{StaticResource ActivityBarButton}"
+                                  ToolTip="C64U"
+                                  Click="C64UToggle_Click">
+                        <TextBlock Text="&#xE7F4;" FontFamily="Segoe MDL2 Assets" FontSize="18"
+                                   Foreground="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}"/>
+                    </ToggleButton>
                 </StackPanel>
             </Border>
 
             <!-- Left panel: Explorer (file tree) -->
-            <Grid Grid.Column="1">
+            <Grid x:Name="ExplorerPanel" Grid.Column="1">
                 <DockPanel Background="{DynamicResource ThemeFolderExplorerBg}">
                     <Border x:Name="ExplorerHeaderBorder"
                             DockPanel.Dock="Top"
@@ -811,106 +946,11 @@
                             </HierarchicalDataTemplate>
                         </TreeView.ItemTemplate>
                         <TreeView.ItemContainerStyle>
-                            <Style TargetType="TreeViewItem">
-                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                            <Style TargetType="TreeViewItem" BasedOn="{StaticResource ExplorerTreeItemStyle}">
                                 <EventSetter Event="PreviewMouseMove" Handler="FileTreeItem_PreviewMouseMove"/>
                                 <EventSetter Event="DragOver"         Handler="FileTreeItem_DragOver"/>
                                 <EventSetter Event="DragLeave"        Handler="FileTreeItem_DragLeave"/>
                                 <EventSetter Event="Drop"             Handler="FileTreeItem_Drop"/>
-                                <Setter Property="Template">
-                                    <Setter.Value>
-                                        <ControlTemplate TargetType="TreeViewItem">
-                                            <StackPanel>
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="16"/>
-                                                        <ColumnDefinition Width="*"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <!-- Full-row background spans both columns -->
-                                                    <Border x:Name="RowBg"
-                                                            Grid.ColumnSpan="2"
-                                                            Background="Transparent"
-                                                            SnapsToDevicePixels="True"/>
-                                                    <!-- Expand/collapse toggle -->
-                                                    <ToggleButton x:Name="Expander"
-                                                                  Grid.Column="0"
-                                                                  Focusable="False"
-                                                                  IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
-                                                                  ClickMode="Press">
-                                                        <ToggleButton.Style>
-                                                            <Style TargetType="ToggleButton">
-                                                                <Setter Property="Background" Value="Transparent"/>
-                                                                <Setter Property="BorderThickness" Value="0"/>
-                                                                <Setter Property="Template">
-                                                                    <Setter.Value>
-                                                                        <ControlTemplate TargetType="ToggleButton">
-                                                                            <Border Background="Transparent" Width="16" Height="16">
-                                                                                <Path x:Name="Arrow"
-                                                                                      Data="M 5 3 L 11 8 L 5 13 Z"
-                                                                                      Fill="#888888"
-                                                                                      HorizontalAlignment="Center"
-                                                                                      VerticalAlignment="Center"/>
-                                                                            </Border>
-                                                                            <ControlTemplate.Triggers>
-                                                                                <Trigger Property="IsChecked" Value="True">
-                                                                                    <Setter TargetName="Arrow" Property="Data" Value="M 3 5 L 13 5 L 8 11 Z"/>
-                                                                                </Trigger>
-                                                                                <Trigger Property="IsMouseOver" Value="True">
-                                                                                    <Setter TargetName="Arrow" Property="Fill" Value="#555555"/>
-                                                                                </Trigger>
-                                                                            </ControlTemplate.Triggers>
-                                                                        </ControlTemplate>
-                                                                    </Setter.Value>
-                                                                </Setter>
-                                                            </Style>
-                                                        </ToggleButton.Style>
-                                                    </ToggleButton>
-                                                    <!-- Item content (file/folder name) -->
-                                                    <ContentPresenter x:Name="PART_Header"
-                                                                      Grid.Column="1"
-                                                                      ContentSource="Header"
-                                                                      HorizontalAlignment="Left"
-                                                                      VerticalAlignment="Center"
-                                                                      Margin="2,2"/>
-                                                </Grid>
-                                                <!-- Children shown when expanded -->
-                                                <ItemsPresenter x:Name="ItemsHost"
-                                                                Visibility="Collapsed"
-                                                                Margin="16,0,0,0"/>
-                                            </StackPanel>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsExpanded" Value="True">
-                                                    <Setter TargetName="ItemsHost" Property="Visibility" Value="Visible"/>
-                                                </Trigger>
-                                                <Trigger Property="HasItems" Value="False">
-                                                    <Setter TargetName="Expander" Property="Visibility" Value="Hidden"/>
-                                                </Trigger>
-                                                <!-- Hover -->
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="RowBg" Property="Background" Value="{DynamicResource ThemeFolderExplorerHoverBg}"/>
-                                                </Trigger>
-                                                <!-- Active selection (overrides hover) -->
-                                                <Trigger Property="IsSelected" Value="True">
-                                                    <Setter TargetName="RowBg" Property="Background" Value="{DynamicResource ThemeFileSelectedBg}"/>
-                                                </Trigger>
-                                                <!-- Inactive selection -->
-                                                <MultiTrigger>
-                                                    <MultiTrigger.Conditions>
-                                                        <Condition Property="IsSelected" Value="True"/>
-                                                        <Condition Property="IsSelectionActive" Value="False"/>
-                                                    </MultiTrigger.Conditions>
-                                                    <Setter TargetName="RowBg" Property="Background" Value="{DynamicResource ThemeFileInactiveSelectedBg}"/>
-                                                </MultiTrigger>
-                                                <!-- Drop target (overrides all) -->
-                                                <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
-                                                    <Setter TargetName="RowBg" Property="Background" Value="#FFF3CD"/>
-                                                    <Setter TargetName="RowBg" Property="BorderBrush" Value="#FFC107"/>
-                                                    <Setter TargetName="RowBg" Property="BorderThickness" Value="1"/>
-                                                </DataTrigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Setter.Value>
-                                </Setter>
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsFolder}" Value="True">
                                         <Setter Property="ContextMenu" Value="{StaticResource FolderContextMenu}"/>
@@ -922,6 +962,190 @@
                             </Style>
                         </TreeView.ItemContainerStyle>
                     </TreeView>
+                </DockPanel>
+            </Grid>
+
+            <!-- Left panel: C64U (FTP explorer) -->
+            <Grid x:Name="C64UPanel" Grid.Column="1" Visibility="Collapsed">
+                <DockPanel Background="{DynamicResource ThemeFolderExplorerBg}">
+                    <Border DockPanel.Dock="Top"
+                            Background="{DynamicResource ThemeFolderExplorerHeaderBg}"
+                            BorderBrush="{DynamicResource ThemeFolderExplorerHeaderBorder}" BorderThickness="0,0,0,1"
+                            Height="32">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Orientation="Horizontal"
+                                        VerticalAlignment="Center" Margin="10,0,0,0">
+                                <Ellipse Width="8" Height="8" Margin="0,0,6,0" VerticalAlignment="Center">
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse">
+                                            <Setter Property="Fill" Value="#E74C3C"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ViewModel.IsC64UConnected}" Value="True">
+                                                    <Setter Property="Fill" Value="#2ECC71"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
+                                <TextBlock Text="{Binding ViewModel.C64UHeaderText}" FontSize="11" FontWeight="Bold"
+                                           Foreground="{DynamicResource ThemeFileFg}"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                        VerticalAlignment="Center" Margin="0,0,4,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ViewModel.IsC64UConnected}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <Button Style="{StaticResource ExplorerHeaderButton}"
+                                            ToolTip="New Folder"
+                                            Click="C64UNewFolderToolbar_Click">
+                                        <TextBlock Text="&#xED25;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                   Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}"/>
+                                    </Button>
+                                    <Button Style="{StaticResource ExplorerHeaderButton}"
+                                            ToolTip="Upload File"
+                                            Click="C64UUploadToolbar_Click">
+                                        <TextBlock Text="&#xE898;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                   Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}"/>
+                                    </Button>
+                                    <Button Style="{StaticResource ExplorerHeaderButton}"
+                                            ToolTip="Refresh"
+                                            Click="C64URefreshToolbar_Click">
+                                        <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                   Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}"/>
+                                    </Button>
+                                </StackPanel>
+                                <Button Style="{StaticResource ExplorerHeaderButton}"
+                                        ToolTip="C64U Settings"
+                                        Click="C64USettingsHeader_Click">
+                                    <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                               Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}"/>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Grid>
+                        <!-- Not connected -->
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="20"
+                                    Visibility="{Binding ViewModel.IsC64UNotConnected, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="&#xE7F4;" FontFamily="Segoe MDL2 Assets" FontSize="48"
+                                       Foreground="{DynamicResource ThemeFolderExplorerIconFg}"
+                                       HorizontalAlignment="Center" Margin="0,0,0,16"/>
+                            <TextBlock Text="Not connected" FontSize="12"
+                                       Foreground="{DynamicResource ThemeFileFg}"
+                                       HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                            <TextBlock Text="{Binding ViewModel.C64UFtpHost}" FontSize="11"
+                                       Foreground="{DynamicResource ThemeFolderExplorerIconFg}"
+                                       HorizontalAlignment="Center" Margin="0,0,0,12"/>
+                            <Button Content="Connect" Padding="14,4" HorizontalAlignment="Center"
+                                    Click="C64UConnect_Click"/>
+                            <TextBlock Text="Enable FTP in Ultimate menu → Network Services → FTP file service"
+                                       FontSize="10" Foreground="{DynamicResource ThemeFolderExplorerIconFg}"
+                                       TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center"
+                                       MaxWidth="180" Margin="0,16,0,0"/>
+                        </StackPanel>
+
+                        <!-- Connecting -->
+                        <TextBlock Text="Connecting…" FontSize="12" Foreground="{DynamicResource ThemeFileFg}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Visibility="{Binding ViewModel.IsC64UConnecting, Converter={StaticResource BoolToVisibility}}"/>
+
+                        <!-- Connected -->
+                        <TreeView x:Name="C64UFileTree"
+                                  Background="{DynamicResource ThemeFolderExplorerBg}"
+                                  BorderThickness="0"
+                                  ItemsSource="{Binding ViewModel.C64UFileItems}"
+                                  Visibility="{Binding ViewModel.IsC64UConnected, Converter={StaticResource BoolToVisibility}}"
+                                  MouseDoubleClick="C64UFileTree_MouseDoubleClick"
+                                  PreviewKeyDown="C64UFileTree_PreviewKeyDown">
+                            <TreeView.ItemTemplate>
+                                <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="itemText" Grid.Column="0"
+                                                   Text="{Binding Name}"
+                                                   FontSize="12" Foreground="{DynamicResource ThemeFileFg}"
+                                                   Margin="0,1" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="C64URenameBox" Grid.Column="0"
+                                                 Visibility="Collapsed"
+                                                 Text="{Binding Name, Mode=OneTime}"
+                                                 FontSize="12"
+                                                 Foreground="{DynamicResource ThemeFileFg}"
+                                                 Background="{DynamicResource ThemeSettingsInputBg}"
+                                                 BorderBrush="{DynamicResource ThemeSettingsAccent}"
+                                                 BorderThickness="1"
+                                                 CaretBrush="{DynamicResource ThemeFileFg}"
+                                                 Padding="2,0" Margin="-3,0"
+                                                 VerticalContentAlignment="Center"
+                                                 KeyDown="C64URenameBox_KeyDown"
+                                                 LostFocus="C64URenameBox_LostFocus"/>
+                                        <Border Grid.Column="1"
+                                                Background="{DynamicResource ThemeFolderExplorerHoverBg}"
+                                                CornerRadius="2" Padding="4,0" Margin="6,0,4,0"
+                                                VerticalAlignment="Center">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Badge}" Value="{x:Null}">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="{Binding Badge}" FontSize="9" FontWeight="Bold"
+                                                       Foreground="{DynamicResource ThemeFolderExplorerIconFg}"/>
+                                        </Border>
+                                    </Grid>
+                                    <HierarchicalDataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsFolder}" Value="True">
+                                            <Setter TargetName="itemText"     Property="FontWeight" Value="SemiBold"/>
+                                            <Setter TargetName="C64URenameBox" Property="FontWeight" Value="SemiBold"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsRenaming}" Value="True">
+                                            <Setter TargetName="itemText"      Property="Visibility" Value="Collapsed"/>
+                                            <Setter TargetName="C64URenameBox" Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </HierarchicalDataTemplate.Triggers>
+                                </HierarchicalDataTemplate>
+                            </TreeView.ItemTemplate>
+                            <TreeView.ItemContainerStyle>
+                                <Style TargetType="TreeViewItem" BasedOn="{StaticResource ExplorerTreeItemStyle}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsFolder}" Value="True">
+                                            <Setter Property="ContextMenu" Value="{StaticResource C64UFolderContextMenu}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsRunnable}" Value="True">
+                                            <Setter Property="ContextMenu" Value="{StaticResource C64URunnableFileContextMenu}"/>
+                                        </DataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsFolder}" Value="False"/>
+                                                <Condition Binding="{Binding IsRunnable}" Value="False"/>
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="ContextMenu" Value="{StaticResource C64UOtherFileContextMenu}"/>
+                                        </MultiDataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TreeView.ItemContainerStyle>
+                        </TreeView>
+                    </Grid>
                 </DockPanel>
             </Grid>
 

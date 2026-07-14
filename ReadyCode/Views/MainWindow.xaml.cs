@@ -229,7 +229,22 @@ public partial class MainWindow : Window
         {
             LeftPanelCol.Width = new GridLength(ViewModel.Settings.LeftPanelWidth);
             LeftSplitterCol.Width = new GridLength(4);
-            ExplorerToggle.IsChecked = true;
+
+            // ExplorerPanel is visible by default in XAML while C64UPanel defaults to Collapsed,
+            // and setting IsChecked here doesn't fire the toggles' Click handlers - so every
+            // panel's visibility must be set explicitly to match the restored tab.
+            var restoreTarget = LeftPanelToggles.FirstOrDefault(t => t.SettingsKey == ViewModel.Settings.ActiveLeftPanel);
+            if (restoreTarget.Toggle == null) restoreTarget = LeftPanelToggles.First();
+
+            foreach (var (toggle, panel, _) in LeftPanelToggles)
+            {
+                bool isTarget = ReferenceEquals(toggle, restoreTarget.Toggle);
+                toggle.IsChecked = isTarget;
+                panel.Visibility = isTarget ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            if (ReferenceEquals(restoreTarget.Toggle, C64UToggle))
+                _ = ViewModel.ConnectToC64UAsync();
         }
         if (ViewModel.Settings.IsRightPanelOpen)
         {
@@ -360,7 +375,11 @@ public partial class MainWindow : Window
     /// <param name="e">The event data.</param>
     protected override void OnClosed(EventArgs e)
     {
-        ViewModel.Settings.IsLeftPanelOpen = ExplorerToggle.IsChecked == true;
+        var activeLeftPanel = LeftPanelToggles.FirstOrDefault(t => t.Toggle.IsChecked == true);
+        ViewModel.Settings.IsLeftPanelOpen = activeLeftPanel.SettingsKey != null;
+        if (activeLeftPanel.SettingsKey != null)
+            ViewModel.Settings.ActiveLeftPanel = activeLeftPanel.SettingsKey;
+        ViewModel.C64UFtp?.Dispose();
         var activePanel = RightPanelToggles.FirstOrDefault(t => t.Toggle.IsChecked == true);
         ViewModel.Settings.IsRightPanelOpen = activePanel.SettingsKey != null;
         if (activePanel.SettingsKey != null)
@@ -1359,21 +1378,52 @@ public partial class MainWindow : Window
 
     #region Side Panels
 
-    private void ExplorerToggle_Click(object sender, RoutedEventArgs e)
+    private void ExplorerToggle_Click(object sender, RoutedEventArgs e) => ActivateLeftPanel(ExplorerToggle, ExplorerPanel, "Explorer");
+
+    private void C64UToggle_Click(object sender, RoutedEventArgs e)
     {
-        if (ExplorerToggle.IsChecked == true)
+        ActivateLeftPanel(C64UToggle, C64UPanel, "C64U");
+        if (C64UToggle.IsChecked == true && ViewModel.C64UConnectionState != C64UConnectionState.Connected)
+            _ = ViewModel.ConnectToC64UAsync();
+    }
+
+    // All left-panel toggle/panel/settings-key triples. Centralized so adding a new tab only
+    // means adding one entry here rather than touching every call site that needs to
+    // enumerate, save, or restore which left-panel tab is active.
+    private IEnumerable<(ToggleButton Toggle, Grid Panel, string SettingsKey)> LeftPanelToggles => new (ToggleButton, Grid, string)[]
+    {
+        (ExplorerToggle, ExplorerPanel, "Explorer"),
+        (C64UToggle,     C64UPanel,     "C64U"),
+    };
+
+    private void ActivateLeftPanel(ToggleButton toggle, Grid panel, string settingsKey)
+    {
+        if (toggle.IsChecked == true)
         {
-            LeftPanelCol.Width = new GridLength(ViewModel.Settings.LeftPanelWidth);
-            LeftSplitterCol.Width = new GridLength(4);
+            foreach (var (otherToggle, otherPanel, _) in LeftPanelToggles)
+            {
+                if (ReferenceEquals(otherToggle, toggle)) continue;
+                otherToggle.IsChecked = false;
+                otherPanel.Visibility = Visibility.Collapsed;
+            }
+            panel.Visibility = Visibility.Visible;
+
+            if (LeftPanelCol.Width.Value == 0)
+            {
+                LeftPanelCol.Width = new GridLength(ViewModel.Settings.LeftPanelWidth);
+                LeftSplitterCol.Width = new GridLength(4);
+            }
+            ViewModel.Settings.ActiveLeftPanel = settingsKey;
         }
         else
         {
             if (LeftPanelCol.Width.Value > 0)
                 ViewModel.Settings.LeftPanelWidth = LeftPanelCol.Width.Value;
+            panel.Visibility = Visibility.Collapsed;
             LeftPanelCol.Width = new GridLength(0);
             LeftSplitterCol.Width = new GridLength(0);
         }
-        ViewModel.IsLeftPanelOpen = ExplorerToggle.IsChecked == true;
+        ViewModel.IsLeftPanelOpen = LeftPanelToggles.Any(t => t.Toggle.IsChecked == true);
     }
 
     // All right-panel toggle/panel/settings-key triples, in activity-bar order. Centralized so
@@ -1426,6 +1476,443 @@ public partial class MainWindow : Window
     private void BasicKeywordsToggle_Click(object sender, RoutedEventArgs e) => ActivateRightPanel(BasicKeywordsToggle, BasicKeywordsPanel);
 
     private void MusicNotesToggle_Click(object sender, RoutedEventArgs e) => ActivateRightPanel(MusicNotesToggle, MusicNotesPanel);
+
+    #endregion
+
+    #region C64U FTP Explorer
+
+    private async void C64UConnect_Click(object sender, RoutedEventArgs e) => await ViewModel.ConnectToC64UAsync();
+
+    private void C64USettingsHeader_Click(object sender, RoutedEventArgs e) => SettingsPreferences_Click(sender, e);
+
+    private async void C64URefreshToolbar_Click(object sender, RoutedEventArgs e) => await ViewModel.RefreshC64UFolderAsync();
+
+    private async void C64UNewFolderToolbar_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = C64UFileTree.SelectedItem as C64UFileItem;
+        C64UFileItem? parentFolder = selected == null ? null
+            : selected.IsFolder ? selected
+            : FindC64UParentFolder(selected);
+        await CreateC64UNewFolderInlineAsync(parentFolder);
+    }
+
+    private async void C64UUploadToolbar_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.C64UFtp == null) return;
+
+        var selected = C64UFileTree.SelectedItem as C64UFileItem;
+        string targetDir = selected == null ? "/"
+            : selected.IsFolder ? selected.FullPath
+            : GetC64UParentPath(selected.FullPath);
+
+        var dialog = new OpenFileDialog();
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            var bytes = File.ReadAllBytes(dialog.FileName);
+            string remotePath = CombineC64UPath(targetDir, Path.GetFileName(dialog.FileName));
+            await ViewModel.C64UFtp.UploadBytesAsync(remotePath, bytes);
+            await RefreshC64UNode(targetDir);
+            ViewModel.SetStatus($"Uploaded \"{Path.GetFileName(dialog.FileName)}\" to the C64 Ultimate.");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not upload file:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void C64UFileTree_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        var item = (e.OriginalSource as FrameworkElement)?.DataContext as C64UFileItem;
+        if (item == null || item.IsFolder || !item.IsRunnable) return;
+        _ = OpenC64UFileInEditorAsync(item);
+        e.Handled = true;
+    }
+
+    private void C64UFileTree_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (C64UFileTree.SelectedItem is not C64UFileItem item || item.IsRenaming) return;
+
+        if (e.Key == Key.F2)
+        {
+            BeginC64UInlineRename(item);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Delete)
+        {
+            _ = DeleteC64UItemAsync(item);
+            e.Handled = true;
+        }
+    }
+
+    // ── Folder context menu ───────────────────────────────────────────────────
+
+    private async void C64UFolderContextNewFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetC64UContextItem(sender);
+        if (item != null) await CreateC64UNewFolderInlineAsync(item);
+    }
+
+    private async void C64UFolderContextRefresh_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetC64UContextItem(sender);
+        if (item != null) await item.RefreshChildrenAsync();
+    }
+
+    // ── File context menu ─────────────────────────────────────────────────────
+
+    private async void C64UFileContextOpen_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetC64UContextItem(sender);
+        if (item != null) await OpenC64UFileInEditorAsync(item);
+    }
+
+    private async void C64UFileContextRun_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetC64UContextItem(sender);
+        if (item == null || ViewModel.C64UFtp == null) return;
+
+        try
+        {
+            byte[] prgData = await DownloadAsPrgAsync(item);
+            await ViewModel.RunOnC64UAsync(prgData);
+        }
+        catch (Exception ex)
+        {
+            ViewModel.SetStatus($"Run failed: {ex.Message}", StatusType.Error);
+        }
+    }
+
+    private async void C64UFileContextLoad_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetC64UContextItem(sender);
+        if (item == null || ViewModel.C64UFtp == null) return;
+
+        try
+        {
+            byte[] prgData = await DownloadAsPrgAsync(item);
+            await ViewModel.LoadOnC64UAsync(prgData);
+        }
+        catch (Exception ex)
+        {
+            ViewModel.SetStatus($"Load failed: {ex.Message}", StatusType.Error);
+        }
+    }
+
+    private async void C64UFileContextDownload_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetC64UContextItem(sender);
+        if (item == null || ViewModel.C64UFtp == null) return;
+
+        var dialog = new SaveFileDialog { FileName = item.Name };
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            var bytes = await ViewModel.C64UFtp.DownloadBytesAsync(item.FullPath);
+            File.WriteAllBytes(dialog.FileName, bytes);
+            ViewModel.SetStatus($"Downloaded \"{item.Name}\".");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not download file:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    // ── Shared folder/file context menu ───────────────────────────────────────
+
+    private void C64UContextRename_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetC64UContextItem(sender);
+        if (item != null) BeginC64UInlineRename(item);
+    }
+
+    private async void C64UContextDelete_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetC64UContextItem(sender);
+        if (item != null) await DeleteC64UItemAsync(item);
+    }
+
+    // ── Shared logic ──────────────────────────────────────────────────────────
+
+    private async Task OpenC64UFileInEditorAsync(C64UFileItem item)
+    {
+        if (ViewModel.C64UFtp == null) return;
+
+        try
+        {
+            var bytes = await ViewModel.C64UFtp.DownloadBytesAsync(item.FullPath);
+            string text = item.Kind == C64UFileKind.Prg
+                ? PadLineNumbers(new PrgConverter().ConvertFromPrg(bytes))
+                : Encoding.UTF8.GetString(bytes);
+
+            var tab = new EditorTab { DisplayName = item.Name };
+            tab.Document.Text = text;
+            ViewModel.OpenTabs.Add(tab);
+            ActivateTab(tab);
+            tab.IsModified = false;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error opening file: {ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    // Downloads the file and, for BASIC source, tokenizes it into PRG format ready to send to
+    // the C64 Ultimate. Already-tokenized .prg files pass through unchanged.
+    private async Task<byte[]> DownloadAsPrgAsync(C64UFileItem item)
+    {
+        var bytes = await ViewModel.C64UFtp!.DownloadBytesAsync(item.FullPath);
+        if (item.Kind == C64UFileKind.Prg) return bytes;
+
+        string text = Encoding.UTF8.GetString(bytes);
+        return new PrgConverter().ConvertToPrg(ViewModel.PrepareCodeForTransfer(text));
+    }
+
+    private async Task DeleteC64UItemAsync(C64UFileItem item)
+    {
+        string kind = item.IsFolder ? "folder" : "file";
+        string extra = item.IsFolder ? " and all its contents" : "";
+        if (MessageBox.Show($"Permanently delete {kind} \"{item.Name}\"{extra} from the C64 Ultimate?",
+                $"Delete {(item.IsFolder ? "Folder" : "File")}", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            if (item.IsFolder)
+                await ViewModel.C64UFtp!.DeleteFolderAsync(item.FullPath);
+            else
+                await ViewModel.C64UFtp!.DeleteFileAsync(item.FullPath);
+
+            await RefreshC64UNode(GetC64UParentPath(item.FullPath));
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not delete:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    #region C64U Inline Rename / New Folder
+
+    private void BeginC64UInlineRename(C64UFileItem item)
+    {
+        item.IsRenaming = true;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Render, () =>
+        {
+            var tvi = FindC64UTreeViewItem(C64UFileTree, item);
+            if (tvi == null) return;
+            var box = FindVisualChild<TextBox>(tvi, "C64URenameBox");
+            if (box == null) return;
+            box.Focus();
+            if (!item.IsFolder)
+            {
+                int dot = box.Text.LastIndexOf('.');
+                box.Select(0, dot > 0 ? dot : box.Text.Length);
+            }
+            else
+            {
+                box.SelectAll();
+            }
+        });
+    }
+
+    private async Task CommitC64URename(TextBox box)
+    {
+        var item = box.DataContext as C64UFileItem;
+        if (item == null || !item.IsRenaming) return;
+        item.IsRenaming = false;
+
+        if (item.IsNew)
+        {
+            await CommitC64UNewFolder(item, box.Text.Trim());
+            return;
+        }
+
+        string newName = box.Text.Trim();
+        if (string.IsNullOrWhiteSpace(newName) || newName == item.Name) return;
+
+        string parentPath = GetC64UParentPath(item.FullPath);
+        string newPath = CombineC64UPath(parentPath, newName);
+
+        try
+        {
+            await ViewModel.C64UFtp!.RenameAsync(item.FullPath, newPath);
+            await RefreshC64UNode(parentPath);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not rename:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void CancelC64URename(TextBox box)
+    {
+        if (box.DataContext is not C64UFileItem item) return;
+        item.IsRenaming = false;
+        if (item.IsNew) RemoveC64UPendingItem(item);
+    }
+
+    private async void C64URenameBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Return)      { await CommitC64URename((TextBox)sender); e.Handled = true; }
+        else if (e.Key == Key.Escape) { CancelC64URename((TextBox)sender);       e.Handled = true; }
+    }
+
+    private async void C64URenameBox_LostFocus(object sender, RoutedEventArgs e)
+        => await CommitC64URename((TextBox)sender);
+
+    // Inserts an editable, not-yet-created placeholder folder into the tree and puts it
+    // straight into rename mode - mirrors the local Explorer's inline "new folder" flow.
+    private async Task CreateC64UNewFolderInlineAsync(C64UFileItem? parentFolder)
+    {
+        string parentPath;
+        ObservableCollection<C64UFileItem> targetCollection;
+
+        if (parentFolder != null)
+        {
+            // Await the load (rather than just setting IsExpanded) so the folder's real
+            // children are in place before we insert the pending item - IsExpanded's own
+            // fire-and-forget load would otherwise wipe it out when it completes.
+            if (!parentFolder.IsExpanded)
+            {
+                await parentFolder.LoadChildrenAsync();
+                parentFolder.IsExpanded = true;
+            }
+            parentPath = parentFolder.FullPath;
+            targetCollection = parentFolder.Children;
+        }
+        else
+        {
+            parentPath = "/";
+            targetCollection = ViewModel.C64UFileItems;
+        }
+
+        var pendingItem = new C64UFileItem(parentPath);
+        targetCollection.Insert(0, pendingItem);
+        BeginC64UInlineRename(pendingItem);
+    }
+
+    private async Task CommitC64UNewFolder(C64UFileItem item, string folderName)
+    {
+        string parentPath = item.FullPath; // FullPath holds the parent directory while pending
+        RemoveC64UPendingItem(item);
+        if (string.IsNullOrWhiteSpace(folderName)) return; // no name provided - create nothing
+
+        string path = CombineC64UPath(parentPath, folderName);
+        try
+        {
+            await ViewModel.C64UFtp!.CreateFolderAsync(path);
+            await RefreshC64UNode(parentPath);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not create folder:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void RemoveC64UPendingItem(C64UFileItem item)
+    {
+        var parent = FindC64UParentFolder(item);
+        if (parent != null) parent.Children.Remove(item);
+        else ViewModel.C64UFileItems.Remove(item);
+    }
+
+    #endregion
+
+    // Reloads the item at the given remote path (or the root listing if the path is "/" or no
+    // matching node is found), so newly created/renamed/deleted entries appear immediately.
+    private async Task RefreshC64UNode(string path)
+    {
+        if (string.IsNullOrEmpty(path) || path == "/")
+        {
+            await ViewModel.RefreshC64UFolderAsync();
+            return;
+        }
+
+        var item = FindC64UItemByPath(path);
+        if (item != null)
+            await item.RefreshChildrenAsync();
+        else
+            await ViewModel.RefreshC64UFolderAsync();
+    }
+
+    private static string GetC64UParentPath(string path)
+    {
+        string trimmed = path.TrimEnd('/');
+        int idx = trimmed.LastIndexOf('/');
+        return idx <= 0 ? "/" : trimmed[..idx];
+    }
+
+    private static string CombineC64UPath(string directory, string name)
+    {
+        string trimmed = directory.TrimEnd('/');
+        return string.IsNullOrEmpty(trimmed) ? "/" + name : trimmed + "/" + name;
+    }
+
+    private static C64UFileItem? GetC64UContextItem(object sender)
+    {
+        var contextMenu = (sender as MenuItem)?.Parent as ContextMenu;
+        return (contextMenu?.PlacementTarget as TreeViewItem)?.DataContext as C64UFileItem;
+    }
+
+    private C64UFileItem? FindC64UItemByPath(string path)
+    {
+        foreach (var item in ViewModel.C64UFileItems)
+        {
+            var found = SearchC64UTree(item, path);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private static C64UFileItem? SearchC64UTree(C64UFileItem item, string path)
+    {
+        if (string.Equals(item.FullPath, path, StringComparison.OrdinalIgnoreCase)) return item;
+        foreach (var child in item.Children)
+        {
+            var found = SearchC64UTree(child, path);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private C64UFileItem? FindC64UParentFolder(C64UFileItem target)
+        => FindC64UParentFolderRecursive(ViewModel.C64UFileItems, target);
+
+    private static C64UFileItem? FindC64UParentFolderRecursive(IEnumerable<C64UFileItem> items, C64UFileItem target)
+    {
+        foreach (var folder in items.Where(i => i.IsFolder))
+        {
+            if (folder.Children.Contains(target)) return folder;
+            var found = FindC64UParentFolderRecursive(folder.Children, target);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private static TreeViewItem? FindC64UTreeViewItem(ItemsControl container, C64UFileItem target)
+    {
+        foreach (var raw in container.Items)
+        {
+            var tvi = container.ItemContainerGenerator.ContainerFromItem(raw) as TreeViewItem;
+            if (tvi == null) continue;
+            if (raw == target) return tvi;
+            var found = FindC64UTreeViewItem(tvi, target);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    #endregion
+
+    #region Side Panels
 
     #region View Commands
 

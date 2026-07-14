@@ -44,9 +44,16 @@ public class EditorTab : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Gets the display file name, or "Untitled" if the tab has no <see cref="FilePath"/>.
+    /// Gets or sets the display name to use when this tab has no <see cref="FilePath"/>,
+    /// such as a file opened from the C64 Ultimate rather than the local disk.
     /// </summary>
-    public string FileName => FilePath != null ? Path.GetFileName(FilePath) : "Untitled";
+    public string? DisplayName { get; set; }
+
+    /// <summary>
+    /// Gets the display file name, falling back to <see cref="DisplayName"/> or "Untitled"
+    /// if the tab has no <see cref="FilePath"/>.
+    /// </summary>
+    public string FileName => FilePath != null ? Path.GetFileName(FilePath) : (DisplayName ?? "Untitled");
 
     /// <summary>
     /// Gets or sets whether the tab has unsaved changes.

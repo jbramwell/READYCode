@@ -38,6 +38,10 @@ public class MainViewModel : INotifyPropertyChanged
     private bool _isRightPanelOpen;
     private ObservableCollection<FileTreeItem> _folderItems = new();
     private string _explorerTitle = "EXPLORER";
+    private ObservableCollection<C64UFileItem> _c64uFileItems = new();
+    private C64UConnectionState _c64uConnectionState = C64UConnectionState.NotConnected;
+    private C64UFtpClient? _c64uFtpClient;
+    private string? _c64uDeviceHostname;
     private EditorTab? _activeTab;
     private readonly SourcePrinter _printer = new();
 
@@ -155,6 +159,83 @@ public class MainViewModel : INotifyPropertyChanged
         get => _explorerTitle;
         set { _explorerTitle = value; OnPropertyChanged(); }
     }
+
+    /// <summary>
+    /// Gets the root items shown in the C64U FTP explorer tree.
+    /// </summary>
+    public ObservableCollection<C64UFileItem> C64UFileItems
+    {
+        get => _c64uFileItems;
+        private set { _c64uFileItems = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>
+    /// Gets the current connection state of the C64U FTP explorer.
+    /// </summary>
+    public C64UConnectionState C64UConnectionState
+    {
+        get => _c64uConnectionState;
+        private set
+        {
+            if (_c64uConnectionState == value) return;
+            _c64uConnectionState = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsC64UNotConnected));
+            OnPropertyChanged(nameof(IsC64UConnecting));
+            OnPropertyChanged(nameof(IsC64UConnected));
+            OnPropertyChanged(nameof(C64UHeaderText));
+        }
+    }
+
+    /// <summary>
+    /// Gets whether the C64U FTP explorer is not connected.
+    /// </summary>
+    public bool IsC64UNotConnected => C64UConnectionState == C64UConnectionState.NotConnected;
+
+    /// <summary>
+    /// Gets whether the C64U FTP explorer is in the middle of connecting.
+    /// </summary>
+    public bool IsC64UConnecting => C64UConnectionState == C64UConnectionState.Connecting;
+
+    /// <summary>
+    /// Gets whether the C64U FTP explorer is connected.
+    /// </summary>
+    public bool IsC64UConnected => C64UConnectionState == C64UConnectionState.Connected;
+
+    /// <summary>
+    /// Gets the C64 Ultimate's FTP host name or IP address, derived from
+    /// <see cref="AppSettings.C64UUrl"/>, or empty if that URL isn't configured.
+    /// </summary>
+    public string C64UFtpHost => GetC64UFtpHost(Settings.C64UUrl);
+
+    /// <summary>
+    /// Gets the device's own network hostname, as reported by its REST API, or null if not
+    /// yet fetched or unavailable.
+    /// </summary>
+    public string? C64UDeviceHostname
+    {
+        get => _c64uDeviceHostname;
+        private set
+        {
+            if (_c64uDeviceHostname == value) return;
+            _c64uDeviceHostname = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(C64UHeaderText));
+        }
+    }
+
+    /// <summary>
+    /// Gets the text shown in the C64U explorer panel header: "{host} - {device hostname}"
+    /// once connected and the device's hostname is known, otherwise "C64U".
+    /// </summary>
+    public string C64UHeaderText => IsC64UConnected && !string.IsNullOrWhiteSpace(C64UDeviceHostname)
+        ? $"{C64UFtpHost} — {C64UDeviceHostname}"
+        : "C64U";
+
+    /// <summary>
+    /// Gets the active FTP client for the C64U explorer, or null if not currently connected.
+    /// </summary>
+    public C64UFtpClient? C64UFtp => _c64uFtpClient;
 
     /// <summary>
     /// Gets or sets the current file path of the active tab, or null if there is no active
@@ -500,6 +581,158 @@ public class MainViewModel : INotifyPropertyChanged
             item.IsExpanded = true;
     }
 
+    /// <summary>
+    /// Minifies BASIC source code according to settings before transferring it to the C64
+    /// Ultimate. No-op when <see cref="AppSettings.MinifyOnTransfer"/> is off.
+    /// </summary>
+    /// <param name="text">The BASIC source code to prepare.</param>
+    public string PrepareCodeForTransfer(string text)
+    {
+        if (!Settings.MinifyOnTransfer) return text;
+        return CodeMinifier.Minify(text,
+            removeWhitespace:       Settings.MinifyRemoveWhitespace,
+            replace0WithPeriod:     Settings.MinifyReplaceZeroWithDot,
+            useScientificNotation:  Settings.MinifyUseScientificNotation,
+            removeComments:         Settings.MinifyRemoveComments,
+            simplifyNextStatements: Settings.MinifySimplifyNext,
+            renumberLines:          Settings.MinifyRenumberLines);
+    }
+
+    /// <summary>
+    /// Connects to the C64 Ultimate's FTP server using the host derived from
+    /// <see cref="AppSettings.C64UUrl"/>, and loads the root folder listing on success.
+    /// </summary>
+    public async Task ConnectToC64UAsync()
+    {
+        string host = C64UFtpHost;
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            C64UConnectionState = C64UConnectionState.NotConnected;
+            return;
+        }
+
+        C64UConnectionState = C64UConnectionState.Connecting;
+
+        var client = new C64UFtpClient();
+        try
+        {
+            await client.ConnectAsync(host);
+            var entries = await client.ListDirectoryAsync("/");
+
+            _c64uFtpClient?.Dispose();
+            _c64uFtpClient = client;
+
+            C64UFileItems.Clear();
+            foreach (var entry in entries)
+                C64UFileItems.Add(new C64UFileItem(client, entry.FullPath, entry.IsFolder, entry.Size));
+
+            C64UConnectionState = C64UConnectionState.Connected;
+
+            // Best-effort: the panel header still shows the FTP host if the REST API is
+            // unreachable, so a failure here shouldn't affect the FTP connection itself.
+            try
+            {
+                var info = await new C64UltimateClient().GetInfoAsync(Settings.C64UUrl);
+                C64UDeviceHostname = info.Hostname;
+            }
+            catch
+            {
+                C64UDeviceHostname = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            client.Dispose();
+            C64UConnectionState = C64UConnectionState.NotConnected;
+            C64UDeviceHostname = null;
+            SetStatus($"Could not connect to the C64 Ultimate: {ex.Message}", StatusType.Error);
+        }
+    }
+
+    /// <summary>
+    /// Reloads the C64U FTP explorer's root folder listing, preserving the expanded state of
+    /// any folders.
+    /// </summary>
+    public async Task RefreshC64UFolderAsync()
+    {
+        if (_c64uFtpClient == null) return;
+
+        var expandedPaths = C64UFileItems
+            .Where(i => i.IsFolder && i.IsExpanded)
+            .Select(i => i.FullPath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            var entries = await _c64uFtpClient.ListDirectoryAsync("/");
+            C64UFileItems.Clear();
+            foreach (var entry in entries)
+                C64UFileItems.Add(new C64UFileItem(_c64uFtpClient, entry.FullPath, entry.IsFolder, entry.Size));
+
+            foreach (var item in C64UFileItems.Where(i => i.IsFolder && expandedPaths.Contains(i.FullPath)))
+                item.IsExpanded = true;
+        }
+        catch (Exception ex)
+        {
+            _c64uFtpClient?.Dispose();
+            _c64uFtpClient = null;
+            C64UFileItems.Clear();
+            C64UDeviceHostname = null;
+            C64UConnectionState = C64UConnectionState.NotConnected;
+            SetStatus($"Lost connection to the C64 Ultimate: {ex.Message}", StatusType.Error);
+        }
+    }
+
+    /// <summary>
+    /// Transfers already-tokenized PRG data to the C64 Ultimate and runs it.
+    /// </summary>
+    /// <param name="prgData">The PRG-format program data to run.</param>
+    public async Task RunOnC64UAsync(byte[] prgData)
+    {
+        if (string.IsNullOrWhiteSpace(Settings.C64UUrl))
+        {
+            SetStatus("Please set the Commodore 64 Ultimate URL in Settings - Preferences first.", StatusType.Error);
+            return;
+        }
+
+        try
+        {
+            var client = new C64UltimateClient();
+            SetStatus("Transferring program to C64 Ultimate…");
+            await client.RunPrgAsync(Settings.C64UUrl, prgData);
+            SetStatus("Program transferred and running on the C64 Ultimate.", StatusType.Info);
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Transfer/program execution failed: {ex.Message}", StatusType.Error);
+        }
+    }
+
+    /// <summary>
+    /// Transfers already-tokenized PRG data to the C64 Ultimate without running it.
+    /// </summary>
+    /// <param name="prgData">The PRG-format program data to load.</param>
+    public async Task LoadOnC64UAsync(byte[] prgData)
+    {
+        if (string.IsNullOrWhiteSpace(Settings.C64UUrl))
+        {
+            SetStatus("C64U URL not set. Go to Preferences > Settings to configure it.");
+            return;
+        }
+
+        try
+        {
+            var client = new C64UltimateClient();
+            SetStatus("Transferring program to C64 Ultimate…");
+            await client.LoadPrgAsync(Settings.C64UUrl, prgData);
+            SetStatus("Program transferred to C64 Ultimate successfully.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Transfer failed: {ex.Message}", StatusType.Error);
+        }
+    }
+
     #endregion
 
     #region Interface Implementations
@@ -570,19 +803,6 @@ public class MainViewModel : INotifyPropertyChanged
         }
 
         _printer.PrintPreview((Window)Application.Current.MainWindow, text, ActiveTab!.FileName);
-    }
-
-    // Minifies the code according to settings before transferring to C64U.
-    private string PrepareCodeForTransfer(string text)
-    {
-        if (!Settings.MinifyOnTransfer) return text;
-        return CodeMinifier.Minify(text,
-            removeWhitespace:       Settings.MinifyRemoveWhitespace,
-            replace0WithPeriod:     Settings.MinifyReplaceZeroWithDot,
-            useScientificNotation:  Settings.MinifyUseScientificNotation,
-            removeComments:         Settings.MinifyRemoveComments,
-            simplifyNextStatements: Settings.MinifySimplifyNext,
-            renumberLines:          Settings.MinifyRenumberLines);
     }
 
     // Gates Transfer/Run: both need an open tab with at least one character typed into it.
@@ -829,6 +1049,14 @@ public class MainViewModel : INotifyPropertyChanged
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
+    }
+
+    // Strips the scheme and path from the C64U's REST URL, leaving just the host name or IP
+    // address to connect to over FTP.
+    private static string GetC64UFtpHost(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return string.Empty;
+        return Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.Host : string.Empty;
     }
 
     #endregion
