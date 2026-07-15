@@ -1601,6 +1601,22 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void C64UFileContextMountA_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetC64UContextItem(sender);
+        if (item != null) await ViewModel.MountC64UDriveAsync("a", item.FullPath);
+    }
+
+    private async void C64UFileContextMountB_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetC64UContextItem(sender);
+        if (item != null) await ViewModel.MountC64UDriveAsync("b", item.FullPath);
+    }
+
+    private async void C64UEjectDriveA_Click(object sender, RoutedEventArgs e) => await ViewModel.EjectC64UDriveAsync("a");
+
+    private async void C64UEjectDriveB_Click(object sender, RoutedEventArgs e) => await ViewModel.EjectC64UDriveAsync("b");
+
     private async void C64UFileContextDownload_Click(object sender, RoutedEventArgs e)
     {
         var item = GetC64UContextItem(sender);

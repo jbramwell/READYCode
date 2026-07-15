@@ -99,6 +99,80 @@ public class C64UltimateClient
             throw new HttpRequestException($"The C64 Ultimate returned {(int)response.StatusCode} {response.ReasonPhrase}: {body}");
     }
 
+    /// <summary>
+    /// Retrieves the status of all drives via GET /v1/drives.
+    /// </summary>
+    /// <param name="baseUrl">Base URL of the C64 Ultimate's REST API.</param>
+    /// <returns>The status of each drive reported by the device.</returns>
+    public async Task<List<C64UDriveStatus>> GetDrivesAsync(string baseUrl)
+    {
+        var endpoint = BuildEndpointUri(baseUrl, "v1/drives");
+
+        using var response = await _httpClient.GetAsync(endpoint);
+        string body = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"The C64 Ultimate returned {(int)response.StatusCode} {response.ReasonPhrase}: {body}");
+
+        var drives = new List<C64UDriveStatus>();
+        using var doc = JsonDocument.Parse(body);
+
+        // Each element of the "drives" array is a single-property object whose property name
+        // is the drive id (e.g. "a", "b", "IEC Drive") and whose value holds that drive's fields.
+        if (doc.RootElement.TryGetProperty("drives", out var drivesArray))
+        {
+            foreach (var entry in drivesArray.EnumerateArray())
+            {
+                foreach (var drive in entry.EnumerateObject())
+                {
+                    drives.Add(new C64UDriveStatus
+                    {
+                        Id = drive.Name,
+                        Enabled = drive.Value.TryGetProperty("enabled", out var enabled) && enabled.GetBoolean(),
+                        Type = drive.Value.TryGetProperty("type", out var type) ? type.GetString() : null,
+                        ImageFile = drive.Value.TryGetProperty("image_file", out var imageFile) ? imageFile.GetString() ?? "" : "",
+                    });
+                }
+            }
+        }
+
+        return drives;
+    }
+
+    /// <summary>
+    /// Mounts a disk image already on the device's storage to the given drive via
+    /// PUT /v1/drives/{driveId}:mount.
+    /// </summary>
+    /// <param name="baseUrl">Base URL of the C64 Ultimate's REST API.</param>
+    /// <param name="driveId">The drive to mount to (e.g. "a", "b").</param>
+    /// <param name="imagePath">The full path of the disk image on the device, as returned by the FTP explorer.</param>
+    public async Task MountDriveAsync(string baseUrl, string driveId, string imagePath)
+    {
+        var endpoint = BuildEndpointUri(baseUrl, $"v1/drives/{driveId}:mount?image={Uri.EscapeDataString(imagePath)}");
+
+        using var response = await _httpClient.PutAsync(endpoint, null);
+        string body = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"The C64 Ultimate returned {(int)response.StatusCode} {response.ReasonPhrase}: {body}");
+    }
+
+    /// <summary>
+    /// Ejects the disk image currently mounted on the given drive via PUT /v1/drives/{driveId}:remove.
+    /// </summary>
+    /// <param name="baseUrl">Base URL of the C64 Ultimate's REST API.</param>
+    /// <param name="driveId">The drive to eject (e.g. "a", "b").</param>
+    public async Task RemoveDriveAsync(string baseUrl, string driveId)
+    {
+        var endpoint = BuildEndpointUri(baseUrl, $"v1/drives/{driveId}:remove");
+
+        using var response = await _httpClient.PutAsync(endpoint, null);
+        string body = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"The C64 Ultimate returned {(int)response.StatusCode} {response.ReasonPhrase}: {body}");
+    }
+
     #endregion
 
     #region Private Methods

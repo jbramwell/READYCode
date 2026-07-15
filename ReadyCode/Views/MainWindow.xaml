@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:ReadyCode.Views"
         xmlns:models="clr-namespace:ReadyCode.Models"
+        xmlns:converters="clr-namespace:ReadyCode.Converters"
         xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         mc:Ignorable="d"
@@ -18,6 +19,7 @@
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+        <converters:C64UMountedPathConverter x:Key="C64UMountedPathConverter"/>
 
         <!-- Activity bar icon toggle button (left bar — active indicator on left edge) -->
         <Style x:Key="ActivityBarButton" TargetType="ToggleButton">
@@ -158,8 +160,18 @@
             <MenuItem Header="Delete"     InputGestureText="Delete" Click="C64UContextDelete_Click"/>
         </ContextMenu>
 
-        <!-- Context menu for non-runnable items (disk images, etc.) in the C64U tree -->
+        <!-- Context menu for non-runnable, non-disk-image items in the C64U tree -->
         <ContextMenu x:Key="C64UOtherFileContextMenu">
+            <MenuItem Header="Download to PC" Click="C64UFileContextDownload_Click"/>
+            <MenuItem Header="Rename..."  InputGestureText="F2"     Click="C64UContextRename_Click"/>
+            <MenuItem Header="Delete"     InputGestureText="Delete" Click="C64UContextDelete_Click"/>
+        </ContextMenu>
+
+        <!-- Context menu for .d64/.d81 disk image items in the C64U tree -->
+        <ContextMenu x:Key="C64UDiskImageContextMenu">
+            <MenuItem Header="Mount to Drive A" Click="C64UFileContextMountA_Click"/>
+            <MenuItem Header="Mount to Drive B" Click="C64UFileContextMountB_Click"/>
+            <Separator/>
             <MenuItem Header="Download to PC" Click="C64UFileContextDownload_Click"/>
             <MenuItem Header="Rename..."  InputGestureText="F2"     Click="C64UContextRename_Click"/>
             <MenuItem Header="Delete"     InputGestureText="Delete" Click="C64UContextDelete_Click"/>
@@ -1037,6 +1049,41 @@
                         </Grid>
                     </Border>
 
+                    <Border DockPanel.Dock="Bottom"
+                            Background="{DynamicResource ThemeFolderExplorerHeaderBg}"
+                            BorderBrush="{DynamicResource ThemeFolderExplorerHeaderBorder}" BorderThickness="0,1,0,0"
+                            Padding="10,6"
+                            Visibility="{Binding ViewModel.IsC64UConnected, Converter={StaticResource BoolToVisibility}}">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" FontSize="11" Foreground="{DynamicResource ThemeFolderExplorerIconFg}"
+                                           VerticalAlignment="Center">
+                                    <Run Text="Drive A: "/><Run Text="{Binding ViewModel.C64UDriveALabel, Mode=OneWay}" Foreground="{DynamicResource ThemeFileFg}"/>
+                                </TextBlock>
+                                <Button Grid.Column="1" Style="{StaticResource TabCloseButtonStyle}"
+                                        ToolTip="Eject Drive A" Click="C64UEjectDriveA_Click"
+                                        Visibility="{Binding ViewModel.IsC64UDriveAMounted, Converter={StaticResource BoolToVisibility}}"/>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" FontSize="11" Foreground="{DynamicResource ThemeFolderExplorerIconFg}"
+                                           VerticalAlignment="Center">
+                                    <Run Text="Drive B: "/><Run Text="{Binding ViewModel.C64UDriveBLabel, Mode=OneWay}" Foreground="{DynamicResource ThemeFileFg}"/>
+                                </TextBlock>
+                                <Button Grid.Column="1" Style="{StaticResource TabCloseButtonStyle}"
+                                        ToolTip="Eject Drive B" Click="C64UEjectDriveB_Click"
+                                        Visibility="{Binding ViewModel.IsC64UDriveBMounted, Converter={StaticResource BoolToVisibility}}"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
                     <Grid>
                         <!-- Not connected -->
                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="20"
@@ -1075,14 +1122,18 @@
                                 <HierarchicalDataTemplate ItemsSource="{Binding Children}">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock x:Name="itemText" Grid.Column="0"
+                                        <TextBlock x:Name="itemIcon" Grid.Column="0" Text="{Binding IconGlyph}"
+                                                   FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                                   Foreground="{DynamicResource ThemeFileFg}"
+                                                   Width="18" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="itemText" Grid.Column="1"
                                                    Text="{Binding Name}"
                                                    FontSize="12" Foreground="{DynamicResource ThemeFileFg}"
                                                    Margin="0,1" VerticalAlignment="Center"/>
-                                        <TextBox x:Name="C64URenameBox" Grid.Column="0"
+                                        <TextBox x:Name="C64URenameBox" Grid.Column="1"
                                                  Visibility="Collapsed"
                                                  Text="{Binding Name, Mode=OneTime}"
                                                  FontSize="12"
@@ -1095,23 +1146,6 @@
                                                  VerticalContentAlignment="Center"
                                                  KeyDown="C64URenameBox_KeyDown"
                                                  LostFocus="C64URenameBox_LostFocus"/>
-                                        <Border Grid.Column="1"
-                                                Background="{DynamicResource ThemeFolderExplorerHoverBg}"
-                                                CornerRadius="2" Padding="4,0" Margin="6,0,4,0"
-                                                VerticalAlignment="Center">
-                                            <Border.Style>
-                                                <Style TargetType="Border">
-                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding Badge}" Value="{x:Null}">
-                                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Border.Style>
-                                            <TextBlock Text="{Binding Badge}" FontSize="9" FontWeight="Bold"
-                                                       Foreground="{DynamicResource ThemeFolderExplorerIconFg}"/>
-                                        </Border>
                                     </Grid>
                                     <HierarchicalDataTemplate.Triggers>
                                         <DataTrigger Binding="{Binding IsFolder}" Value="True">
@@ -1121,6 +1155,19 @@
                                         <DataTrigger Binding="{Binding IsRenaming}" Value="True">
                                             <Setter TargetName="itemText"      Property="Visibility" Value="Collapsed"/>
                                             <Setter TargetName="C64URenameBox" Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                        <!-- Highlights the file currently mounted on Drive A or B. -->
+                                        <DataTrigger Value="True">
+                                            <DataTrigger.Binding>
+                                                <MultiBinding Converter="{StaticResource C64UMountedPathConverter}">
+                                                    <Binding Path="FullPath"/>
+                                                    <Binding Path="DataContext.ViewModel.C64UDriveA.ImageFile" RelativeSource="{RelativeSource AncestorType=Window}"/>
+                                                    <Binding Path="DataContext.ViewModel.C64UDriveB.ImageFile" RelativeSource="{RelativeSource AncestorType=Window}"/>
+                                                </MultiBinding>
+                                            </DataTrigger.Binding>
+                                            <Setter TargetName="itemText" Property="Foreground" Value="{DynamicResource ThemeSettingsAccent}"/>
+                                            <Setter TargetName="itemText" Property="FontWeight" Value="Bold"/>
+                                            <Setter TargetName="itemIcon" Property="Foreground" Value="{DynamicResource ThemeSettingsAccent}"/>
                                         </DataTrigger>
                                     </HierarchicalDataTemplate.Triggers>
                                 </HierarchicalDataTemplate>
@@ -1141,6 +1188,11 @@
                                             </MultiDataTrigger.Conditions>
                                             <Setter Property="ContextMenu" Value="{StaticResource C64UOtherFileContextMenu}"/>
                                         </MultiDataTrigger>
+                                        <!-- Declared after the "other file" trigger above so it wins for disk
+                                             images (WPF applies the last-matching trigger in declaration order). -->
+                                        <DataTrigger Binding="{Binding IsDiskImage}" Value="True">
+                                            <Setter Property="ContextMenu" Value="{StaticResource C64UDiskImageContextMenu}"/>
+                                        </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </TreeView.ItemContainerStyle>

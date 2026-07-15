@@ -42,6 +42,8 @@ public class MainViewModel : INotifyPropertyChanged
     private C64UConnectionState _c64uConnectionState = C64UConnectionState.NotConnected;
     private C64UFtpClient? _c64uFtpClient;
     private string? _c64uDeviceHostname;
+    private C64UDriveStatus? _c64uDriveA;
+    private C64UDriveStatus? _c64uDriveB;
     private EditorTab? _activeTab;
     private readonly SourcePrinter _printer = new();
 
@@ -236,6 +238,58 @@ public class MainViewModel : INotifyPropertyChanged
     /// Gets the active FTP client for the C64U explorer, or null if not currently connected.
     /// </summary>
     public C64UFtpClient? C64UFtp => _c64uFtpClient;
+
+    /// <summary>
+    /// Gets the current status of Drive A, or null if not yet fetched.
+    /// </summary>
+    public C64UDriveStatus? C64UDriveA
+    {
+        get => _c64uDriveA;
+        private set
+        {
+            _c64uDriveA = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(C64UDriveALabel));
+            OnPropertyChanged(nameof(IsC64UDriveAMounted));
+        }
+    }
+
+    /// <summary>
+    /// Gets the current status of Drive B, or null if not yet fetched.
+    /// </summary>
+    public C64UDriveStatus? C64UDriveB
+    {
+        get => _c64uDriveB;
+        private set
+        {
+            _c64uDriveB = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(C64UDriveBLabel));
+            OnPropertyChanged(nameof(IsC64UDriveBMounted));
+        }
+    }
+
+    /// <summary>
+    /// Gets the display label for Drive A's status footer row: the mounted image's file name,
+    /// or "empty" if nothing is mounted.
+    /// </summary>
+    public string C64UDriveALabel => string.IsNullOrEmpty(C64UDriveA?.ImageFile) ? "empty" : Path.GetFileName(C64UDriveA.ImageFile);
+
+    /// <summary>
+    /// Gets the display label for Drive B's status footer row: the mounted image's file name,
+    /// or "empty" if nothing is mounted.
+    /// </summary>
+    public string C64UDriveBLabel => string.IsNullOrEmpty(C64UDriveB?.ImageFile) ? "empty" : Path.GetFileName(C64UDriveB.ImageFile);
+
+    /// <summary>
+    /// Gets whether Drive A currently has a disk image mounted.
+    /// </summary>
+    public bool IsC64UDriveAMounted => !string.IsNullOrEmpty(C64UDriveA?.ImageFile);
+
+    /// <summary>
+    /// Gets whether Drive B currently has a disk image mounted.
+    /// </summary>
+    public bool IsC64UDriveBMounted => !string.IsNullOrEmpty(C64UDriveB?.ImageFile);
 
     /// <summary>
     /// Gets or sets the current file path of the active tab, or null if there is no active
@@ -639,12 +693,16 @@ public class MainViewModel : INotifyPropertyChanged
             {
                 C64UDeviceHostname = null;
             }
+
+            await RefreshC64UDriveStatusAsync();
         }
         catch (Exception ex)
         {
             client.Dispose();
             C64UConnectionState = C64UConnectionState.NotConnected;
             C64UDeviceHostname = null;
+            C64UDriveA = null;
+            C64UDriveB = null;
             SetStatus($"Could not connect to the C64 Ultimate: {ex.Message}", StatusType.Error);
         }
     }
@@ -671,6 +729,8 @@ public class MainViewModel : INotifyPropertyChanged
 
             foreach (var item in C64UFileItems.Where(i => i.IsFolder && expandedPaths.Contains(i.FullPath)))
                 item.IsExpanded = true;
+
+            await RefreshC64UDriveStatusAsync();
         }
         catch (Exception ex)
         {
@@ -678,8 +738,80 @@ public class MainViewModel : INotifyPropertyChanged
             _c64uFtpClient = null;
             C64UFileItems.Clear();
             C64UDeviceHostname = null;
+            C64UDriveA = null;
+            C64UDriveB = null;
             C64UConnectionState = C64UConnectionState.NotConnected;
             SetStatus($"Lost connection to the C64 Ultimate: {ex.Message}", StatusType.Error);
+        }
+    }
+
+    /// <summary>
+    /// Refreshes Drive A/B mount status from the device's REST API. Best-effort - a failure
+    /// here doesn't affect the FTP connection or file listing.
+    /// </summary>
+    public async Task RefreshC64UDriveStatusAsync()
+    {
+        try
+        {
+            var drives = await new C64UltimateClient().GetDrivesAsync(Settings.C64UUrl);
+            C64UDriveA = drives.FirstOrDefault(d => d.Id == "a");
+            C64UDriveB = drives.FirstOrDefault(d => d.Id == "b");
+        }
+        catch
+        {
+            C64UDriveA = null;
+            C64UDriveB = null;
+        }
+    }
+
+    /// <summary>
+    /// Mounts a disk image already on the device's storage to the given drive, then refreshes
+    /// drive status so the footer reflects the change.
+    /// </summary>
+    /// <param name="driveId">The drive to mount to (e.g. "a", "b").</param>
+    /// <param name="imagePath">The full path of the disk image on the device.</param>
+    public async Task MountC64UDriveAsync(string driveId, string imagePath)
+    {
+        if (string.IsNullOrWhiteSpace(Settings.C64UUrl))
+        {
+            SetStatus("Please set the Commodore 64 Ultimate URL in Settings - Preferences first.", StatusType.Error);
+            return;
+        }
+
+        try
+        {
+            await new C64UltimateClient().MountDriveAsync(Settings.C64UUrl, driveId, imagePath);
+            SetStatus($"Mounted \"{Path.GetFileName(imagePath)}\" to Drive {driveId.ToUpperInvariant()}.");
+            await RefreshC64UDriveStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Could not mount to Drive {driveId.ToUpperInvariant()}: {ex.Message}", StatusType.Error);
+        }
+    }
+
+    /// <summary>
+    /// Ejects the disk image currently mounted on the given drive, then refreshes drive status
+    /// so the footer reflects the change.
+    /// </summary>
+    /// <param name="driveId">The drive to eject (e.g. "a", "b").</param>
+    public async Task EjectC64UDriveAsync(string driveId)
+    {
+        if (string.IsNullOrWhiteSpace(Settings.C64UUrl))
+        {
+            SetStatus("Please set the Commodore 64 Ultimate URL in Settings - Preferences first.", StatusType.Error);
+            return;
+        }
+
+        try
+        {
+            await new C64UltimateClient().RemoveDriveAsync(Settings.C64UUrl, driveId);
+            SetStatus($"Ejected Drive {driveId.ToUpperInvariant()}.");
+            await RefreshC64UDriveStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Could not eject Drive {driveId.ToUpperInvariant()}: {ex.Message}", StatusType.Error);
         }
     }
 

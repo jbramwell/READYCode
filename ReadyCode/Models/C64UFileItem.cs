@@ -10,7 +10,7 @@ using ReadyCode.C64U;
 namespace ReadyCode.Models;
 
 /// <summary>
-/// Broad category of a <see cref="C64UFileItem"/>, used to pick its context menu and badge.
+/// Broad category of a <see cref="C64UFileItem"/>, used to pick its context menu and icon.
 /// </summary>
 public enum C64UFileKind
 {
@@ -123,7 +123,7 @@ public class C64UFileItem : INotifyPropertyChanged
     public long Size { get; }
 
     /// <summary>
-    /// Gets the broad category of this item, used to pick its context menu and badge.
+    /// Gets the broad category of this item, used to pick its context menu and icon.
     /// </summary>
     public C64UFileKind Kind { get; }
 
@@ -134,21 +134,43 @@ public class C64UFileItem : INotifyPropertyChanged
     public bool IsNew { get; }
 
     /// <summary>
-    /// Gets the short type badge shown next to disk image names (e.g. "D64", "D81"), or
-    /// null for item kinds that don't show a badge.
+    /// Gets the Segoe MDL2 Assets glyph shown next to this item's name: a device-specific
+    /// glyph for the top-level mount points (USB/Flash/Temp), a disc glyph for disk images,
+    /// a document glyph for BASIC/PRG files, and a folder glyph otherwise.
     /// </summary>
-    public string? Badge => Kind switch
+    public string IconGlyph
     {
-        C64UFileKind.D64 => "D64",
-        C64UFileKind.D81 => "D81",
-        _ => null,
-    };
+        get
+        {
+            if (IsFolder)
+            {
+                if (IsRootLevelFolder)
+                {
+                    if (Name.StartsWith("USB", StringComparison.OrdinalIgnoreCase)) return ""; // USB
+                    if (Name.Equals("Flash", StringComparison.OrdinalIgnoreCase)) return "";    // Save
+                    if (Name.Equals("Temp", StringComparison.OrdinalIgnoreCase)) return "";     // Package
+                }
+                return ""; // Folder
+            }
+
+            return Kind switch
+            {
+                C64UFileKind.D64 or C64UFileKind.D81 => "", // CircleRing (plain disc)
+                _ => "", // Document
+            };
+        }
+    }
 
     /// <summary>
     /// Gets whether this file can be sent to the C64 Ultimate to run/load/open in the editor
     /// (BASIC source or an already-tokenized program).
     /// </summary>
     public bool IsRunnable => Kind == C64UFileKind.Bas || Kind == C64UFileKind.Prg;
+
+    /// <summary>
+    /// Gets whether this file is a disk image that can be mounted to a drive.
+    /// </summary>
+    public bool IsDiskImage => Kind == C64UFileKind.D64 || Kind == C64UFileKind.D81;
 
     /// <summary>
     /// Gets the child items, populated lazily via <see cref="LoadChildrenAsync"/>.
@@ -276,4 +298,8 @@ public class C64UFileItem : INotifyPropertyChanged
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(p));
 
     #endregion
+
+    // Whether this folder is one of the top-level mount points (e.g. "/USB1", "/Flash"), as
+    // opposed to a regular subfolder - only top-level folders get name-based special icons.
+    private bool IsRootLevelFolder => IsFolder && FullPath.Trim('/').Length > 0 && !FullPath.Trim('/').Contains('/');
 }
