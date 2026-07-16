@@ -617,6 +617,7 @@ public partial class MainWindow : Window
             File.WriteAllBytes(filePath, prgData);
             ViewModel.IsModified = false;
             TrackRecentFile(filePath);
+            ViewModel.SetStatus($"File saved: {prgData.Length:N0} tokenized bytes.");
         }
         catch (Exception ex)
         {
@@ -671,6 +672,7 @@ public partial class MainWindow : Window
             tab.IsModified = false;
             TrackRecentFile(tab.FilePath);
             RefreshExplorerForSavedFile(tab.FilePath);
+            ViewModel.SetStatus($"File saved: {prgData.Length:N0} tokenized bytes.");
             return true;
         }
         catch (Exception ex)
