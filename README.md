@@ -4,7 +4,7 @@
 
 # READYCode
 
-A Windows desktop code editor for writing Commodore 64 BASIC programs, built around the Commodore 64 Ultimate's local network API. READYCode lets you write BASIC in a modern editor - with C64-accurate PETSCII rendering, syntax highlighting, keyword completion, and line-number tooling - then tokenize it to a real .prg and either save it to disk (for VICE or any other C64 emulator) or push it straight to a C64 Ultimate or VICE emulator over the network and run it immediately.
+A Windows desktop code editor for writing Commodore 64 BASIC programs, built around the Commodore 64 Ultimate's local network API. READYCode lets you write BASIC in a modern editor - with C64-accurate PETSCII rendering, syntax highlighting, keyword completion, and line-number tooling - then tokenize it to a real .prg and either save it to disk (for VICE or any other C64 emulator) or push it straight to a C64 Ultimate or VICE emulator over the network and run it immediately. Beyond writing code, READYCode can also browse and manage the C64 Ultimate's own storage over FTP - including looking inside `.d64` disk images and opening the BASIC programs stored on them - right alongside your local project files.
 
 ## Why this exists
 
@@ -26,12 +26,24 @@ the real machine would show.
 - **C64 Ultimate integration** - Transfer (load) or Run a program directly on a real C64 Ultimate over
   its REST API, plus machine controls (reset, reboot, pause, resume, power off) and a device info
   dialog. The Ultimate's URL is configured once in Preferences.
+- **C64U Explorer panel** - a second Explorer tab (alongside the local Folder Explorer) that connects to
+  the C64 Ultimate's FTP file service and browses its storage - USB drives, internal Flash, Temp -
+  without leaving the editor. Right-click a `.d64`/`.d81` disk image to mount it to Drive A or B (a
+  status footer shows what's currently mounted on each drive, with a one-click eject), or expand a
+  `.d64` image in place to see the individual programs stored on it and open any of them directly in
+  the editor. Enable it on the device under Ultimate menu -> Network Services -> FTP file service;
+  READYCode never auto-connects on its own, so nothing happens on the network until you click Connect.
 - **Tokenizing / `.prg` conversion** - converts BASIC source to/from the real tokenized `.prg` binary
   format (including the `$0801` load address), compatible with VICE and other emulators, not just the
-  Ultimate.
-- **File Explorer panel** - a folder tree alongside the editor with inline (VS Code-style) new
-  file/folder creation and rename, drag-and-drop, and the usual cut/copy/paste/delete/reveal-in-Explorer
-  context menu.
+  Ultimate. The same converter can also tell a real BASIC program apart from a raw machine-language
+  `.prg` by validating its tokenized line structure, rather than just trusting the file's extension or
+  type byte - used to decide which files inside a `.d64` (in either Explorer) are safe to open as text.
+- **File Explorer panels** - both the local Folder Explorer and the C64U Explorer share the same tree
+  UI: inline (VS Code-style) new file/folder creation and rename, drag-and-drop (local only),
+  cut/copy/paste/delete/reveal-in-Explorer, right-click-to-select, and a color-coded file-type badge and
+  icon (folder, floppy disk, or document) for BASIC/machine-language/disk-image files. Both trees can
+  expand a `.d64` disk image in place to browse - and open - the programs stored inside it (`.d81` is
+  recognized and mountable but not yet browsable in place).
 - **Minify / Prettify** - reformat BASIC source for either compactness (token packing, optional line
   renumbering) or readability.
 - **Printing** - Print and Print Preview render the active tab through the same PETSCII-accurate
@@ -53,16 +65,23 @@ ReadyCode.sln
 ├── ReadyCode/                  # The WPF application
 │   ├── Views/                  # MainWindow + dialogs (About, Settings, Go to Line, Licenses, ...)
 │   ├── ViewModels/              # MainViewModel and small per-dialog view models
-│   ├── Models/                  # EditorTab (one per open tab), FileTreeItem (Explorer tree node)
+│   ├── Models/                  # EditorTab (one per open tab), FileTreeItem (local Explorer tree
+│   │                            #   node), C64UFileItem (C64U Explorer tree node) - both share the
+│   │                            #   same file-kind/badge/icon and virtual (inside-a-.d64) entry model
 │   ├── Editor/                  # AvalonEdit extensions: keyword/comment/find colorizers,
 │   │                            #   PetsciiGlyphGenerator (PETSCII -> C64 ROM glyph at render time),
 │   │                            #   ghost-text completion, current-line highlighting
-│   ├── Tokenizer/                # BASIC keyword table, the BASIC <-> tokenized .prg converter,
-│   │                            #   and the PETSCII byte -> C64 screen-code map (shared by the
-│   │                            #   editor's renderer and by printing)
+│   ├── Tokenizer/                # BASIC keyword table, the BASIC <-> tokenized .prg converter
+│   │                            #   (including BASIC-vs-machine-language detection), and the
+│   │                            #   PETSCII byte -> C64 screen-code map (shared by the editor's
+│   │                            #   renderer and by printing)
 │   ├── Minify/, Prettify/        # BASIC source-to-source transforms
 │   ├── Printing/                 # Print / Print Preview (FlowDocument over the XPS pipeline)
-│   ├── C64U/                     # Thin REST client for the C64 Ultimate's local HTTP API
+│   ├── C64U/                     # REST client for the C64 Ultimate's local HTTP API, an FTP client
+│   │                            #   (FluentFTP) for its file service, and a .d64 disk image parser
+│   ├── Converters/                # WPF value converters used by bindings in MainWindow.xaml
+│   │                            #   (e.g. cross-referencing a tree item's path against drive-mount
+│   │                            #   state to highlight what's mounted on Drive A/B)
 │   ├── Settings/                 # JSON-persisted user preferences (C64U URL, wrap column, etc.)
 │   ├── Resources/Themes/         # Light/Dark/C64 ResourceDictionaries
 │   └── Assets/                   # App icon/logo, the embedded "Pet Me 64" font + its license
@@ -81,8 +100,26 @@ ReadyCode.sln
 | Run (load and execute) | `POST /v1/runners:run_prg` |
 | Device info | `GET /v1/info` |
 | Machine control (reset/reboot/pause/resume/poweroff) | `PUT /v1/machine:{action}` |
+| List drive status | `GET /v1/drives` |
+| Mount an image to a drive | `PUT /v1/drives/{id}:mount?image=<path>` |
+| Eject a drive | `PUT /v1/drives/{id}:remove` |
 
 The base URL is stored in `Settings/AppSettings.cs` and configured via Preferences in the app.
+
+### The C64U Explorer (FTP file browsing)
+
+Separately from the REST API above, `C64U/C64UFtpClient.cs` wraps [FluentFTP](https://github.com/robinrodricks/FluentFTP)
+to browse the Ultimate's own storage - USB drives, internal Flash, and Temp - directly in the app, in a
+tree that mirrors the local Folder Explorer. It logs in as `admin` with a blank password on port 21,
+matching the Ultimate's built-in FTP file service; enable that service on the device itself under the
+Ultimate menu -> Network Services -> FTP file service before connecting. READYCode never connects on
+its own - nothing happens on the network until you open the C64U Explorer tab and click Connect.
+
+`C64U/D64Image.cs` parses standard 35-track `.d64` disk images (no error info) directly from bytes -
+reading the BAM/directory chain starting at track 18 and following each file's own track/sector chain -
+so a disk image can be expanded in the tree to reveal the individual programs stored on it, without
+needing to mount it first. This works the same way in both the C64U Explorer (parsing bytes downloaded
+over FTP) and the local Folder Explorer (parsing bytes read straight from disk).
 
 ## Getting started
 
@@ -133,6 +170,8 @@ test results themselves aren't affected by it.)
 ### Dependencies
 
 - [AvalonEdit](https://github.com/icsharpcode/AvalonEdit) (NuGet) - the underlying text editor control.
+- [FluentFTP](https://github.com/robinrodricks/FluentFTP) (NuGet) - the FTP client used by the C64U
+  Explorer to browse the C64 Ultimate's storage.
 - `Microsoft.WindowsDesktop.App.WindowsForms` (`FrameworkReference`) - used only to reach a handful of
   classic Win32 dialogs WPF doesn't have (`ColorDialog`, `PageSetupDialog`, the classic `PrintDialog`),
   without pulling in full WinForms implicit usings.
