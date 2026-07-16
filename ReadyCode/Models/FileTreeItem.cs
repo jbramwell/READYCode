@@ -5,6 +5,8 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
+using ReadyCode.C64U;
+using ReadyCode.Tokenizer;
 
 namespace ReadyCode.Models;
 
@@ -35,11 +37,31 @@ public class FileTreeItem : INotifyPropertyChanged
         Name = Path.GetFileName(path);
         if (string.IsNullOrEmpty(Name)) Name = path;
         IsFolder = isFolder;
+        Kind = DetermineKind(path, isFolder);
 
-        // Placeholder child so WPF shows the expand toggle arrow on folders.
+        // Placeholder child so WPF shows the expand toggle arrow on folders and .d64 disk images.
         // LoadChildren() removes it on first expansion before WPF renders.
-        if (isFolder)
+        if (isFolder || Kind == C64UFileKind.D64)
             Children.Add(new FileTreeItem());
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="FileTreeItem"/> class for a "virtual" file
+    /// that exists only inside a disk image (e.g. a .d64), backed by already-extracted bytes
+    /// rather than a real path on disk.
+    /// </summary>
+    /// <param name="name">The file's name, as read from the disk image's directory.</param>
+    /// <param name="content">The file's raw content, already extracted from the disk image.</param>
+    /// <param name="kind">The file kind, used to pick its badge and whether it can be opened.</param>
+    /// <param name="sourcePath">The full path of the disk image this file was read from.</param>
+    public FileTreeItem(string name, byte[] content, C64UFileKind kind, string sourcePath)
+    {
+        FullPath = string.Empty;
+        Name = name;
+        IsFolder = false;
+        Kind = kind;
+        Content = content;
+        SourcePath = sourcePath;
     }
 
     // Placeholder constructor used internally for the lazy-expansion child marker above.
@@ -48,6 +70,7 @@ public class FileTreeItem : INotifyPropertyChanged
         FullPath = string.Empty;
         Name = string.Empty;
         IsFolder = false;
+        Kind = C64UFileKind.Other;
     }
 
     /// <summary>
@@ -63,6 +86,7 @@ public class FileTreeItem : INotifyPropertyChanged
         Name = string.Empty;
         IsFolder = isFolder;
         IsNew = isNewPending;
+        Kind = isFolder ? C64UFileKind.Folder : C64UFileKind.Other;
     }
 
     #endregion
@@ -83,6 +107,70 @@ public class FileTreeItem : INotifyPropertyChanged
     /// Gets whether this item represents a folder rather than a file.
     /// </summary>
     public bool IsFolder { get; }
+
+    /// <summary>
+    /// Gets the broad category of this item, used to pick its badge and (for .d64 disk images)
+    /// whether it can be expanded.
+    /// </summary>
+    public C64UFileKind Kind { get; }
+
+    /// <summary>
+    /// Gets the short type badge shown right-aligned next to this item's name (e.g. "D64",
+    /// "PRG", "BAS", "ML"), or null for kinds that don't show one (folders and unrecognized
+    /// file types).
+    /// </summary>
+    public string? Badge => Kind switch
+    {
+        C64UFileKind.D64 => "D64",
+        C64UFileKind.D81 => "D81",
+        C64UFileKind.Prg => "PRG",
+        C64UFileKind.Bas => "BAS",
+        C64UFileKind.Ml => "ML",
+        _ => null,
+    };
+
+    /// <summary>
+    /// Gets whether this file can be opened in the editor (BASIC source or a confirmed-BASIC
+    /// tokenized program).
+    /// </summary>
+    public bool IsRunnable => Kind == C64UFileKind.Bas || Kind == C64UFileKind.Prg;
+
+    /// <summary>
+    /// Gets the Segoe MDL2 Assets glyph shown next to this item's name: a floppy disk glyph for
+    /// disk images, a document glyph for other files, and a folder glyph for folders - the same
+    /// glyphs used for the same file/folder types in the C64U Explorer.
+    /// </summary>
+    public string IconGlyph
+    {
+        get
+        {
+            if (IsFolder) return "";
+
+            return Kind switch
+            {
+                C64UFileKind.D64 or C64UFileKind.D81 => "",
+                _ => "",
+            };
+        }
+    }
+
+    /// <summary>
+    /// Gets the raw content of this file if it's a "virtual" entry read from inside a disk
+    /// image, or null for a real file on disk.
+    /// </summary>
+    public byte[]? Content { get; }
+
+    /// <summary>
+    /// Gets whether this item exists only inside a disk image rather than as a real file on
+    /// disk - it has no <see cref="FullPath"/> and its content is already in memory.
+    /// </summary>
+    public bool IsVirtual => Content != null;
+
+    /// <summary>
+    /// Gets the full path of the disk image this file was read from, for a "virtual" entry, or
+    /// null for a real file on disk.
+    /// </summary>
+    public string? SourcePath { get; }
 
     /// <summary>
     /// Gets the child items, populated lazily via <see cref="LoadChildren"/>.
@@ -106,7 +194,7 @@ public class FileTreeItem : INotifyPropertyChanged
             if (_isExpanded == value) return;
             _isExpanded = value;
             OnPropertyChanged();
-            if (value && IsFolder && !_childrenLoaded)
+            if (value && (IsFolder || Kind == C64UFileKind.D64) && !_childrenLoaded)
                 LoadChildren();
         }
     }
@@ -144,13 +232,32 @@ public class FileTreeItem : INotifyPropertyChanged
     #region Public Methods
 
     /// <summary>
-    /// Loads this folder's child files and folders from disk, replacing any existing children.
+    /// Loads this folder's child files and folders from disk, or - for a .d64 disk image - the
+    /// files stored inside it, replacing any existing children.
     /// </summary>
     public void LoadChildren()
     {
         if (_childrenLoaded) return;
         _childrenLoaded = true;
         Children.Clear();
+
+        if (Kind == C64UFileKind.D64)
+        {
+            try
+            {
+                var diskBytes = File.ReadAllBytes(FullPath);
+                var entries = new D64Image().ReadDirectory(diskBytes);
+                foreach (var entry in entries)
+                    Children.Add(new FileTreeItem(entry.Name, entry.Content, entry.Kind, FullPath));
+            }
+            catch
+            {
+                // Read/parse failed (not a standard 35-track image, locked file, etc.).
+                _childrenLoaded = false;
+                Children.Clear();
+            }
+            return;
+        }
 
         try
         {
@@ -203,6 +310,31 @@ public class FileTreeItem : INotifyPropertyChanged
     #endregion
 
     #region Private Methods
+
+    private static C64UFileKind DetermineKind(string path, bool isFolder)
+    {
+        if (isFolder) return C64UFileKind.Folder;
+
+        switch (Path.GetExtension(path).ToLowerInvariant())
+        {
+            case ".bas": return C64UFileKind.Bas;
+            case ".d64": return C64UFileKind.D64;
+            case ".d81": return C64UFileKind.D81;
+            case ".prg":
+                try
+                {
+                    var bytes = File.ReadAllBytes(path);
+                    return new PrgConverter().IsBasicProgram(bytes) ? C64UFileKind.Prg : C64UFileKind.Ml;
+                }
+                catch
+                {
+                    // Couldn't read the file (locked, permissions, etc.) - fall back to the
+                    // previous always-treat-.prg-as-runnable behavior rather than guessing wrong.
+                    return C64UFileKind.Prg;
+                }
+            default: return C64UFileKind.Other;
+        }
+    }
 
     private void OnPropertyChanged([CallerMemberName] string? p = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(p));

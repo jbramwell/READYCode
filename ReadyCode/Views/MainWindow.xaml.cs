@@ -243,8 +243,8 @@ public partial class MainWindow : Window
                 panel.Visibility = isTarget ? Visibility.Visible : Visibility.Collapsed;
             }
 
-            if (ReferenceEquals(restoreTarget.Toggle, C64UToggle))
-                _ = ViewModel.ConnectToC64UAsync();
+            // Deliberately does not auto-connect even if the C64U panel was open last session -
+            // connecting only ever happens from an explicit "Connect" click.
         }
         if (ViewModel.Settings.IsRightPanelOpen)
         {
@@ -532,6 +532,51 @@ public partial class MainWindow : Window
         }
     }
 
+    // Opens a "virtual" file found inside a mounted .d64 image in the Folder Explorer tree -
+    // its content is already in memory, so no disk read is needed beyond what already happened
+    // when the disk image itself was expanded.
+    private Task OpenLocalVirtualFileInEditor(FileTreeItem item)
+    {
+        if (item.Content == null) return Task.CompletedTask;
+
+        // Virtual entries have no real FilePath to dedupe on, so use the disk image's own path
+        // plus the entry's name as a stable identity instead - re-activate an already-open tab
+        // rather than opening a duplicate.
+        string sourceId = $"{item.SourcePath}!{item.Name}";
+        var existingTab = ViewModel.OpenTabs.FirstOrDefault(t => t.VirtualSourceId == sourceId);
+        if (existingTab != null)
+        {
+            ActivateTab(existingTab);
+            return Task.CompletedTask;
+        }
+
+        try
+        {
+            string text = item.Kind == C64UFileKind.Prg
+                ? PadLineNumbers(new PrgConverter().ConvertFromPrg(item.Content))
+                : Encoding.UTF8.GetString(item.Content);
+
+            var tab = new EditorTab { DisplayName = item.Name, VirtualSourceId = sourceId };
+            tab.Document.Text = text;
+            ViewModel.OpenTabs.Add(tab);
+            ActivateTab(tab);
+            tab.IsModified = false;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error opening file: {ex.Message}", "Open File Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void LocalDiskEntryContextOpen_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item != null) _ = OpenLocalVirtualFileInEditor(item);
+    }
+
     private void FileSave_Click(object sender, RoutedEventArgs e)
     {
         if (ViewModel.ActiveTab == null) return;
@@ -746,6 +791,12 @@ public partial class MainWindow : Window
         _tabSwitching = true;
         TabBar.SelectedItem = tab;
         _tabSwitching = false;
+
+        // Selecting an item doesn't reliably auto-scroll it into view with a plain horizontal
+        // StackPanel as the tab bar's items panel, so scroll explicitly - covers activation from
+        // the overflow menu, keyboard shortcuts, etc., not just clicking a visible tab.
+        if (tab != null)
+            TabBar.ScrollIntoView(tab);
     }
 
     // Cycles the active tab forward (right) or backward (left) through ViewModel.OpenTabs,
@@ -767,6 +818,26 @@ public partial class MainWindow : Window
         if (_tabSwitching) return;
         if (e.AddedItems.Count > 0 && e.AddedItems[0] is EditorTab tab)
             ActivateTab(tab);
+    }
+
+    // Shows every open tab in a dropdown so tabs scrolled out of view at either end of the tab
+    // bar are still reachable in one click, rather than needing to scroll the tab strip itself.
+    private void TabListButton_Click(object sender, RoutedEventArgs e)
+    {
+        var menu = new ContextMenu();
+        foreach (var tab in ViewModel.OpenTabs)
+        {
+            var menuItem = new MenuItem
+            {
+                Header = tab.IsModified ? $"{tab.FileName} •" : tab.FileName,
+                IsCheckable = true,
+                IsChecked = ReferenceEquals(tab, ViewModel.ActiveTab),
+            };
+            menuItem.Click += (_, _) => ActivateTab(tab);
+            menu.Items.Add(menuItem);
+        }
+        menu.PlacementTarget = (Button)sender;
+        menu.IsOpen = true;
     }
 
     private void TabClose_Click(object sender, RoutedEventArgs e)
@@ -1380,12 +1451,9 @@ public partial class MainWindow : Window
 
     private void ExplorerToggle_Click(object sender, RoutedEventArgs e) => ActivateLeftPanel(ExplorerToggle, ExplorerPanel, "Explorer");
 
-    private void C64UToggle_Click(object sender, RoutedEventArgs e)
-    {
-        ActivateLeftPanel(C64UToggle, C64UPanel, "C64U");
-        if (C64UToggle.IsChecked == true && ViewModel.C64UConnectionState != C64UConnectionState.Connected)
-            _ = ViewModel.ConnectToC64UAsync();
-    }
+    // Deliberately does not auto-connect - opening the tab just shows the "Not connected" state
+    // (with its "Connect" button) until the user explicitly asks to connect.
+    private void C64UToggle_Click(object sender, RoutedEventArgs e) => ActivateLeftPanel(C64UToggle, C64UPanel, "C64U");
 
     // All left-panel toggle/panel/settings-key triples. Centralized so adding a new tab only
     // means adding one entry here rather than touching every call site that needs to
@@ -1656,16 +1724,28 @@ public partial class MainWindow : Window
 
     private async Task OpenC64UFileInEditorAsync(C64UFileItem item)
     {
-        if (ViewModel.C64UFtp == null) return;
+        if (item.Content == null && ViewModel.C64UFtp == null) return;
+
+        // Neither a real C64U FTP file nor a virtual disk-image entry has a local FilePath to
+        // dedupe on, so use the FTP path (or, for a virtual entry, the disk image's own path
+        // plus the entry's name) as a stable identity instead - re-activate an already-open tab
+        // rather than opening a duplicate.
+        string sourceId = item.IsVirtual ? $"{item.SourcePath}!{item.Name}" : item.FullPath;
+        var existingTab = ViewModel.OpenTabs.FirstOrDefault(t => t.VirtualSourceId == sourceId);
+        if (existingTab != null)
+        {
+            ActivateTab(existingTab);
+            return;
+        }
 
         try
         {
-            var bytes = await ViewModel.C64UFtp.DownloadBytesAsync(item.FullPath);
+            var bytes = item.Content ?? await ViewModel.C64UFtp!.DownloadBytesAsync(item.FullPath);
             string text = item.Kind == C64UFileKind.Prg
                 ? PadLineNumbers(new PrgConverter().ConvertFromPrg(bytes))
                 : Encoding.UTF8.GetString(bytes);
 
-            var tab = new EditorTab { DisplayName = item.Name };
+            var tab = new EditorTab { DisplayName = item.Name, VirtualSourceId = sourceId };
             tab.Document.Text = text;
             ViewModel.OpenTabs.Add(tab);
             ActivateTab(tab);
@@ -1679,10 +1759,11 @@ public partial class MainWindow : Window
     }
 
     // Downloads the file and, for BASIC source, tokenizes it into PRG format ready to send to
-    // the C64 Ultimate. Already-tokenized .prg files pass through unchanged.
+    // the C64 Ultimate. Already-tokenized .prg files (including those found inside a mounted
+    // .d64 image) pass through unchanged.
     private async Task<byte[]> DownloadAsPrgAsync(C64UFileItem item)
     {
-        var bytes = await ViewModel.C64UFtp!.DownloadBytesAsync(item.FullPath);
+        var bytes = item.Content ?? await ViewModel.C64UFtp!.DownloadBytesAsync(item.FullPath);
         if (item.Kind == C64UFileKind.Prg) return bytes;
 
         string text = Encoding.UTF8.GetString(bytes);
@@ -2169,14 +2250,25 @@ public partial class MainWindow : Window
     {
         var item = (e.OriginalSource as FrameworkElement)?.DataContext as FileTreeItem;
         if (item == null || item.IsFolder) return;
-        OpenFileByPath(item.FullPath);
+
+        if (item.IsVirtual)
+        {
+            if (item.IsRunnable) _ = OpenLocalVirtualFileInEditor(item);
+        }
+        else
+        {
+            OpenFileByPath(item.FullPath);
+        }
         e.Handled = true;
     }
 
     private void FileTree_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         _dragStartPoint = e.GetPosition(null);
-        _dragItem = (e.OriginalSource as FrameworkElement)?.DataContext as FileTreeItem;
+        var item = (e.OriginalSource as FrameworkElement)?.DataContext as FileTreeItem;
+        // Virtual entries (found inside a mounted .d64) have no real path on disk, so they
+        // can't be dragged/moved like a real file.
+        _dragItem = item?.IsVirtual == true ? null : item;
     }
 
     private void FileTreeItem_PreviewMouseMove(object sender, MouseEventArgs e)
@@ -2905,6 +2997,18 @@ public partial class MainWindow : Window
     {
         if (FileTree.SelectedItem is not FileTreeItem item || item.IsRenaming) return;
 
+        // Virtual entries (found inside a mounted .d64) have no real path on disk, so none of
+        // the file-management shortcuts below apply to them.
+        if (item.IsVirtual)
+        {
+            if (e.Key == Key.Return && item.IsRunnable)
+            {
+                _ = OpenLocalVirtualFileInEditor(item);
+                e.Handled = true;
+            }
+            return;
+        }
+
         if (e.Key == Key.F2)
         {
             BeginInlineRename(item);
@@ -2955,6 +3059,27 @@ public partial class MainWindow : Window
             if (result != null) return result;
         }
         return null;
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject
+    {
+        while (current != null)
+        {
+            if (current is T match) return match;
+            current = VisualTreeHelper.GetParent(current);
+        }
+        return null;
+    }
+
+    // Shared by the Folder Explorer and C64U trees: selects and focuses whichever item was
+    // actually right-clicked before its context menu opens, so the highlighted row always
+    // matches what the menu is about to act on.
+    private void TreeViewItem_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var item = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject);
+        if (item == null) return;
+        item.IsSelected = true;
+        item.Focus();
     }
 
     #endregion

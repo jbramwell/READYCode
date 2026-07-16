@@ -50,6 +50,14 @@ public class EditorTab : INotifyPropertyChanged
     public string? DisplayName { get; set; }
 
     /// <summary>
+    /// Gets or sets a stable identifier for a tab opened from a "virtual" file with no real
+    /// path on disk or FTP server (e.g. a program found inside a mounted .d64 image), used to
+    /// detect and re-activate an already-open tab instead of opening a duplicate. Null for
+    /// tabs backed by a real <see cref="FilePath"/>.
+    /// </summary>
+    public string? VirtualSourceId { get; set; }
+
+    /// <summary>
     /// Gets the display file name, falling back to <see cref="DisplayName"/> or "Untitled"
     /// if the tab has no <see cref="FilePath"/>.
     /// </summary>

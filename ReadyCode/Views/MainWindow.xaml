@@ -140,6 +140,12 @@
             <MenuItem Header="Delete"     InputGestureText="Delete" Click="FileContextDelete_Click"/>
         </ContextMenu>
 
+        <!-- Context menu for "virtual" runnable entries found inside a mounted .d64 image in
+             the Folder Explorer tree -->
+        <ContextMenu x:Key="LocalDiskEntryContextMenu">
+            <MenuItem Header="Open in editor" Click="LocalDiskEntryContextOpen_Click"/>
+        </ContextMenu>
+
         <!-- Context menu for folder items in the C64U tree -->
         <ContextMenu x:Key="C64UFolderContextMenu">
             <MenuItem Header="New Folder..." Click="C64UFolderContextNewFolder_Click"/>
@@ -175,6 +181,11 @@
             <MenuItem Header="Download to PC" Click="C64UFileContextDownload_Click"/>
             <MenuItem Header="Rename..."  InputGestureText="F2"     Click="C64UContextRename_Click"/>
             <MenuItem Header="Delete"     InputGestureText="Delete" Click="C64UContextDelete_Click"/>
+        </ContextMenu>
+
+        <!-- Context menu for "virtual" runnable entries found inside a mounted .d64 image -->
+        <ContextMenu x:Key="C64UDiskEntryContextMenu">
+            <MenuItem Header="Open in editor" Click="C64UFileContextOpen_Click"/>
         </ContextMenu>
 
         <!-- Shared visual template for Explorer/C64U tree items: expand arrow, hover/selection/drop
@@ -230,11 +241,14 @@
                                         </Style>
                                     </ToggleButton.Style>
                                 </ToggleButton>
-                                <!-- Item content (file/folder name) -->
+                                <!-- Item content (file/folder name). Stretches to fill the row so
+                                     right-aligned content (e.g. the C64U tree's type badge) can
+                                     hug the pane's right edge rather than sitting immediately
+                                     after the name. -->
                                 <ContentPresenter x:Name="PART_Header"
                                                   Grid.Column="1"
                                                   ContentSource="Header"
-                                                  HorizontalAlignment="Left"
+                                                  HorizontalAlignment="Stretch"
                                                   VerticalAlignment="Center"
                                                   Margin="2,2"/>
                             </Grid>
@@ -923,15 +937,25 @@
                               ItemsSource="{Binding ViewModel.FolderItems}"
                               MouseDoubleClick="FileTree_MouseDoubleClick"
                               PreviewMouseLeftButtonDown="FileTree_PreviewMouseLeftButtonDown"
+                              PreviewMouseRightButtonDown="TreeViewItem_PreviewMouseRightButtonDown"
                               PreviewKeyDown="FileTree_PreviewKeyDown">
                         <TreeView.ItemTemplate>
                             <HierarchicalDataTemplate ItemsSource="{Binding Children}">
                                 <Grid>
-                                    <TextBlock x:Name="itemText"
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="itemIcon" Grid.Column="0" Text="{Binding IconGlyph}"
+                                               FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                               Foreground="{DynamicResource ThemeFileFg}"
+                                               Width="18" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="itemText" Grid.Column="1"
                                                Text="{Binding Name}"
                                                FontSize="12" Foreground="{DynamicResource ThemeFileFg}"
                                                Margin="0,1" VerticalAlignment="Center"/>
-                                    <TextBox x:Name="RenameBox"
+                                    <TextBox x:Name="RenameBox" Grid.Column="1"
                                              Visibility="Collapsed"
                                              Text="{Binding Name, Mode=OneTime}"
                                              FontSize="12"
@@ -944,6 +968,23 @@
                                              VerticalContentAlignment="Center"
                                              KeyDown="RenameBox_KeyDown"
                                              LostFocus="RenameBox_LostFocus"/>
+                                    <Border x:Name="badgeBorder" Grid.Column="2"
+                                            Background="{DynamicResource ThemeFolderExplorerHoverBg}"
+                                            CornerRadius="2" Padding="4,0" Margin="4,0,8,0"
+                                            VerticalAlignment="Center">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Badge}" Value="{x:Null}">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <TextBlock x:Name="badgeText" Text="{Binding Badge}" FontSize="9" FontWeight="Bold"
+                                                   Foreground="{DynamicResource ThemeFolderExplorerIconFg}"/>
+                                    </Border>
                                 </Grid>
                                 <HierarchicalDataTemplate.Triggers>
                                     <DataTrigger Binding="{Binding IsFolder}" Value="True">
@@ -953,6 +994,25 @@
                                     <DataTrigger Binding="{Binding IsRenaming}" Value="True">
                                         <Setter TargetName="itemText"  Property="Visibility" Value="Collapsed"/>
                                         <Setter TargetName="RenameBox" Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                    <!-- Color the type badge by kind: blue for disk images, green for
+                                         confirmed BASIC, orange for machine language. BAS and any other
+                                         kind keep the default neutral badge background set above. -->
+                                    <DataTrigger Binding="{Binding Kind}" Value="D64">
+                                        <Setter TargetName="badgeBorder" Property="Background" Value="{DynamicResource ThemeBadgeDiskBg}"/>
+                                        <Setter TargetName="badgeText"   Property="Foreground" Value="{DynamicResource ThemeBadgeDiskFg}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Kind}" Value="D81">
+                                        <Setter TargetName="badgeBorder" Property="Background" Value="{DynamicResource ThemeBadgeDiskBg}"/>
+                                        <Setter TargetName="badgeText"   Property="Foreground" Value="{DynamicResource ThemeBadgeDiskFg}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Kind}" Value="Ml">
+                                        <Setter TargetName="badgeBorder" Property="Background" Value="{DynamicResource ThemeBadgeMlBg}"/>
+                                        <Setter TargetName="badgeText"   Property="Foreground" Value="{DynamicResource ThemeBadgeMlFg}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Kind}" Value="Prg">
+                                        <Setter TargetName="badgeBorder" Property="Background" Value="{DynamicResource ThemeBadgePrgBg}"/>
+                                        <Setter TargetName="badgeText"   Property="Foreground" Value="{DynamicResource ThemeBadgePrgFg}"/>
                                     </DataTrigger>
                                 </HierarchicalDataTemplate.Triggers>
                             </HierarchicalDataTemplate>
@@ -970,6 +1030,20 @@
                                     <DataTrigger Binding="{Binding IsFolder}" Value="False">
                                         <Setter Property="ContextMenu" Value="{StaticResource FileContextMenu}"/>
                                     </DataTrigger>
+                                    <!-- "Virtual" entries live only inside a disk image - Cut/Copy/Paste/Rename/
+                                         Delete/Reveal above don't apply, so these two triggers, declared last,
+                                         win: no context menu by default, or just "Open in editor" for the
+                                         runnable (confirmed-BASIC) ones. -->
+                                    <DataTrigger Binding="{Binding IsVirtual}" Value="True">
+                                        <Setter Property="ContextMenu" Value="{x:Null}"/>
+                                    </DataTrigger>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding IsVirtual}" Value="True"/>
+                                            <Condition Binding="{Binding IsRunnable}" Value="True"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="ContextMenu" Value="{StaticResource LocalDiskEntryContextMenu}"/>
+                                    </MultiDataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </TreeView.ItemContainerStyle>
@@ -1117,6 +1191,7 @@
                                   ItemsSource="{Binding ViewModel.C64UFileItems}"
                                   Visibility="{Binding ViewModel.IsC64UConnected, Converter={StaticResource BoolToVisibility}}"
                                   MouseDoubleClick="C64UFileTree_MouseDoubleClick"
+                                  PreviewMouseRightButtonDown="TreeViewItem_PreviewMouseRightButtonDown"
                                   PreviewKeyDown="C64UFileTree_PreviewKeyDown">
                             <TreeView.ItemTemplate>
                                 <HierarchicalDataTemplate ItemsSource="{Binding Children}">
@@ -1124,6 +1199,7 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBlock x:Name="itemIcon" Grid.Column="0" Text="{Binding IconGlyph}"
                                                    FontFamily="Segoe MDL2 Assets" FontSize="14"
@@ -1146,6 +1222,23 @@
                                                  VerticalContentAlignment="Center"
                                                  KeyDown="C64URenameBox_KeyDown"
                                                  LostFocus="C64URenameBox_LostFocus"/>
+                                        <Border x:Name="badgeBorder" Grid.Column="2"
+                                                Background="{DynamicResource ThemeFolderExplorerHoverBg}"
+                                                CornerRadius="2" Padding="4,0" Margin="4,0,8,0"
+                                                VerticalAlignment="Center">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Badge}" Value="{x:Null}">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock x:Name="badgeText" Text="{Binding Badge}" FontSize="9" FontWeight="Bold"
+                                                       Foreground="{DynamicResource ThemeFolderExplorerIconFg}"/>
+                                        </Border>
                                     </Grid>
                                     <HierarchicalDataTemplate.Triggers>
                                         <DataTrigger Binding="{Binding IsFolder}" Value="True">
@@ -1155,6 +1248,25 @@
                                         <DataTrigger Binding="{Binding IsRenaming}" Value="True">
                                             <Setter TargetName="itemText"      Property="Visibility" Value="Collapsed"/>
                                             <Setter TargetName="C64URenameBox" Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                        <!-- Color the type badge by kind: blue for disk images, green for
+                                             confirmed BASIC, orange for machine language. BAS and any other
+                                             kind keep the default neutral badge background set above. -->
+                                        <DataTrigger Binding="{Binding Kind}" Value="D64">
+                                            <Setter TargetName="badgeBorder" Property="Background" Value="{DynamicResource ThemeBadgeDiskBg}"/>
+                                            <Setter TargetName="badgeText"   Property="Foreground" Value="{DynamicResource ThemeBadgeDiskFg}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Kind}" Value="D81">
+                                            <Setter TargetName="badgeBorder" Property="Background" Value="{DynamicResource ThemeBadgeDiskBg}"/>
+                                            <Setter TargetName="badgeText"   Property="Foreground" Value="{DynamicResource ThemeBadgeDiskFg}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Kind}" Value="Ml">
+                                            <Setter TargetName="badgeBorder" Property="Background" Value="{DynamicResource ThemeBadgeMlBg}"/>
+                                            <Setter TargetName="badgeText"   Property="Foreground" Value="{DynamicResource ThemeBadgeMlFg}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Kind}" Value="Prg">
+                                            <Setter TargetName="badgeBorder" Property="Background" Value="{DynamicResource ThemeBadgePrgBg}"/>
+                                            <Setter TargetName="badgeText"   Property="Foreground" Value="{DynamicResource ThemeBadgePrgFg}"/>
                                         </DataTrigger>
                                         <!-- Highlights the file currently mounted on Drive A or B. -->
                                         <DataTrigger Value="True">
@@ -1193,6 +1305,20 @@
                                         <DataTrigger Binding="{Binding IsDiskImage}" Value="True">
                                             <Setter Property="ContextMenu" Value="{StaticResource C64UDiskImageContextMenu}"/>
                                         </DataTrigger>
+                                        <!-- "Virtual" entries live only inside a disk image - none of the actions
+                                             above (mount/run/download/rename/delete) apply, so these two triggers,
+                                             declared last, win: no context menu by default, or just "Open in
+                                             editor" for the runnable (PRG) ones. -->
+                                        <DataTrigger Binding="{Binding IsVirtual}" Value="True">
+                                            <Setter Property="ContextMenu" Value="{x:Null}"/>
+                                        </DataTrigger>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsVirtual}" Value="True"/>
+                                                <Condition Binding="{Binding IsRunnable}" Value="True"/>
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="ContextMenu" Value="{StaticResource C64UDiskEntryContextMenu}"/>
+                                        </MultiDataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </TreeView.ItemContainerStyle>
@@ -1218,7 +1344,15 @@
                 <!-- Tab bar -->
                 <Border Grid.Row="0" Background="{DynamicResource ThemeTabBarBg}"
                         BorderBrush="{DynamicResource ThemeTabBorder}" BorderThickness="0,0,0,1">
-                    <ListBox x:Name="TabBar"
+                    <DockPanel LastChildFill="True">
+                        <!-- Shows a dropdown listing every open tab, so tabs scrolled out of view
+                             at either end of the tab bar are still reachable in one click. -->
+                        <Button DockPanel.Dock="Right" Style="{StaticResource ExplorerHeaderButton}"
+                                ToolTip="Show Open Tabs" Click="TabListButton_Click">
+                            <TextBlock Text="&#xE712;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                       Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}"/>
+                        </Button>
+                        <ListBox x:Name="TabBar"
                              ItemsSource="{Binding ViewModel.OpenTabs}"
                              Background="Transparent"
                              BorderThickness="0"
@@ -1286,6 +1420,7 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+                    </DockPanel>
                 </Border>
 
                 <!-- Editor + Find Bar overlay -->

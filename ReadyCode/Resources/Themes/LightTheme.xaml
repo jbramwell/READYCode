@@ -42,6 +42,15 @@
     <SolidColorBrush x:Key="ThemeFolderExplorerBtnHover"   Color="#D0D0D0"/>
     <SolidColorBrush x:Key="ThemeFolderExplorerBtnPressed" Color="#BBBBBB"/>
 
+    <!-- C64U Explorer file-type badges: blue for disk images (storage), orange for machine
+         language (caution - not editable/verified), green for confirmed-runnable BASIC (go/ready) -->
+    <SolidColorBrush x:Key="ThemeBadgeDiskBg" Color="#0066CC"/>
+    <SolidColorBrush x:Key="ThemeBadgeDiskFg" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="ThemeBadgeMlBg"   Color="#CC6600"/>
+    <SolidColorBrush x:Key="ThemeBadgeMlFg"   Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="ThemeBadgePrgBg"  Color="#1E7B34"/>
+    <SolidColorBrush x:Key="ThemeBadgePrgFg"  Color="#FFFFFF"/>
+
     <!-- Status Bar -->
     <SolidColorBrush x:Key="ThemeStatusBarBg"     Color="#F0F0F0"/>
     <SolidColorBrush x:Key="ThemeStatusBarFg"     Color="#333333"/>

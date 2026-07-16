@@ -20,8 +20,11 @@ public enum C64UFileKind
     /// <summary>An untokenized BASIC source file (.bas).</summary>
     Bas,
 
-    /// <summary>A tokenized program file (.prg).</summary>
+    /// <summary>A tokenized program file (.prg) confirmed to be a valid BASIC program.</summary>
     Prg,
+
+    /// <summary>A tokenized program file (.prg) that is machine language rather than BASIC.</summary>
+    Ml,
 
     /// <summary>A 1541 disk image (.d64).</summary>
     D64,
@@ -69,9 +72,9 @@ public class C64UFileItem : INotifyPropertyChanged
         Size = size;
         Kind = DetermineKind(Name, isFolder);
 
-        // Placeholder child so WPF shows the expand toggle arrow on folders.
-        // LoadChildrenAsync() removes it on first expansion before WPF renders.
-        if (isFolder)
+        // Placeholder child so WPF shows the expand toggle arrow on folders and .d64 disk
+        // images. LoadChildrenAsync() removes it on first expansion before WPF renders.
+        if (isFolder || Kind == C64UFileKind.D64)
             Children.Add(new C64UFileItem());
     }
 
@@ -87,6 +90,25 @@ public class C64UFileItem : INotifyPropertyChanged
         IsFolder = true;
         Kind = C64UFileKind.Folder;
         IsNew = true;
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="C64UFileItem"/> class for a "virtual" file
+    /// that exists only inside a disk image (e.g. a .d64), backed by already-extracted bytes
+    /// rather than a real remote FTP path.
+    /// </summary>
+    /// <param name="name">The file's name, as read from the disk image's directory.</param>
+    /// <param name="content">The file's raw content, already extracted from the disk image.</param>
+    /// <param name="kind">The file kind, used to pick its icon and whether it can be opened.</param>
+    /// <param name="sourcePath">The full remote path of the disk image this file was read from.</param>
+    public C64UFileItem(string name, byte[] content, C64UFileKind kind, string sourcePath)
+    {
+        FullPath = string.Empty;
+        Name = name;
+        IsFolder = false;
+        Kind = kind;
+        Content = content;
+        SourcePath = sourcePath;
     }
 
     // Placeholder constructor used internally for the lazy-expansion child marker above.
@@ -135,7 +157,7 @@ public class C64UFileItem : INotifyPropertyChanged
 
     /// <summary>
     /// Gets the Segoe MDL2 Assets glyph shown next to this item's name: a device-specific
-    /// glyph for the top-level mount points (USB/Flash/Temp), a disc glyph for disk images,
+    /// glyph for the top-level mount points (USB/Flash/Temp), a floppy disk glyph for disk images,
     /// a document glyph for BASIC/PRG files, and a folder glyph otherwise.
     /// </summary>
     public string IconGlyph
@@ -147,7 +169,7 @@ public class C64UFileItem : INotifyPropertyChanged
                 if (IsRootLevelFolder)
                 {
                     if (Name.StartsWith("USB", StringComparison.OrdinalIgnoreCase)) return ""; // USB
-                    if (Name.Equals("Flash", StringComparison.OrdinalIgnoreCase)) return "";    // Save
+                    if (Name.Equals("Flash", StringComparison.OrdinalIgnoreCase)) return "";    // HardDrive
                     if (Name.Equals("Temp", StringComparison.OrdinalIgnoreCase)) return "";     // Package
                 }
                 return ""; // Folder
@@ -155,7 +177,7 @@ public class C64UFileItem : INotifyPropertyChanged
 
             return Kind switch
             {
-                C64UFileKind.D64 or C64UFileKind.D81 => "", // CircleRing (plain disc)
+                C64UFileKind.D64 or C64UFileKind.D81 => "", // Save (floppy disk)
                 _ => "", // Document
             };
         }
@@ -171,6 +193,39 @@ public class C64UFileItem : INotifyPropertyChanged
     /// Gets whether this file is a disk image that can be mounted to a drive.
     /// </summary>
     public bool IsDiskImage => Kind == C64UFileKind.D64 || Kind == C64UFileKind.D81;
+
+    /// <summary>
+    /// Gets the raw content of this file if it's a "virtual" entry read from inside a disk
+    /// image, or null for a real remote FTP file.
+    /// </summary>
+    public byte[]? Content { get; }
+
+    /// <summary>
+    /// Gets whether this item exists only inside a disk image rather than as a real remote
+    /// FTP file - it has no <see cref="FullPath"/> and its content is already in memory.
+    /// </summary>
+    public bool IsVirtual => Content != null;
+
+    /// <summary>
+    /// Gets the full remote path of the disk image this file was read from, for a "virtual"
+    /// entry, or null for a real remote FTP file.
+    /// </summary>
+    public string? SourcePath { get; }
+
+    /// <summary>
+    /// Gets the short type badge shown right-aligned next to this item's name (e.g. "D64",
+    /// "PRG", "BAS", "ML"), or null for kinds that don't show one (folders and unrecognized
+    /// file types).
+    /// </summary>
+    public string? Badge => Kind switch
+    {
+        C64UFileKind.D64 => "D64",
+        C64UFileKind.D81 => "D81",
+        C64UFileKind.Prg => "PRG",
+        C64UFileKind.Bas => "BAS",
+        C64UFileKind.Ml => "ML",
+        _ => null,
+    };
 
     /// <summary>
     /// Gets the child items, populated lazily via <see cref="LoadChildrenAsync"/>.
@@ -189,7 +244,7 @@ public class C64UFileItem : INotifyPropertyChanged
             if (_isExpanded == value) return;
             _isExpanded = value;
             OnPropertyChanged();
-            if (value && IsFolder && !_childrenLoaded)
+            if (value && (IsFolder || Kind == C64UFileKind.D64) && !_childrenLoaded)
                 _ = LoadChildrenAsync();
         }
     }
@@ -229,7 +284,8 @@ public class C64UFileItem : INotifyPropertyChanged
     #region Public Methods
 
     /// <summary>
-    /// Loads this folder's child files and folders over FTP, replacing any existing children.
+    /// Loads this folder's child files and folders over FTP, or - for a .d64 disk image - the
+    /// files stored inside it, replacing any existing children.
     /// </summary>
     public async Task LoadChildrenAsync()
     {
@@ -238,14 +294,25 @@ public class C64UFileItem : INotifyPropertyChanged
 
         try
         {
-            var entries = await _ftpClient.ListDirectoryAsync(FullPath);
-            Children.Clear();
-            foreach (var entry in entries)
-                Children.Add(new C64UFileItem(_ftpClient, entry.FullPath, entry.IsFolder, entry.Size));
+            if (Kind == C64UFileKind.D64)
+            {
+                var diskBytes = await _ftpClient.DownloadBytesAsync(FullPath);
+                var entries = new D64Image().ReadDirectory(diskBytes);
+                Children.Clear();
+                foreach (var entry in entries)
+                    Children.Add(new C64UFileItem(entry.Name, entry.Content, entry.Kind, FullPath));
+            }
+            else
+            {
+                var entries = await _ftpClient.ListDirectoryAsync(FullPath);
+                Children.Clear();
+                foreach (var entry in entries)
+                    Children.Add(new C64UFileItem(_ftpClient, entry.FullPath, entry.IsFolder, entry.Size));
+            }
         }
         catch
         {
-            // Listing failed (disconnected, permission denied, etc.) - leave the folder collapsed-looking.
+            // Listing/download/parse failed - leave the item collapsed-looking.
             _childrenLoaded = false;
             Children.Clear();
         }

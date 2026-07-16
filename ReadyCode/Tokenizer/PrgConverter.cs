@@ -189,6 +189,50 @@ public class PrgConverter
         return string.Join(Environment.NewLine, lines);
     }
 
+    /// <summary>
+    /// Determines whether the given .prg data is a genuine tokenized BASIC program, as opposed
+    /// to a machine-language file or a short BASIC "loader" stub with raw code appended after
+    /// it. Unlike <see cref="ConvertFromPrg"/> (which is deliberately lenient so it never
+    /// throws on legitimate edge cases), this strictly validates the line-chain structure:
+    /// every line's link pointer must exactly match the address of the following line - the
+    /// same relationship <see cref="ConvertToPrg"/> constructs, and one real machine code
+    /// essentially never satisfies by chance. Token bytes themselves aren't validated - real
+    /// historical programs sometimes carry stray high-bit bytes (leftover graphics/cursor
+    /// characters, editor artifacts) that are harmless in practice but would otherwise cause
+    /// false negatives on genuinely valid programs.
+    /// </summary>
+    /// <param name="data">The .prg data to check.</param>
+    /// <returns>True if the data is a well-formed tokenized BASIC program.</returns>
+    public bool IsBasicProgram(byte[] data)
+    {
+        if (data.Length < 4 || data[0] != (_loadAddress & 0xFF) || data[1] != (_loadAddress >> 8))
+            return false;
+
+        int pos = 2;
+
+        while (true)
+        {
+            if (pos + 1 >= data.Length) return false;
+
+            ushort link = (ushort)(data[pos] | (data[pos + 1] << 8));
+            if (link == 0x0000)
+                return pos + 2 == data.Length;
+
+            pos += 2;
+            if (pos + 1 >= data.Length) return false;
+            pos += 2; // line number - any value is valid
+
+            while (pos < data.Length && data[pos] != 0x00)
+                pos++;
+
+            if (pos >= data.Length) return false; // missing line terminator
+            pos++;
+
+            ushort expectedLink = (ushort)(_loadAddress + pos - 2);
+            if (link != expectedLink) return false;
+        }
+    }
+
     #endregion
 
     #region Private Methods
