@@ -211,6 +211,16 @@ public partial class MainWindow : Window
             BuildPetsciiTable();
             BuildBasicKeywordsList();
             BuildMusicNotesTable();
+
+            // TabBar's ScrollViewer only exists once its control template is applied - hook up
+            // overflow detection here rather than in the constructor, and check the initial
+            // state immediately since tabs restored from the last session are already present.
+            var tabBarScrollViewer = FindVisualChild<ScrollViewer>(TabBar);
+            if (tabBarScrollViewer != null)
+            {
+                tabBarScrollViewer.ScrollChanged += (_, _) => UpdateTabListButtonVisibility(tabBarScrollViewer);
+                UpdateTabListButtonVisibility(tabBarScrollViewer);
+            }
         };
         ApplyEditorAppearance();
 
@@ -264,10 +274,9 @@ public partial class MainWindow : Window
                 panel.Visibility = isTarget ? Visibility.Visible : Visibility.Collapsed;
             }
         }
-        if (!string.IsNullOrEmpty(ViewModel.Settings.LastFolderPath) &&
-            Directory.Exists(ViewModel.Settings.LastFolderPath))
+        if (ViewModel.Project.IsOpen && Directory.Exists(ViewModel.Project.RootPath))
         {
-            ViewModel.LoadFolder(ViewModel.Settings.LastFolderPath);
+            ViewModel.LoadFolder(ViewModel.Project.RootPath);
         }
 
         if (ViewModel.Settings.RestoreOpenTabsOnStartup)
@@ -639,7 +648,7 @@ public partial class MainWindow : Window
     // and select/focus it since it's the active tab.
     private void RefreshExplorerForSavedFile(string filePath)
     {
-        string folder = ViewModel.Settings.LastFolderPath;
+        string folder = ViewModel.Project.RootPath;
         if (string.IsNullOrEmpty(folder)) return;
 
         string? dir = Path.GetDirectoryName(filePath);
@@ -759,7 +768,7 @@ public partial class MainWindow : Window
     private bool HasSelection() => ViewModel.ActiveTab != null && Editor.SelectionLength > 0;
 
     // Gates Close Folder, which only makes sense once a folder has been opened.
-    private bool HasFolderOpen() => !string.IsNullOrEmpty(ViewModel.Settings.LastFolderPath);
+    private bool HasFolderOpen() => ViewModel.Project.IsOpen;
 
     // Gates Reopen Closed Tab, which only makes sense once a tab has actually been closed.
     private bool HasClosedTabHistory() => _closedTabHistory.Count > 0;
@@ -825,6 +834,16 @@ public partial class MainWindow : Window
         if (_tabSwitching) return;
         if (e.AddedItems.Count > 0 && e.AddedItems[0] is EditorTab tab)
             ActivateTab(tab);
+    }
+
+    // Shows the "Show Open Tabs" overflow button only once tabs actually extend past the visible
+    // tab bar - called on every ScrollChanged (window resize, tabs added/closed/renamed all
+    // change the ScrollViewer's ExtentWidth/ViewportWidth) and once immediately after hookup.
+    private void UpdateTabListButtonVisibility(ScrollViewer tabBarScrollViewer)
+    {
+        TabListButton.Visibility = tabBarScrollViewer.ExtentWidth > tabBarScrollViewer.ViewportWidth
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     // Shows every open tab in a dropdown so tabs scrolled out of view at either end of the tab
@@ -2354,7 +2373,7 @@ public partial class MainWindow : Window
     private void RootHeader_DragOver(object sender, DragEventArgs e)
     {
         if (_dragItem == null) { e.Effects = DragDropEffects.None; e.Handled = true; return; }
-        string? rootPath = ViewModel.Settings.LastFolderPath;
+        string? rootPath = ViewModel.Project.RootPath;
         if (string.IsNullOrEmpty(rootPath)) { e.Effects = DragDropEffects.None; e.Handled = true; return; }
         // Block drop if already at root level
         if (string.Equals(Path.GetDirectoryName(_dragItem.FullPath), rootPath, StringComparison.OrdinalIgnoreCase))
@@ -2377,7 +2396,7 @@ public partial class MainWindow : Window
     {
         ExplorerHeaderBorder.Background = new System.Windows.Media.SolidColorBrush(
             (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#E8E8E8"));
-        string? rootPath = ViewModel.Settings.LastFolderPath;
+        string? rootPath = ViewModel.Project.RootPath;
         if (_dragItem == null || string.IsNullOrEmpty(rootPath))
         {
             _dragItem = null; e.Handled = true; return;
@@ -2415,7 +2434,7 @@ public partial class MainWindow : Window
 
     private void RootContextPaste_Click(object sender, RoutedEventArgs e)
     {
-        string? rootPath = ViewModel.Settings.LastFolderPath;
+        string? rootPath = ViewModel.Project.RootPath;
         if (!string.IsNullOrEmpty(rootPath))
             PasteToFolder(rootPath);
     }
@@ -2493,7 +2512,7 @@ public partial class MainWindow : Window
     private void RefreshAfterMove(string movedFrom, FileTreeItem targetFolder)
     {
         string sourceParentPath = Path.GetDirectoryName(movedFrom)!;
-        bool sourceIsRoot = string.Equals(sourceParentPath, ViewModel.Settings.LastFolderPath,
+        bool sourceIsRoot = string.Equals(sourceParentPath, ViewModel.Project.RootPath,
             StringComparison.OrdinalIgnoreCase);
 
         if (sourceIsRoot)
@@ -2561,7 +2580,7 @@ public partial class MainWindow : Window
 
     private void ExplorerRefresh_Click(object sender, RoutedEventArgs e)
     {
-        string folder = ViewModel.Settings.LastFolderPath;
+        string folder = ViewModel.Project.RootPath;
         if (!string.IsNullOrEmpty(folder))
             ViewModel.LoadFolder(folder);
     }
@@ -2632,7 +2651,7 @@ public partial class MainWindow : Window
         try
         {
             Directory.Delete(item.FullPath, recursive: true);
-            ViewModel.LoadFolder(ViewModel.Settings.LastFolderPath);
+            ViewModel.LoadFolder(ViewModel.Project.RootPath);
         }
         catch (Exception ex)
         {
@@ -2689,7 +2708,7 @@ public partial class MainWindow : Window
     {
         var item = GetContextItem(sender);
         if (item == null) return;
-        string relative = Path.GetRelativePath(ViewModel.Settings.LastFolderPath, item.FullPath);
+        string relative = Path.GetRelativePath(ViewModel.Project.RootPath, item.FullPath);
         Clipboard.SetText(relative);
     }
 
@@ -2851,7 +2870,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            parentDirectory = ViewModel.Settings.LastFolderPath;
+            parentDirectory = ViewModel.Project.RootPath;
             if (string.IsNullOrEmpty(parentDirectory)) return;
             targetCollection = ViewModel.FolderItems;
         }
@@ -2908,7 +2927,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            parentDirectory = ViewModel.Settings.LastFolderPath;
+            parentDirectory = ViewModel.Project.RootPath;
             if (string.IsNullOrEmpty(parentDirectory)) return;
             targetCollection = ViewModel.FolderItems;
         }
@@ -3076,6 +3095,20 @@ public partial class MainWindow : Window
         return null;
     }
 
+    // Finds the first descendant of type T regardless of name - used to reach into a control's
+    // default template (e.g. the ScrollViewer inside a ListBox) where there's nothing to name.
+    private static T? FindVisualChild<T>(DependencyObject parent) where T : FrameworkElement
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T match) return match;
+            var result = FindVisualChild<T>(child);
+            if (result != null) return result;
+        }
+        return null;
+    }
+
     private static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject
     {
         while (current != null)
@@ -3102,14 +3135,14 @@ public partial class MainWindow : Window
     private void OpenFolderDialog()
     {
         var dialog = new OpenFolderDialog { Title = "Open Folder" };
-        if (!string.IsNullOrEmpty(ViewModel.Settings.LastFolderPath))
-            dialog.InitialDirectory = ViewModel.Settings.LastFolderPath;
+        if (ViewModel.Project.IsOpen)
+            dialog.InitialDirectory = ViewModel.Project.RootPath;
 
         if (dialog.ShowDialog(this) == true)
         {
             string path = dialog.FolderName;
             ViewModel.LoadFolder(path);
-            ViewModel.Settings.LastFolderPath = path;
+            ViewModel.Project.RootPath = path;
             ViewModel.Settings.Save();
 
             if (ExplorerToggle.IsChecked != true)
@@ -3127,7 +3160,7 @@ public partial class MainWindow : Window
 
         ViewModel.FolderItems.Clear();
         ViewModel.ExplorerTitle = "EXPLORER";
-        ViewModel.Settings.LastFolderPath = "";
+        ViewModel.Project.RootPath = "";
         ViewModel.Settings.Save();
     }
 

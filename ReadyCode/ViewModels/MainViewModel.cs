@@ -57,6 +57,7 @@ public class MainViewModel : INotifyPropertyChanged
     /// </summary>
     public MainViewModel()
     {
+        Project = new ProjectContext(Settings);
         _isLeftPanelOpen  = Settings.IsLeftPanelOpen;
         _isRightPanelOpen = Settings.IsRightPanelOpen;
 
@@ -94,6 +95,11 @@ public class MainViewModel : INotifyPropertyChanged
     /// Gets the persisted application settings.
     /// </summary>
     public AppSettings Settings { get; } = AppSettings.Load();
+
+    /// <summary>
+    /// Gets the currently open folder ("project") context, wrapping <see cref="AppSettings.LastFolderPath"/>.
+    /// </summary>
+    public ProjectContext Project { get; }
 
     /// <summary>
     /// Gets or sets whether the vertical column guide line is shown in the editor.
@@ -620,7 +626,7 @@ public class MainViewModel : INotifyPropertyChanged
     /// </summary>
     public void RefreshRootItems()
     {
-        string folder = Settings.LastFolderPath;
+        string folder = Project.RootPath;
 
         if (string.IsNullOrEmpty(folder)) return;
 

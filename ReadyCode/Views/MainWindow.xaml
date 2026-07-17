@@ -1373,9 +1373,10 @@
                         BorderBrush="{DynamicResource ThemeTabBorder}" BorderThickness="0,0,0,1">
                     <DockPanel LastChildFill="True">
                         <!-- Shows a dropdown listing every open tab, so tabs scrolled out of view
-                             at either end of the tab bar are still reachable in one click. -->
-                        <Button DockPanel.Dock="Right" Style="{StaticResource ExplorerHeaderButton}"
-                                ToolTip="Show Open Tabs" Click="TabListButton_Click">
+                             at either end of the tab bar are still reachable in one click. Only
+                             shown once the tab bar actually overflows - see TabBar_ScrollChanged. -->
+                        <Button x:Name="TabListButton" DockPanel.Dock="Right" Style="{StaticResource ExplorerHeaderButton}"
+                                ToolTip="Show Open Tabs" Click="TabListButton_Click" Visibility="Collapsed">
                             <TextBlock Text="&#xE712;" FontFamily="Segoe MDL2 Assets" FontSize="13"
                                        Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}"/>
                         </Button>
