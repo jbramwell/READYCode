@@ -164,6 +164,26 @@ public static class CodePrettifier
         return JoinLines(result);
     }
 
+    /// <summary>
+    /// Splits a line's code into its ':'-separated statements, leaving string literals untouched
+    /// (a ':' inside a string doesn't start a new statement).
+    /// </summary>
+    internal static List<string> SplitStatements(string code)
+    {
+        var statements = new List<string>();
+        var current    = new StringBuilder();
+        bool inString  = false;
+
+        foreach (char c in code)
+        {
+            if (c == '"')  { inString = !inString; current.Append(c); }
+            else if (!inString && c == ':') { statements.Add(current.ToString()); current.Clear(); }
+            else           { current.Append(c); }
+        }
+        statements.Add(current.ToString());
+        return statements;
+    }
+
     #endregion
 
     #region Private Methods
@@ -310,23 +330,6 @@ public static class CodePrettifier
         }
 
         return string.Join(":", result);
-    }
-
-    // Split code on ':' while respecting string literals.
-    private static List<string> SplitStatements(string code)
-    {
-        var statements = new List<string>();
-        var current    = new StringBuilder();
-        bool inString  = false;
-
-        foreach (char c in code)
-        {
-            if (c == '"')  { inString = !inString; current.Append(c); }
-            else if (!inString && c == ':') { statements.Add(current.ToString()); current.Clear(); }
-            else           { current.Append(c); }
-        }
-        statements.Add(current.ToString());
-        return statements;
     }
 
     private static string ExpandENotation(string segment)

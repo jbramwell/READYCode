@@ -72,6 +72,7 @@
     <SolidColorBrush x:Key="ThemeEditorStringFg"          Color="#CE9178"/>
     <SolidColorBrush x:Key="ThemeEditorGuideLineFg"       Color="#454545"/>
     <SolidColorBrush x:Key="ThemeEditorCurrentLineBorder" Color="#3C3C3C"/>
+    <SolidColorBrush x:Key="ThemeEditorErrorSquiggle"     Color="#F14C4C"/>
 
     <!-- Find / Replace Highlighting -->
     <SolidColorBrush x:Key="ThemeFindMatchBg"   Color="#e5ba7d"/>

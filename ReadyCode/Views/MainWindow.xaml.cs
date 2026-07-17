@@ -13,10 +13,12 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using ICSharpCode.AvalonEdit.CodeCompletion;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Rendering;
 using Microsoft.Win32;
+using ReadyCode.Diagnostics;
 using ReadyCode.Editor;
 using ReadyCode.Minify;
 using ReadyCode.Models;
@@ -58,6 +60,11 @@ public partial class MainWindow : Window
     private List<(int Offset, int Length)> _findMatches = new();
     private int _findMatchIndex = -1;
     private CurrentLineBorderRenderer _currentLineBorderRenderer = null!;
+    private readonly ErrorSquiggleRenderer _errorSquiggleRenderer;
+
+    // Debounces BasicDiagnostics.Analyze so a full re-analysis doesn't run on every keystroke.
+    private readonly DispatcherTimer _diagnosticsTimer;
+    private IReadOnlyList<BasicDiagnostic> _currentDiagnostics = Array.Empty<BasicDiagnostic>();
 
     // Tab management state
     private bool _tabSwitching;
@@ -191,6 +198,10 @@ public partial class MainWindow : Window
         Editor.TextArea.TextView.LineTransformers.Add(_findHighlightColorizer);
         _currentLineBorderRenderer = new CurrentLineBorderRenderer(Editor);
         Editor.TextArea.TextView.BackgroundRenderers.Add(_currentLineBorderRenderer);
+        _errorSquiggleRenderer = new ErrorSquiggleRenderer(Editor);
+        Editor.TextArea.TextView.BackgroundRenderers.Add(_errorSquiggleRenderer);
+        _diagnosticsTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        _diagnosticsTimer.Tick += (_, _) => { _diagnosticsTimer.Stop(); RunDiagnostics(); };
         Editor.TextArea.Caret.PositionChanged += (_, _) =>
         {
             _lineNumberColorizer.ActiveDocumentLineNumber =
@@ -3750,6 +3761,22 @@ public partial class MainWindow : Window
 
         if (!_activatingTab && !ViewModel.IsModified)
             ViewModel.IsModified = true;
+
+        // Debounced so a full re-analysis doesn't run on every keystroke; also covers tab
+        // switches, since assigning Editor.Document in ActivateTab raises this same event.
+        _diagnosticsTimer.Stop();
+        _diagnosticsTimer.Start();
+    }
+
+    // Re-analyzes the active document for undefined GOTO/GOSUB/THEN targets, unmatched FOR/NEXT,
+    // unterminated strings, and duplicate line numbers, and refreshes the squiggle underlines.
+    private void RunDiagnostics()
+    {
+        _currentDiagnostics = Editor.Document != null
+            ? BasicDiagnostics.Analyze(Editor.Document.Text)
+            : Array.Empty<BasicDiagnostic>();
+        _errorSquiggleRenderer.SetDiagnostics(_currentDiagnostics);
+        Editor.TextArea.TextView.Redraw();
     }
 
     // Shows a hover tooltip over either a user variable ("(variable) {type} {name}") or a BASIC
@@ -3765,7 +3792,12 @@ public partial class MainWindow : Window
         string lineText = Editor.Document.GetText(line);
         int col = position.Value.Column - 1; // AvalonEdit columns are 1-based
 
-        if (!TryGetHoverTooltip(lineText, col, out string tooltipText))
+        string tooltipText;
+        if (TryGetDiagnosticAt(line.Offset + col, out var diagnostic))
+        {
+            tooltipText = diagnostic.Message;
+        }
+        else if (!TryGetHoverTooltip(lineText, col, out tooltipText))
         {
             CloseHoverToolTip();
             return;
@@ -3779,6 +3811,18 @@ public partial class MainWindow : Window
             IsOpen = true
         };
         e.Handled = true;
+    }
+
+    // A squiggle's message takes priority over the keyword/variable tooltip when the mouse is
+    // over both (e.g. hovering an undefined GOTO target, which is itself a number, not a keyword).
+    private bool TryGetDiagnosticAt(int offset, out BasicDiagnostic diagnostic)
+    {
+        foreach (var d in _currentDiagnostics)
+        {
+            if (offset >= d.Offset && offset < d.Offset + d.Length) { diagnostic = d; return true; }
+        }
+        diagnostic = default;
+        return false;
     }
 
     private void Editor_MouseHoverStopped(object sender, MouseEventArgs e)
@@ -4254,6 +4298,7 @@ public partial class MainWindow : Window
         _findHighlightColorizer.CurrentMatchBrush   = (Brush)FindResource("ThemeFindCurrentBg");
         _findHighlightColorizer.CurrentMatchFgBrush = (Brush)FindResource("ThemeFindCurrentFg");
         _currentLineBorderRenderer.SetColor(((SolidColorBrush)FindResource("ThemeEditorCurrentLineBorder")).Color);
+        _errorSquiggleRenderer.SetColor(((SolidColorBrush)FindResource("ThemeEditorErrorSquiggle")).Color);
 
         // Mark where the target machine would wrap, without actually wrapping the editor's text.
         // Keep ShowColumnRuler permanently on and toggle visibility via the position instead:
