@@ -332,6 +332,98 @@ public class CodeMinifierTests
         Assert.Equal("1 PRINT A\n2 END", CodeMinifier.RenumberLines(input));
     }
 
+    // ── DATA statement protection ─────────────────────────────────────────────
+
+    [Fact]
+    public void RemoveWhitespace_PreservesSpacesInsideDataStatement()
+    {
+        // DATA consumes the rest of the line like REM - internal spacing (which may be
+        // meaningful for unquoted string data) must survive untouched, aside from the run
+        // of spaces immediately after the DATA keyword itself.
+        Assert.Equal("10DATA1, 2, 3", CodeMinifier.RemoveWhitespace("10 DATA 1, 2, 3"));
+    }
+
+    [Fact]
+    public void RemoveWhitespace_PreservesUnquotedStringSpacesInData()
+    {
+        Assert.Equal("10DATAHELLO WORLD", CodeMinifier.RemoveWhitespace("10 DATA HELLO WORLD"));
+    }
+
+    [Fact]
+    public void RemoveWhitespace_StripsCodeBeforeDataButNotDataItself()
+    {
+        Assert.Equal("10X=1:DATA1, 2, 3", CodeMinifier.RemoveWhitespace("10 X = 1 : DATA 1, 2, 3"));
+    }
+
+    [Fact]
+    public void RemoveWhitespace_StripsAllSpacesImmediatelyAfterDataKeyword()
+    {
+        // Multiple leading spaces are all removed, same as the space after the line number.
+        Assert.Equal("10DATA1,2,3", CodeMinifier.RemoveWhitespace("10 DATA    1,2,3"));
+    }
+
+    [Fact]
+    public void RemoveWhitespace_IsIdempotentOnAlreadyMinifiedDataStatement()
+    {
+        // Regression test: once DATA is glued directly to its first value (no separating
+        // space), a second minify pass must still recognize the keyword and leave the
+        // internal spacing of unquoted string data alone rather than treating the whole
+        // line as ordinary code.
+        string oncePassed = CodeMinifier.RemoveWhitespace("10 DATA THIS IS A TEST,WITH SPACES");
+        Assert.Equal("10DATATHIS IS A TEST,WITH SPACES", oncePassed);
+        Assert.Equal(oncePassed, CodeMinifier.RemoveWhitespace(oncePassed));
+    }
+
+    [Fact]
+    public void RemoveWhitespace_StripsSpaceBeforeQuotedDataItem()
+    {
+        Assert.Equal("10DATA\"THIS IS A TEST\",\"WITH SPACES\"",
+            CodeMinifier.RemoveWhitespace("10 DATA \"THIS IS A TEST\",\"WITH SPACES\""));
+    }
+
+    [Fact]
+    public void Replace0WithPeriod_DoesNotTouchDataStatement()
+    {
+        Assert.Equal("10 DATA 0.5,0.25", CodeMinifier.Replace0WithPeriod("10 DATA 0.5,0.25"));
+    }
+
+    [Fact]
+    public void UseScientificNotation_DoesNotTouchDataStatement()
+    {
+        Assert.Equal("10 DATA 10000,20000", CodeMinifier.UseScientificNotation("10 DATA 10000,20000"));
+    }
+
+    [Fact]
+    public void SimplifyNextStatements_DoesNotTouchDataStatement()
+    {
+        // Without DATA protection, the unquoted data item "NEXT I" would false-positive
+        // match the NEXT-variable pattern and get corrupted to "NEXT".
+        Assert.Equal("10 DATA NEXT I,5", CodeMinifier.SimplifyNextStatements("10 DATA NEXT I,5"));
+    }
+
+    [Fact]
+    public void RemoveComments_DoesNotStripInlineRemInsideDataStatement()
+    {
+        // A literal ":REM" after DATA is data text, not a real comment - DATA consumes the
+        // rest of the physical line regardless of colons.
+        string input = "10 DATA HELLO:REM WORLD";
+        Assert.Equal(input, CodeMinifier.RemoveComments(input));
+    }
+
+    [Fact]
+    public void Minify_DoesNotMinifyDataStatements()
+    {
+        string input = "10 X = 0.5\n20 DATA 1, 2, 3\n30 NEXT I";
+        string result = CodeMinifier.Minify(input,
+            removeWhitespace: true,
+            replace0WithPeriod: true,
+            useScientificNotation: false,
+            removeComments: false,
+            simplifyNextStatements: true,
+            renumberLines: false);
+        Assert.Equal("10X=.5\n20DATA1, 2, 3\n30NEXT", result);
+    }
+
     // ── Minify (orchestrator) ─────────────────────────────────────────────────
 
     [Fact]

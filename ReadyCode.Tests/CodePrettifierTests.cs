@@ -68,10 +68,10 @@ public class CodePrettifierTests
     }
 
     [Fact]
-    public void AddWhitespace_DataValuesAreCompact()
+    public void AddWhitespace_DataValuesSpacingPreserved()
     {
-        // Spaces around commas in DATA are stripped even when "Add Whitespace" is on.
-        Assert.Equal("10 DATA 0,12,68,96", CodePrettifier.AddWhitespace("10 DATA 0, 12, 68, 96"));
+        // DATA content is copied verbatim - existing spacing around commas is left alone.
+        Assert.Equal("10 DATA 0, 12, 68, 96", CodePrettifier.AddWhitespace("10 DATA 0, 12, 68, 96"));
     }
 
     [Fact]
@@ -82,17 +82,26 @@ public class CodePrettifierTests
     }
 
     [Fact]
-    public void AddWhitespace_DataSpaceBeforeCommaStripped()
+    public void AddWhitespace_DataSpaceBeforeCommaPreserved()
     {
-        // Spaces BEFORE commas are also removed.
-        Assert.Equal("10 DATA 56,120,124", CodePrettifier.AddWhitespace("10 DATA 56 , 120 , 124"));
+        // Spaces before commas are meaningful in DATA and must not be touched.
+        Assert.Equal("10 DATA 56 , 120 , 124", CodePrettifier.AddWhitespace("10 DATA 56 , 120 , 124"));
+    }
+
+    [Fact]
+    public void AddWhitespace_DataUnquotedStringSpacesPreserved()
+    {
+        // Spaces inside unquoted DATA string items (e.g. "THIS IS A TEST") must be kept -
+        // only the leading run of spaces right after the DATA keyword is normalized.
+        Assert.Equal("10 DATA THIS IS A TEST,WITH SPACES",
+            CodePrettifier.AddWhitespace("10 DATA THIS IS A TEST,WITH SPACES"));
     }
 
     [Fact]
     public void AddWhitespace_DataStringLiteralSpacesPreserved()
     {
-        // Spaces inside a DATA string literal must be kept.
-        Assert.Equal("10 DATA 1,\"HELLO WORLD\",2", CodePrettifier.AddWhitespace("10 DATA 1, \"HELLO WORLD\" ,2"));
+        // Spaces inside a DATA string literal must be kept, as must spaces around commas.
+        Assert.Equal("10 DATA 1, \"HELLO WORLD\" ,2", CodePrettifier.AddWhitespace("10 DATA 1, \"HELLO WORLD\" ,2"));
     }
 
     [Fact]

@@ -49,9 +49,12 @@ public static class CodeMinifier
         {
             var (lineNum, code) = SplitBasicLine(line);
             if (lineNum == null) { result.Add(line); continue; }
-            // Remove every space outside string literals. The space between the line
-            // number and the first token is also removed — C64 BASIC does not require it.
-            string compact = TransformOutsideStrings(code.Trim(), s => s.Replace(" ", ""));
+            // Remove every space outside string literals (and outside any DATA statement,
+            // aside from the run of spaces immediately after the DATA keyword itself - see
+            // TrimDataLeadingSpace). The space between the line number and the first token
+            // is also removed — C64 BASIC does not require it.
+            var (before, dataPart) = SplitAtData(code.Trim());
+            string compact = TransformOutsideStrings(before, s => s.Replace(" ", "")) + TrimDataLeadingSpace(dataPart);
             result.Add(lineNum + compact);
         }
         return JoinLines(result);
@@ -69,7 +72,7 @@ public static class CodeMinifier
             var (lineNum, code) = SplitBasicLine(line);
             if (lineNum == null) { result.Add(line); continue; }
             // "0.d" where 0 is not preceded by another digit → ".d"
-            string transformed = TransformOutsideStrings(code,
+            string transformed = TransformOutsideStringsAndData(code,
                 s => Regex.Replace(s, @"(?<!\d)0\.(\d)", ".$1"));
             result.Add(lineNum + " " + transformed);
         }
@@ -86,7 +89,7 @@ public static class CodeMinifier
         {
             var (lineNum, code) = SplitBasicLine(line);
             if (lineNum == null) { result.Add(line); continue; }
-            string transformed = TransformOutsideStrings(code, ShortenIntegers);
+            string transformed = TransformOutsideStringsAndData(code, ShortenIntegers);
             result.Add(lineNum + " " + transformed);
         }
         return JoinLines(result);
@@ -140,8 +143,9 @@ public static class CodeMinifier
             // Drop lines whose entire statement is REM
             if (IsRemStatement(code.TrimStart())) continue;
 
-            // Strip ": REM ..." from the end of compound lines
-            string stripped = StripInlineRem(code).TrimEnd();
+            // Strip ": REM ..." from the end of compound lines (but never from inside a
+            // DATA statement, where a literal ": REM" is just data text, not a real comment)
+            string stripped = StripInlineRemOutsideData(code).TrimEnd();
 
             // Redirect any references that previously pointed at removed REM lines
             if (redirectMap.Count > 0)
@@ -163,7 +167,7 @@ public static class CodeMinifier
             var (lineNum, code) = SplitBasicLine(line);
             if (lineNum == null) { result.Add(line); continue; }
             // NEXT I  →  NEXT,   NEXT I,J,K  →  NEXT
-            string simplified = TransformOutsideStrings(code,
+            string simplified = TransformOutsideStringsAndData(code,
                 s => Regex.Replace(s,
                     @"\bNEXT\s+[A-Z][A-Z0-9$]*(?:\s*,\s*[A-Z][A-Z0-9$]*)*",
                     "NEXT",
@@ -228,6 +232,64 @@ public static class CodeMinifier
 
     #region Private Methods
 
+    // Applies transform only to the segments of `code` that lie outside string literals and
+    // before any DATA statement. DATA consumes the rest of the physical line - colons included
+    // - exactly like REM, so from the DATA keyword onward the text is left completely
+    // untouched: minifying it could silently corrupt unquoted string data (whitespace removal)
+    // or numeric values the program depends on matching exactly (0-to-period, scientific
+    // notation, NEXT-variable simplification).
+    private static string TransformOutsideStringsAndData(string code, Func<string, string> transform)
+    {
+        var (before, dataPart) = SplitAtData(code);
+        return TransformOutsideStrings(before, transform) + dataPart;
+    }
+
+    // Splits `code` at the start of a DATA keyword that lies outside string literals, returning
+    // the untouched remainder (including the DATA keyword itself) as the second element, or an
+    // empty second element if the line has no DATA statement.
+    private static (string before, string dataPart) SplitAtData(string code)
+    {
+        int idx = FindDataKeywordStart(code);
+        return idx < 0 ? (code, "") : (code[..idx], code[idx..]);
+    }
+
+    // Trims the run of spaces immediately after "DATA" (up to the first non-space character),
+    // mirroring the space already dropped between the line number and the first token - C64
+    // BASIC does not require it, and READ skips leading spaces on each data item anyway. Any
+    // other whitespace within the DATA statement is left untouched since it may be
+    // significant (e.g. spaces inside unquoted string data).
+    private static string TrimDataLeadingSpace(string dataPart)
+    {
+        if (dataPart.Length == 0) return dataPart;
+        int i = 4; // length of "DATA"
+        while (i < dataPart.Length && dataPart[i] == ' ') i++;
+        return dataPart[..4] + dataPart[i..];
+    }
+
+    // Finds the index of a "DATA" keyword outside string literals, or -1 if there isn't one.
+    // No check on the character following "DATA": BasicTokenizer's real CRUNCH-equivalent
+    // keyword scan has no such boundary either (it greedily matches "DATA" wherever it
+    // appears), and minify itself produces exactly that shape - "DATA" glued directly to its
+    // first value once the leading space is trimmed - so requiring a separator there would
+    // make the DATA statement unrecognizable, and thus unprotected, on a second minify pass.
+    private static int FindDataKeywordStart(string code)
+    {
+        bool inString = false;
+        for (int i = 0; i < code.Length; i++)
+        {
+            char c = code[i];
+            if (c == '"') { inString = !inString; continue; }
+            if (inString) continue;
+
+            if (i + 4 <= code.Length && code.AsSpan(i, 4).Equals("DATA", StringComparison.OrdinalIgnoreCase))
+            {
+                bool precededOk = i == 0 || !char.IsLetterOrDigit(code[i - 1]);
+                if (precededOk) return i;
+            }
+        }
+        return -1;
+    }
+
     // Applies transform only to the segments of `code` that lie outside string literals.
     private static string TransformOutsideStrings(string code, Func<string, string> transform)
     {
@@ -256,6 +318,15 @@ public static class CodeMinifier
     {
         if (!code.StartsWith("REM", StringComparison.OrdinalIgnoreCase)) return false;
         return code.Length == 3 || code[3] == ' ' || code[3] == '\t';
+    }
+
+    // Same as StripInlineRem, but never looks inside a DATA statement for a trailing ": REM"
+    // to strip, since DATA consumes the rest of the line and a literal ": REM" there is just
+    // data text, not a real comment.
+    private static string StripInlineRemOutsideData(string code)
+    {
+        var (before, dataPart) = SplitAtData(code);
+        return StripInlineRem(before) + dataPart;
     }
 
     private static string StripInlineRem(string code)

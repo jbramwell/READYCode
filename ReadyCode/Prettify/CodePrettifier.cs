@@ -297,24 +297,15 @@ public static class CodePrettifier
                     break;
                 }
 
-                // DATA: emit values compactly — no spaces around commas.
-                // In C64 BASIC, DATA extends to end of the logical line.
-                // String literals inside DATA are preserved verbatim (spaces included).
+                // DATA: normalize the single space after the keyword, then copy the rest of
+                // the line verbatim. In C64 BASIC, DATA extends to end of the logical line,
+                // and any spacing within it - around commas, or inside unquoted string data
+                // (e.g. "DATA HELLO WORLD") - may be meaningful and must not be altered.
                 if (kw.Equals("DATA", StringComparison.OrdinalIgnoreCase))
                 {
-                    while (i < code.Length && code[i] == ' ') i++; // skip leading spaces
-                    if (i < code.Length) sb.Append(' ');            // one space before values
-                    while (i < code.Length)
-                    {
-                        if (code[i] == ' ') { i++; continue; }     // strip spaces around commas
-                        if (code[i] == '"')
-                        {
-                            sb.Append('"'); i++;
-                            while (i < code.Length && code[i] != '"') sb.Append(code[i++]);
-                            if (i < code.Length) { sb.Append('"'); i++; }
-                        }
-                        else { sb.Append(code[i++]); }
-                    }
+                    while (i < code.Length && code[i] == ' ') i++; // collapse to one leading space
+                    if (i < code.Length) sb.Append(' ');
+                    while (i < code.Length) sb.Append(code[i++]);
                     break;
                 }
 
