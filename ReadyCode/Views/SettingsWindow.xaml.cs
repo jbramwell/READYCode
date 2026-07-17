@@ -28,7 +28,11 @@ public partial class SettingsWindow : Window
     /// Initializes a new instance of the <see cref="SettingsWindow"/> class.
     /// </summary>
     /// <param name="settings">The application settings to edit.</param>
-    public SettingsWindow(AppSettings settings)
+    /// <param name="initialSection">
+    /// The tag of the tree node to select when the dialog opens (see the <c>Tag</c> values in
+    /// SettingsWindow.xaml), or null for the default "Application &gt; General" node.
+    /// </param>
+    public SettingsWindow(AppSettings settings, string? initialSection = null)
     {
         _settings = settings;
 
@@ -47,7 +51,7 @@ public partial class SettingsWindow : Window
 
         ContentRendered += (_, _) => Opacity = 1;
 
-        Loaded += (_, _) => TreeAppGeneral.IsSelected = true;
+        Loaded += (_, _) => SelectInitialSection(initialSection);
     }
 
     #endregion
@@ -90,6 +94,22 @@ public partial class SettingsWindow : Window
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
 
     // ── Tree navigation ──────────────────────────────────────────────────────
+
+    // Selects the tree node matching the given tag (see the Tag values in SettingsWindow.xaml),
+    // or "Application > General" if the tag is null or unrecognized.
+    private void SelectInitialSection(string? tag)
+    {
+        TreeViewItem item = tag switch
+        {
+            "general"     => TreeGeneral,
+            "formatting"  => TreeFormatting,
+            "code-minify" => TreeMinify,
+            "c64u"        => TreeC64U,
+            "vice"        => TreeVice,
+            _             => TreeAppGeneral,
+        };
+        item.IsSelected = true;
+    }
 
     private void SettingsTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {

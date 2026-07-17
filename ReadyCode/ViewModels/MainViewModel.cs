@@ -1037,7 +1037,7 @@ public class MainViewModel : INotifyPropertyChanged
             var prgData = converter.ConvertToPrg(PrepareCodeForTransfer(text));
 
             var client = new ViceClient(Settings.ViceMonitorHost, Settings.ViceMonitorPort);
-            await client.TransferAsync(Settings.ViceEmulatorPath, prgData);
+            await client.TransferAsync(Settings.ViceEmulatorPath, prgData, ActiveTab!.FileName, Settings.ViceBringToForeground);
 
             SetStatus("Program transferred to VICE. Type RUN in the emulator to start it.");
         }
@@ -1071,7 +1071,7 @@ public class MainViewModel : INotifyPropertyChanged
 
             SetStatus("Transferring program to VICE…");
 
-            await client.RunAsync(Settings.ViceEmulatorPath, prgData);
+            await client.RunAsync(Settings.ViceEmulatorPath, prgData, ActiveTab!.FileName, Settings.ViceBringToForeground);
 
             SetStatus("Program transferred and running on VICE.", StatusType.Info);
         }

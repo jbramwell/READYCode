@@ -44,6 +44,11 @@ public class AppSettings
     public int ViceMonitorPort { get; set; } = 6502;
 
     /// <summary>
+    /// Whether to bring the VICE window to the foreground when loading or running a program.
+    /// </summary>
+    public bool ViceBringToForeground { get; set; } = true;
+
+    /// <summary>
     /// Whether to show a vertical column guide line at the specified column in the editor.
     /// </summary>
     public bool ShowColumnGuide { get; set; } = true;

@@ -3,7 +3,9 @@
 
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 
 namespace ReadyCode.Vice;
 
@@ -23,6 +25,7 @@ public class ViceClient
     private const byte _resetCommand = 0xcc;
     private const byte _infoCommand = 0x85;
     private const uint _requestId = 1;
+    private const int _swRestore = 9;
 
     // Holds a binary monitor connection across a Pause/Resume cycle. VICE has no dedicated
     // pause command; stepping a single instruction forces the CPU into the monitor's stopped
@@ -59,10 +62,15 @@ public class ViceClient
     /// </summary>
     /// <param name="emulatorPath">Full path to the VICE emulator executable (e.g. x64sc.exe).</param>
     /// <param name="prgData">The PRG-format program data to transfer.</param>
-    public async Task TransferAsync(string emulatorPath, byte[] prgData)
+    /// <param name="programName">
+    /// The name shown by VICE's LOAD prompt while transferring, typically the open tab's
+    /// file name (with or without extension).
+    /// </param>
+    /// <param name="bringToForeground">Whether to bring the VICE window to the foreground afterward.</param>
+    public async Task TransferAsync(string emulatorPath, byte[] prgData, string programName, bool bringToForeground)
     {
-        string prgFile = WritePrgToTempFile(prgData);
-        await SendAutostartAsync(emulatorPath, prgFile, runAfterLoading: false);
+        string prgFile = WritePrgToTempFile(prgData, programName);
+        await SendAutostartAsync(emulatorPath, prgFile, runAfterLoading: false, bringToForeground);
     }
 
     /// <summary>
@@ -70,10 +78,15 @@ public class ViceClient
     /// </summary>
     /// <param name="emulatorPath">Full path to the VICE emulator executable (e.g. x64sc.exe).</param>
     /// <param name="prgData">The PRG-format program data to run.</param>
-    public async Task RunAsync(string emulatorPath, byte[] prgData)
+    /// <param name="programName">
+    /// The name shown by VICE's LOAD prompt while transferring, typically the open tab's
+    /// file name (with or without extension).
+    /// </param>
+    /// <param name="bringToForeground">Whether to bring the VICE window to the foreground afterward.</param>
+    public async Task RunAsync(string emulatorPath, byte[] prgData, string programName, bool bringToForeground)
     {
-        string prgFile = WritePrgToTempFile(prgData);
-        await SendAutostartAsync(emulatorPath, prgFile, runAfterLoading: true);
+        string prgFile = WritePrgToTempFile(prgData, programName);
+        await SendAutostartAsync(emulatorPath, prgFile, runAfterLoading: true, bringToForeground);
     }
 
     /// <summary>
@@ -189,7 +202,7 @@ public class ViceClient
 
     // Sends the binary monitor's "Autostart/Autoload" command (0xdd) to a running VICE
     // instance, starting one first if the monitor isn't already listening.
-    private async Task SendAutostartAsync(string emulatorPath, string prgFilePath, bool runAfterLoading)
+    private async Task SendAutostartAsync(string emulatorPath, string prgFilePath, bool runAfterLoading, bool bringToForeground)
     {
         await EnsureViceRunningAsync(emulatorPath);
 
@@ -201,7 +214,35 @@ public class ViceClient
         fileNameBytes.CopyTo(body, 4);                  // FN: filename
 
         await SendOneShotCommandAsync(BuildRequest(_autostartCommand, body));
+
+        if (bringToForeground)
+            BringViceToForeground(emulatorPath);
     }
+
+    // Activates the VICE window so it's visible immediately after a transfer/run, whether it was
+    // just launched or an already-running instance was reused (in which case no Process handle
+    // from this call is available, so the window is located by the emulator's image name instead).
+    private static void BringViceToForeground(string emulatorPath)
+    {
+        string imageName = Path.GetFileNameWithoutExtension(emulatorPath);
+        var process = Process.GetProcessesByName(imageName)
+            .FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero);
+        if (process == null) return;
+
+        if (IsIconic(process.MainWindowHandle))
+            ShowWindow(process.MainWindowHandle, _swRestore);
+
+        SetForegroundWindow(process.MainWindowHandle);
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hWnd);
 
     // Connects to VICE's binary monitor, sends a prebuilt request, reads the error code,
     // and disposes the connection. Callers are responsible for ensuring VICE is running first.
@@ -346,9 +387,22 @@ public class ViceClient
         return buffer;
     }
 
-    private static string WritePrgToTempFile(byte[] prgData)
+    // Names the temp file after the given program name (stripped of any extension and
+    // sanitized for the filesystem) since VICE's autostart LOAD prompt displays the host
+    // file's base name rather than anything embedded in the PRG data itself. Lower-cased
+    // because VICE's autostart "types" the name as unshifted keystrokes, which is how it
+    // produces uppercase PETSCII on screen - uppercase ASCII input maps to shifted
+    // keystrokes instead and renders as graphics symbols.
+    private static string WritePrgToTempFile(byte[] prgData, string programName)
     {
-        string path = Path.Combine(Path.GetTempPath(), "readycode.prg");
+        string baseName = Path.GetFileNameWithoutExtension(programName).ToLowerInvariant();
+        foreach (char c in Path.GetInvalidFileNameChars())
+            baseName = baseName.Replace(c, '_');
+
+        if (string.IsNullOrWhiteSpace(baseName))
+            baseName = "readycode";
+
+        string path = Path.Combine(Path.GetTempPath(), $"{baseName}.prg");
         File.WriteAllBytes(path, prgData);
         return path;
     }

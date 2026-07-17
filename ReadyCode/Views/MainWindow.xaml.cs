@@ -1051,7 +1051,9 @@ public partial class MainWindow : Window
 
         // Intercept Ctrl+C/X/V when the editor is focused so PETSCII control
         // characters (C0/C1 Unicode range) survive the Windows clipboard round-trip.
-        if (Editor.IsKeyboardFocusWithin)
+        // Skipped while a Ctrl+K chord is pending so Ctrl+K, Ctrl+C can complete as
+        // "Comment Selection" instead of being swallowed here as a plain copy.
+        if (Editor.IsKeyboardFocusWithin && !_chordCtrlKActive)
         {
             if (e.Key == Key.C && Keyboard.Modifiers == ModifierKeys.Control)
             { ExecuteEditorCopy();  e.Handled = true; return; }
@@ -1553,7 +1555,7 @@ public partial class MainWindow : Window
 
     private async void C64UConnect_Click(object sender, RoutedEventArgs e) => await ViewModel.ConnectToC64UAsync();
 
-    private void C64USettingsHeader_Click(object sender, RoutedEventArgs e) => SettingsPreferences_Click(sender, e);
+    private void C64USettingsHeader_Click(object sender, RoutedEventArgs e) => OpenSettingsDialog("c64u");
 
     private async void C64URefreshToolbar_Click(object sender, RoutedEventArgs e) => await ViewModel.RefreshC64UFolderAsync();
 
@@ -2643,6 +2645,12 @@ public partial class MainWindow : Window
         Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{item.FullPath}\"") { UseShellExecute = true });
     }
 
+    private void FileContextOpen_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item != null) OpenFileByPath(item.FullPath);
+    }
+
     private void FileContextCut_Click(object sender, RoutedEventArgs e)
     {
         var item = GetContextItem(sender);
@@ -3122,9 +3130,13 @@ public partial class MainWindow : Window
 
     #region Settings
 
-    private void SettingsPreferences_Click(object sender, RoutedEventArgs e)
+    private void SettingsPreferences_Click(object sender, RoutedEventArgs e) => OpenSettingsDialog();
+
+    // Opens the Settings dialog to the given tree section (see the Tag values in
+    // SettingsWindow.xaml), or the default "Application > General" section if omitted.
+    private void OpenSettingsDialog(string? initialSection = null)
     {
-        var dialog = new SettingsWindow(ViewModel.Settings) { Owner = this };
+        var dialog = new SettingsWindow(ViewModel.Settings, initialSection) { Owner = this };
 
         if (dialog.ShowDialog() == true)
         {

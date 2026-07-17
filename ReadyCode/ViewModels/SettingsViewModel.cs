@@ -22,6 +22,7 @@ public class SettingsViewModel : INotifyPropertyChanged
     private string _viceEmulatorPath;
     private string _viceMonitorHost;
     private string _viceMonitorPortText;
+    private bool _viceBringToForeground;
     private string _lineNumberPaddingText;
     private bool _autoNumberLines;
     private string _autoNumberIncrementText;
@@ -57,6 +58,7 @@ public class SettingsViewModel : INotifyPropertyChanged
         _viceEmulatorPath = settings.ViceEmulatorPath;
         _viceMonitorHost = settings.ViceMonitorHost;
         _viceMonitorPortText = settings.ViceMonitorPort.ToString();
+        _viceBringToForeground = settings.ViceBringToForeground;
         _lineNumberPaddingText = settings.LineNumberPadding.ToString();
         _autoNumberLines = settings.AutoNumberLines;
         _autoNumberIncrementText = settings.AutoNumberIncrement.ToString();
@@ -217,6 +219,15 @@ public class SettingsViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Gets or sets whether to bring the VICE window to the foreground when loading or running a program.
+    /// </summary>
+    public bool ViceBringToForeground
+    {
+        get => _viceBringToForeground;
+        set { if (_viceBringToForeground == value) return; _viceBringToForeground = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>
     /// Gets or sets the line number zero-padding digit count, as entered text, before validation.
     /// </summary>
     public string LineNumberPaddingText
@@ -370,6 +381,7 @@ public class SettingsViewModel : INotifyPropertyChanged
         settings.ViceEmulatorPath = ViceEmulatorPath.Trim();
         settings.ViceMonitorHost = ViceMonitorHost.Trim();
         settings.ViceMonitorPort = int.Parse(ViceMonitorPortText);
+        settings.ViceBringToForeground = ViceBringToForeground;
         settings.LineNumberPadding = int.Parse(LineNumberPaddingText);
         settings.AutoNumberLines = AutoNumberLines;
         settings.AutoNumberIncrement = int.Parse(AutoNumberIncrementText);

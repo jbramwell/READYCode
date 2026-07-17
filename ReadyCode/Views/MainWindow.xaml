@@ -140,6 +140,24 @@
             <MenuItem Header="Delete"     InputGestureText="Delete" Click="FileContextDelete_Click"/>
         </ContextMenu>
 
+        <!-- Context menu for .prg files confirmed to be BASIC in the Explorer tree - same as
+             FileContextMenu but with an "Open in editor" item, matching double-click. -->
+        <ContextMenu x:Key="FilePrgContextMenu" Opened="PasteContextMenu_Opened">
+            <MenuItem Header="Reveal in File Explorer" Click="FileContextReveal_Click"/>
+            <Separator/>
+            <MenuItem Header="Open in editor" Click="FileContextOpen_Click"/>
+            <Separator/>
+            <MenuItem Header="Cut"   InputGestureText="Ctrl+X" Click="FileContextCut_Click"/>
+            <MenuItem Header="Copy"  InputGestureText="Ctrl+C" Click="FileContextCopy_Click"/>
+            <MenuItem Header="Paste" InputGestureText="Ctrl+V" Click="FileContextPaste_Click"/>
+            <Separator/>
+            <MenuItem Header="Copy Path"          Click="FileContextCopyPath_Click"/>
+            <MenuItem Header="Copy Relative Path" Click="FileContextCopyRelativePath_Click"/>
+            <Separator/>
+            <MenuItem Header="Rename..."  InputGestureText="F2"     Click="FileContextRename_Click"/>
+            <MenuItem Header="Delete"     InputGestureText="Delete" Click="FileContextDelete_Click"/>
+        </ContextMenu>
+
         <!-- Context menu for "virtual" runnable entries found inside a mounted .d64 image in
              the Folder Explorer tree -->
         <ContextMenu x:Key="LocalDiskEntryContextMenu">
@@ -158,10 +176,12 @@
         <!-- Context menu for .bas/.prg items in the C64U tree -->
         <ContextMenu x:Key="C64URunnableFileContextMenu">
             <MenuItem Header="Open in editor" Click="C64UFileContextOpen_Click"/>
+            <Separator/>
             <MenuItem Header="Run on C64U"    Click="C64UFileContextRun_Click"/>
             <MenuItem Header="Load (no run)"  Click="C64UFileContextLoad_Click"/>
             <Separator/>
             <MenuItem Header="Download to PC" Click="C64UFileContextDownload_Click"/>
+            <Separator/>
             <MenuItem Header="Rename..."  InputGestureText="F2"     Click="C64UContextRename_Click"/>
             <MenuItem Header="Delete"     InputGestureText="Delete" Click="C64UContextDelete_Click"/>
         </ContextMenu>
@@ -169,6 +189,7 @@
         <!-- Context menu for non-runnable, non-disk-image items in the C64U tree -->
         <ContextMenu x:Key="C64UOtherFileContextMenu">
             <MenuItem Header="Download to PC" Click="C64UFileContextDownload_Click"/>
+            <Separator/>
             <MenuItem Header="Rename..."  InputGestureText="F2"     Click="C64UContextRename_Click"/>
             <MenuItem Header="Delete"     InputGestureText="Delete" Click="C64UContextDelete_Click"/>
         </ContextMenu>
@@ -179,6 +200,7 @@
             <MenuItem Header="Mount to Drive B" Click="C64UFileContextMountB_Click"/>
             <Separator/>
             <MenuItem Header="Download to PC" Click="C64UFileContextDownload_Click"/>
+            <Separator/>
             <MenuItem Header="Rename..."  InputGestureText="F2"     Click="C64UContextRename_Click"/>
             <MenuItem Header="Delete"     InputGestureText="Delete" Click="C64UContextDelete_Click"/>
         </ContextMenu>
@@ -752,7 +774,7 @@
             </MenuItem>
 
             <MenuItem Header="C64_U" Visibility="{Binding ViewModel.ShowC64UMenu, Converter={StaticResource BoolToVisibility}}">
-                <MenuItem Header="_Transfer" Command="{Binding ViewModel.C64UTransferCommand}" InputGestureText="Ctrl+F5"/>
+                <MenuItem Header="_Load" Command="{Binding ViewModel.C64UTransferCommand}" InputGestureText="Ctrl+F5"/>
                 <MenuItem Header="_Run"      Command="{Binding ViewModel.C64URunCommand}" InputGestureText="F5">
                     <MenuItem.Icon><TextBlock Text="&#xE768;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
                 </MenuItem>
@@ -767,7 +789,7 @@
             </MenuItem>
 
             <MenuItem Header="VI_CE" Visibility="{Binding ViewModel.ShowViceMenu, Converter={StaticResource BoolToVisibility}}">
-                <MenuItem Header="_Transfer" Command="{Binding ViewModel.ViceTransferCommand}" InputGestureText="Ctrl+Alt+F5"/>
+                <MenuItem Header="_Load" Command="{Binding ViewModel.ViceTransferCommand}" InputGestureText="Ctrl+Alt+F5"/>
                 <MenuItem Header="_Run"      Command="{Binding ViewModel.ViceRunCommand}" InputGestureText="Alt+F5">
                     <MenuItem.Icon><TextBlock Text="&#xE768;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
                 </MenuItem>
@@ -1029,6 +1051,11 @@
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding IsFolder}" Value="False">
                                         <Setter Property="ContextMenu" Value="{StaticResource FileContextMenu}"/>
+                                    </DataTrigger>
+                                    <!-- .prg files confirmed to be BASIC get an "Open in editor" item; declared
+                                         after the IsFolder=False trigger above so it wins for this Kind. -->
+                                    <DataTrigger Binding="{Binding Kind}" Value="Prg">
+                                        <Setter Property="ContextMenu" Value="{StaticResource FilePrgContextMenu}"/>
                                     </DataTrigger>
                                     <!-- "Virtual" entries live only inside a disk image - Cut/Copy/Paste/Rename/
                                          Delete/Reveal above don't apply, so these two triggers, declared last,

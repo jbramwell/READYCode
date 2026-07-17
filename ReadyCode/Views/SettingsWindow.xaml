@@ -574,9 +574,15 @@
                                        Text="Commodore  ›  VICE Emulator"/>
 
                             <Border Style="{StaticResource SettingRow}">
-                                <CheckBox Content="Show VICE Menu"
-                                          FontSize="12"
-                                          IsChecked="{Binding ShowViceMenu}"/>
+                                <StackPanel>
+                                    <CheckBox Content="Show VICE Menu"
+                                              FontSize="12"
+                                              Margin="0,0,0,8"
+                                              IsChecked="{Binding ShowViceMenu}"/>
+                                    <CheckBox Content="Bring VICE to the foreground when loading/running a program"
+                                              FontSize="12"
+                                              IsChecked="{Binding ViceBringToForeground}"/>
+                                </StackPanel>
                             </Border>
 
                             <Border Style="{StaticResource SettingRow}">
