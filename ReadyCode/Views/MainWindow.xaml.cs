@@ -148,6 +148,7 @@ public partial class MainWindow : Window
         EditMakeLowercaseCommand = new RelayCommand(_ => ExecuteChangeSelectionCase(upper: false), _ => HasNonEmptyActiveTab());
         EditMinifyCommand    = new RelayCommand(_ => ExecuteMinifyCode(), _ => HasNonEmptyActiveTab());
         EditPrettifyCommand  = new RelayCommand(_ => ExecutePrettifyCode(), _ => HasNonEmptyActiveTab());
+        EditRenumberCommand  = new RelayCommand(_ => ExecuteRenumberCode(), _ => HasNonEmptyActiveTab());
         EditGoToLineCommand  = new RelayCommand(_ => ExecuteGoToLine(), _ => HasNonEmptyActiveTab());
         GoToDefinitionCommand = new RelayCommand(_ => ExecuteGoToGotoTarget(), _ => HasNonEmptyActiveTab());
         PreferencesSettingsCommand = new RelayCommand(_ => SettingsPreferences_Click(this, new RoutedEventArgs()));
@@ -350,6 +351,8 @@ public partial class MainWindow : Window
     public ICommand EditMinifyCommand    { get; }
     /// <summary>Gets the command that opens the Prettify dialog.</summary>
     public ICommand EditPrettifyCommand  { get; }
+    /// <summary>Gets the command that opens the Renumber dialog.</summary>
+    public ICommand EditRenumberCommand  { get; }
     /// <summary>Gets the command that opens the Go To Line dialog.</summary>
     public ICommand EditGoToLineCommand  { get; }
     /// <summary>Gets the command that jumps to the BASIC line targeted by the GOTO/GOSUB line number under the caret.</summary>
@@ -1198,10 +1201,48 @@ public partial class MainWindow : Window
         ViewModel.SetStatus("Code prettified.");
     }
 
+    // ── Renumber ─────────────────────────────────────────────────────────────
+
+    private void ExecuteRenumberCode()
+    {
+        var doc = Editor.Document;
+        if (doc == null || string.IsNullOrWhiteSpace(doc.Text)) return;
+
+        int increment = ViewModel.Settings.AutoNumberIncrement;
+        int padding   = ViewModel.Settings.LineNumberPadding;
+        string renumbered = CodePrettifier.RenumberLines(doc.Text, increment, increment, padding);
+
+        if (renumbered == doc.Text)
+        {
+            ViewModel.SetStatus("No changes — line numbers are already sequential.");
+            return;
+        }
+
+        // Renumbering can't fix a reference to a line number that never existed - it's left
+        // unchanged, so warn rather than silently applying a renumber with dangling references.
+        int danglingCount = BasicDiagnostics.Analyze(renumbered)
+            .Count(d => d.Message.EndsWith("does not exist."));
+        if (danglingCount > 0)
+        {
+            var result = MessageBox.Show(
+                $"{danglingCount} GOTO/GOSUB/THEN reference(s) point to line numbers that don't exist " +
+                "and will be left unchanged. Apply the renumber anyway?",
+                "Renumber Code", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (result != MessageBoxResult.Yes) return;
+        }
+
+        doc.BeginUpdate();
+        try { doc.Text = renumbered; }
+        finally { doc.EndUpdate(); }
+
+        ViewModel.SetStatus("Code renumbered.");
+    }
+
     // ── Editor context menu ───────────────────────────────────────────────────
 
-    private void EditorContextMinify_Click(object sender, RoutedEventArgs e)   => ExecuteMinifyCode();
-    private void EditorContextPrettify_Click(object sender, RoutedEventArgs e) => ExecutePrettifyCode();
+    private void EditorContextMinify_Click(object sender, RoutedEventArgs e)    => ExecuteMinifyCode();
+    private void EditorContextPrettify_Click(object sender, RoutedEventArgs e)  => ExecutePrettifyCode();
+    private void EditorContextRenumber_Click(object sender, RoutedEventArgs e)  => ExecuteRenumberCode();
 
     // ── Comment / Uncomment ──────────────────────────────────────────────────
 

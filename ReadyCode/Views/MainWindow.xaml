@@ -103,6 +103,7 @@
             <Separator/>
             <MenuItem Header="Minify Code"   InputGestureText="Ctrl+M"       Click="EditorContextMinify_Click"/>
             <MenuItem Header="Prettify Code" InputGestureText="Ctrl+Shift+M" Click="EditorContextPrettify_Click"/>
+            <MenuItem Header="Renumber Code" InputGestureText="Ctrl+R" Click="EditorContextRenumber_Click"/>
         </ContextMenu>
 
         <!-- Context menu for the root Explorer header -->
@@ -601,6 +602,7 @@
         <KeyBinding Key="U" Modifiers="Ctrl+Shift" Command="{Binding EditMakeUppercaseCommand}"/>
         <KeyBinding Key="M" Modifiers="Ctrl"       Command="{Binding EditMinifyCommand}"/>
         <KeyBinding Key="M" Modifiers="Ctrl+Shift" Command="{Binding EditPrettifyCommand}"/>
+        <KeyBinding Key="R" Modifiers="Ctrl"       Command="{Binding EditRenumberCommand}"/>
         <KeyBinding Key="F" Modifiers="Ctrl" Command="{Binding EditFindCommand}"/>
         <KeyBinding Key="H" Modifiers="Ctrl" Command="{Binding EditReplaceCommand}"/>
 
@@ -736,6 +738,7 @@
                 <Separator/>
                 <MenuItem Header="Minif_y Code"   Command="{Binding EditMinifyCommand}"   InputGestureText="Ctrl+M"/>
                 <MenuItem Header="Prett_ify Code" Command="{Binding EditPrettifyCommand}" InputGestureText="Ctrl+Shift+M"/>
+                <MenuItem Header="Renu_mber Code" Command="{Binding EditRenumberCommand}" InputGestureText="Ctrl+R"/>
                 <Separator/>
                 <MenuItem Header="_Find"    Command="{Binding EditFindCommand}"    InputGestureText="Ctrl+F">
                     <MenuItem.Icon><TextBlock Text="&#xE721;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>

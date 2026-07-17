@@ -126,28 +126,6 @@
             BorderThickness="1">
         <DockPanel>
 
-            <!-- Custom title bar -->
-            <Border DockPanel.Dock="Top"
-                    Background="{DynamicResource ThemeSettingsFooterBg}"
-                    BorderBrush="{DynamicResource ThemeSettingsFooterBorder}"
-                    BorderThickness="0,0,0,1"
-                    Height="34"
-                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-                <DockPanel>
-                    <Button DockPanel.Dock="Right"
-                            Style="{StaticResource TitleBarCloseButton}"
-                            Width="46"
-                            FontSize="14"
-                            Content="✕"
-                            Click="CloseButton_Click"/>
-                    <TextBlock Text="READYCode — Prettify Code"
-                               FontSize="13"
-                               VerticalAlignment="Center"
-                               Margin="12,0,0,0"
-                               Foreground="{DynamicResource ThemeSettingsBreadcrumbFg}"/>
-                </DockPanel>
-            </Border>
-
             <!-- Footer with Prettify / Cancel buttons -->
             <Border DockPanel.Dock="Bottom"
                     BorderBrush="{DynamicResource ThemeSettingsFooterBorder}"
