@@ -39,14 +39,6 @@ public class BasicTokenizer
 {
     #region Private Fields
 
-    // Keywords sorted longest-first so that PRINT# is tried before PRINT, etc.
-    private static readonly (string Keyword, byte Token)[] _sortedKeywords =
-        BasicTokens.TokenMap
-            .OrderByDescending(kv => kv.Key.Length)
-            .ThenBy(kv => kv.Key, StringComparer.Ordinal)
-            .Select(kv => (kv.Key, kv.Value))
-            .ToArray();
-
     private static readonly byte _remToken = BasicTokens.TokenMap["REM"];
 
     #endregion
@@ -93,17 +85,11 @@ public class BasicTokenizer
 
                 // Greedy keyword scan — mirrors the C64 BASIC CRUNCH routine.
                 // Try every keyword at the current position, keeping the longest match.
-                bool matched = false;
-                foreach (var (keyword, token) in _sortedKeywords)
+                if (BasicTokens.TryMatchKeyword(line, pos, BasicTokens.AllKeywordsLongestFirst, out string keyword))
                 {
-                    if (pos + keyword.Length > line.Length) continue;
-                    if (!line.AsSpan(pos, keyword.Length)
-                              .Equals(keyword.AsSpan(), StringComparison.OrdinalIgnoreCase))
-                        continue;
-
+                    byte token = BasicTokens.TokenMap[keyword];
                     tokens.Add(token);
                     pos += keyword.Length;
-                    matched = true;
 
                     // After REM the rest of the line is a comment — copy verbatim.
                     if (token == _remToken)
@@ -114,10 +100,8 @@ public class BasicTokenizer
                         while (pos < line.Length)
                             tokens.Add((byte)line[pos++]);
                     }
-                    break;
                 }
-
-                if (!matched)
+                else
                 {
                     // Literal character (variable name letter, digit, punctuation …).
                     // Uppercase so variable names survive the round-trip.

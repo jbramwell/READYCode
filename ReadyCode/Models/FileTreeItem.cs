@@ -6,7 +6,6 @@ using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
 using ReadyCode.C64U;
-using ReadyCode.Tokenizer;
 
 namespace ReadyCode.Models;
 
@@ -37,7 +36,7 @@ public class FileTreeItem : INotifyPropertyChanged
         Name = Path.GetFileName(path);
         if (string.IsNullOrEmpty(Name)) Name = path;
         IsFolder = isFolder;
-        Kind = DetermineKind(path, isFolder);
+        Kind = FileClassifier.Classify(path, isFolder, () => File.ReadAllBytes(path));
 
         // Placeholder child so WPF shows the expand toggle arrow on folders and .d64 disk images.
         // LoadChildren() removes it on first expansion before WPF renders.
@@ -310,31 +309,6 @@ public class FileTreeItem : INotifyPropertyChanged
     #endregion
 
     #region Private Methods
-
-    private static C64UFileKind DetermineKind(string path, bool isFolder)
-    {
-        if (isFolder) return C64UFileKind.Folder;
-
-        switch (Path.GetExtension(path).ToLowerInvariant())
-        {
-            case ".bas": return C64UFileKind.Bas;
-            case ".d64": return C64UFileKind.D64;
-            case ".d81": return C64UFileKind.D81;
-            case ".prg":
-                try
-                {
-                    var bytes = File.ReadAllBytes(path);
-                    return new PrgConverter().IsBasicProgram(bytes) ? C64UFileKind.Prg : C64UFileKind.Ml;
-                }
-                catch
-                {
-                    // Couldn't read the file (locked, permissions, etc.) - fall back to the
-                    // previous always-treat-.prg-as-runnable behavior rather than guessing wrong.
-                    return C64UFileKind.Prg;
-                }
-            default: return C64UFileKind.Other;
-        }
-    }
 
     private void OnPropertyChanged([CallerMemberName] string? p = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(p));

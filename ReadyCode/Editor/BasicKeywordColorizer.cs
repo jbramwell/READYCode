@@ -15,19 +15,6 @@ namespace ReadyCode.Editor;
 /// </summary>
 public class BasicKeywordColorizer : DocumentColorizingTransformer
 {
-    #region Private Fields
-
-    // All word-style keywords (start with a letter), sorted longest-first so that greedy
-    // matching picks the right one when keywords share a prefix (GOSUB before GO,
-    // PRINT# before PRINT, RESTORE before REM, LEFT$ before LET, etc.).
-    private static readonly string[] _keywords =
-        BasicTokens.TokenMap.Keys
-            .Where(k => char.IsLetter(k[0]))
-            .OrderByDescending(k => k.Length)
-            .ToArray();
-
-    #endregion
-
     #region Public Properties
 
     /// <summary>
@@ -67,34 +54,17 @@ public class BasicKeywordColorizer : DocumentColorizingTransformer
             }
 
             // At a letter outside a string: try the longest keyword that fits here.
-            bool matched = false;
-            foreach (string keyword in _keywords)
+            if (BasicTokens.TryMatchKeyword(text, i, BasicTokens.WordKeywordsLongestFirst, out string keyword))
             {
-                int kwLen = keyword.Length;
-                if (i + kwLen > text.Length) continue;
-
-                bool isMatch = true;
-                for (int k = 0; k < kwLen; k++)
-                {
-                    if (char.ToUpperInvariant(text[i + k]) != keyword[k])
-                    {
-                        isMatch = false;
-                        break;
-                    }
-                }
-
-                if (!isMatch) continue;
-
                 int absoluteStart = line.Offset + i;
-                ChangeLinePart(absoluteStart, absoluteStart + kwLen,
+                ChangeLinePart(absoluteStart, absoluteStart + keyword.Length,
                     e => e.TextRunProperties.SetForegroundBrush(KeywordBrush));
-                i += kwLen;
-                matched = true;
-                break;
+                i += keyword.Length;
             }
-
-            if (!matched)
+            else
+            {
                 i++;
+            }
         }
     }
 

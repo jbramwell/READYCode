@@ -31,14 +31,6 @@ public class NumberLiteralColorizer : DocumentColorizingTransformer
     private static readonly Regex _numberPattern =
         new(@"(\d+(\.\d+)?|\.\d*)([Ee][+-]?\d+)?", RegexOptions.Compiled);
 
-    // Mirrors BasicKeywordColorizer's keyword list so both colorizers agree on where a
-    // keyword match ends and a raw (variable-name) letter begins.
-    private static readonly string[] _keywords =
-        BasicTokens.TokenMap.Keys
-            .Where(k => char.IsLetter(k[0]))
-            .OrderByDescending(k => k.Length)
-            .ToArray();
-
     #endregion
 
     #region Public Properties
@@ -136,28 +128,10 @@ public class NumberLiteralColorizer : DocumentColorizingTransformer
     #region Private Methods
 
     // Returns the length of the longest keyword matching at position i, or 0 if none match.
-    private static int MatchKeywordLength(string text, int i)
-    {
-        foreach (string keyword in _keywords)
-        {
-            int kwLen = keyword.Length;
-            if (i + kwLen > text.Length) continue;
-
-            bool isMatch = true;
-            for (int k = 0; k < kwLen; k++)
-            {
-                if (char.ToUpperInvariant(text[i + k]) != keyword[k])
-                {
-                    isMatch = false;
-                    break;
-                }
-            }
-
-            if (isMatch) return kwLen;
-        }
-
-        return 0;
-    }
+    private static int MatchKeywordLength(string text, int i) =>
+        BasicTokens.TryMatchKeyword(text, i, BasicTokens.WordKeywordsLongestFirst, out string keyword)
+            ? keyword.Length
+            : 0;
 
     #endregion
 }

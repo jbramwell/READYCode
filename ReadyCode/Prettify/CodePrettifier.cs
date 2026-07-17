@@ -16,14 +16,6 @@ public static class CodePrettifier
 {
     #region Private Fields
 
-    // Keywords sorted longest-first for greedy matching; skip single-char math operators.
-    private static readonly List<string> _spacedKeywords =
-        BasicTokens.TokenMap.Keys
-            .Where(k => !(k.Length == 1 && "+-*/^>=<".Contains(k[0])))
-            .OrderByDescending(k => k.Length)
-            .ThenBy(k => k, StringComparer.Ordinal)
-            .ToList();
-
     // Function/array keywords: don't add a trailing space (the '(' follows immediately).
     private static readonly HashSet<string> _functionKeywords = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -197,64 +189,11 @@ public static class CodePrettifier
                 continue;
             }
 
-            // ── Statement separator ':' — spaced like the operators below, and
-            // also resets to "start of statement" ────────────────────────────
+            // ── Statement separator ':' — resets to "start of statement" ─────
             if (c == ':')
             {
-                if (!prevIsSpace) sb.Append(' ');
-                sb.Append(':'); i++;
-                sb.Append(' ');
-                prevIsSpace = true;
-                continue;
-            }
-
-            // ── "<>", "<=", ">=" — two-char operators; space around the pair,
-            // not between the two characters ──────────────────────────────────
-            if ((c == '<' && i + 1 < code.Length && (code[i + 1] == '>' || code[i + 1] == '=')) ||
-                (c == '>' && i + 1 < code.Length && code[i + 1] == '='))
-            {
-                if (!prevIsSpace) sb.Append(' ');
-                sb.Append(c).Append(code[i + 1]); i += 2;
-                sb.Append(' ');
-                prevIsSpace = true;
-                continue;
-            }
-
-            // ── Comparison operators ─────────────────────────────────────────
-            if (c == '=' || c == '>' || c == '<')
-            {
-                if (!prevIsSpace) sb.Append(' ');
                 sb.Append(c); i++;
-                sb.Append(' ');
                 prevIsSpace = true;
-                continue;
-            }
-
-            // ── Math operators (always binary here) ──────────────────────────
-            if (c == '*' || c == '/' || c == '+' || c == '^')
-            {
-                if (!prevIsSpace) sb.Append(' ');
-                sb.Append(c); i++;
-                sb.Append(' ');
-                prevIsSpace = true;
-                continue;
-            }
-
-            // ── Minus — binary ("A-B" -> "A - B") gets spaced both sides, but
-            // unary ("=-CI" -> "= -CI") stays glued to its operand so it doesn't
-            // read as subtraction from nothing ────────────────────────────────
-            if (c == '-')
-            {
-                if (!prevIsSpace) sb.Append(' ');
-                sb.Append('-'); i++;
-
-                int back = i - 2; // the char immediately before this '-' in the source
-                while (back >= 0 && code[back] == ' ') back--;
-                bool isBinary = back >= 0 &&
-                    (char.IsLetterOrDigit(code[back]) || code[back] is ')' or '$' or '%');
-
-                if (isBinary) { sb.Append(' '); prevIsSpace = true; }
-                else prevIsSpace = false;
                 continue;
             }
 
@@ -268,17 +207,9 @@ public static class CodePrettifier
             }
 
             // ── Try to match a keyword (longest first) ───────────────────────
-            string? kw = null;
-            foreach (var candidate in _spacedKeywords)
-            {
-                if (i + candidate.Length <= code.Length &&
-                    code.AsSpan(i, candidate.Length).Equals(
-                        candidate.AsSpan(), StringComparison.OrdinalIgnoreCase))
-                {
-                    kw = candidate;
-                    break;
-                }
-            }
+            string? kw = BasicTokens.TryMatchKeyword(code, i, BasicTokens.WordKeywordsLongestFirst, out string matched)
+                ? matched
+                : null;
 
             if (kw != null)
             {

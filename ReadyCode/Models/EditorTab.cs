@@ -58,6 +58,13 @@ public class EditorTab : INotifyPropertyChanged
     public string? VirtualSourceId { get; set; }
 
     /// <summary>
+    /// Gets or sets this tab's file kind, as classified by <see cref="FileClassifier"/> when the
+    /// tab was opened. Defaults to <see cref="C64UFileKind.Bas"/> for tabs with no backing file
+    /// (a blank new tab, or an imported text file).
+    /// </summary>
+    public C64UFileKind Kind { get; set; } = C64UFileKind.Bas;
+
+    /// <summary>
     /// Gets the display file name, falling back to <see cref="DisplayName"/> or "Untitled"
     /// if the tab has no <see cref="FilePath"/>.
     /// </summary>

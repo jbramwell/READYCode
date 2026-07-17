@@ -3,7 +3,6 @@
 
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.IO;
 using System.Runtime.CompilerServices;
 using ReadyCode.C64U;
 
@@ -70,7 +69,7 @@ public class C64UFileItem : INotifyPropertyChanged
         if (string.IsNullOrEmpty(Name)) Name = fullPath;
         IsFolder = isFolder;
         Size = size;
-        Kind = DetermineKind(Name, isFolder);
+        Kind = FileClassifier.Classify(Name, isFolder);
 
         // Placeholder child so WPF shows the expand toggle arrow on folders and .d64 disk
         // images. LoadChildrenAsync() removes it on first expansion before WPF renders.
@@ -346,20 +345,6 @@ public class C64UFileItem : INotifyPropertyChanged
     #endregion
 
     #region Private Methods
-
-    private static C64UFileKind DetermineKind(string name, bool isFolder)
-    {
-        if (isFolder) return C64UFileKind.Folder;
-
-        return Path.GetExtension(name).ToLowerInvariant() switch
-        {
-            ".bas" => C64UFileKind.Bas,
-            ".prg" => C64UFileKind.Prg,
-            ".d64" => C64UFileKind.D64,
-            ".d81" => C64UFileKind.D81,
-            _ => C64UFileKind.Other,
-        };
-    }
 
     private void OnPropertyChanged([CallerMemberName] string? p = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(p));

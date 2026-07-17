@@ -504,9 +504,10 @@ public partial class MainWindow : Window
         try
         {
             string text;
+            byte[]? prgData = null;
             if (path.EndsWith(".prg", StringComparison.OrdinalIgnoreCase))
             {
-                var prgData = File.ReadAllBytes(path);
+                prgData = File.ReadAllBytes(path);
                 var converter = new PrgConverter();
                 text = PadLineNumbers(converter.ConvertFromPrg(prgData));
             }
@@ -515,7 +516,11 @@ public partial class MainWindow : Window
                 text = File.ReadAllText(path, Encoding.UTF8);
             }
 
-            var tab = new EditorTab { FilePath = path };
+            var tab = new EditorTab
+            {
+                FilePath = path,
+                Kind = FileClassifier.Classify(path, isFolder: false, prgData != null ? () => prgData : null),
+            };
             tab.Document.Text = text;
             ViewModel.OpenTabs.Add(tab);
             ActivateTab(tab);
@@ -556,7 +561,7 @@ public partial class MainWindow : Window
                 ? PadLineNumbers(new PrgConverter().ConvertFromPrg(item.Content))
                 : Encoding.UTF8.GetString(item.Content);
 
-            var tab = new EditorTab { DisplayName = item.Name, VirtualSourceId = sourceId };
+            var tab = new EditorTab { DisplayName = item.Name, VirtualSourceId = sourceId, Kind = item.Kind };
             tab.Document.Text = text;
             ViewModel.OpenTabs.Add(tab);
             ActivateTab(tab);
@@ -1379,19 +1384,19 @@ public partial class MainWindow : Window
 
             if (char.IsLetter(c))
             {
-                int kwLen = MatchHoverKeywordLength(lineText, i);
-                if (kwLen == 0) { i++; continue; }
+                if (!BasicTokens.TryMatchKeyword(lineText, i, BasicTokens.WordKeywordsLongestFirst, out string keyword))
+                { i++; continue; }
 
-                if (kwLen == 3 && string.Equals(lineText.Substring(i, 3), "REM", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(keyword, "REM", StringComparison.OrdinalIgnoreCase))
                     return false; // rest of the line is a comment
 
                 // "THEN 420" is CBM BASIC shorthand for "THEN GOTO 420" - an implied GOTO.
                 bool isTarget =
-                    (kwLen == 4 && string.Equals(lineText.Substring(i, 4), "GOTO",  StringComparison.OrdinalIgnoreCase)) ||
-                    (kwLen == 4 && string.Equals(lineText.Substring(i, 4), "THEN",  StringComparison.OrdinalIgnoreCase)) ||
-                    (kwLen == 5 && string.Equals(lineText.Substring(i, 5), "GOSUB", StringComparison.OrdinalIgnoreCase));
+                    string.Equals(keyword, "GOTO",  StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(keyword, "THEN",  StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(keyword, "GOSUB", StringComparison.OrdinalIgnoreCase);
 
-                i += kwLen;
+                i += keyword.Length;
                 if (!isTarget) continue;
 
                 while (true)
@@ -1749,7 +1754,7 @@ public partial class MainWindow : Window
                 ? PadLineNumbers(new PrgConverter().ConvertFromPrg(bytes))
                 : Encoding.UTF8.GetString(bytes);
 
-            var tab = new EditorTab { DisplayName = item.Name, VirtualSourceId = sourceId };
+            var tab = new EditorTab { DisplayName = item.Name, VirtualSourceId = sourceId, Kind = item.Kind };
             tab.Document.Text = text;
             ViewModel.OpenTabs.Add(tab);
             ActivateTab(tab);
@@ -3775,16 +3780,6 @@ public partial class MainWindow : Window
         _hoverToolTip = null;
     }
 
-    // Same longest-first keyword list BasicKeywordColorizer/NumberLiteralColorizer/
-    // DataLiteralColorizer use, so this scan agrees with them on where a keyword ends and a
-    // variable name begins - critical for packed code with no spaces (e.g. "IFKPTHENKK=1"),
-    // where a variable can sit directly against a keyword on either side.
-    private static readonly string[] _hoverKeywords =
-        BasicTokens.TokenMap.Keys
-            .Where(k => char.IsLetter(k[0]))
-            .OrderByDescending(k => k.Length)
-            .ToArray();
-
     // Builds the hover tooltip text for the token at column `col` on the given line - either
     // "(variable) {type} {name}" for a user variable, or "{Keyword} - {Description}" (reusing
     // the BASIC Keywords reference panel's descriptions) for a BASIC keyword. Returns false for
@@ -3839,22 +3834,21 @@ public partial class MainWindow : Window
 
             if (char.IsLetter(c))
             {
-                int kwLen = MatchHoverKeywordLength(lineText, i);
-                if (kwLen > 0)
+                if (BasicTokens.TryMatchKeyword(lineText, i, BasicTokens.WordKeywordsLongestFirst, out string keyword))
                 {
                     if (rawStart >= 0 && TryClassifyRawRun(lineText, rawStart, i, col, inDataArgs, out tooltipText))
                         return true;
                     rawStart = -1;
 
-                    if (col >= i && col < i + kwLen)
-                        return TryGetKeywordTooltip(lineText.Substring(i, kwLen), out tooltipText);
+                    if (col >= i && col < i + keyword.Length)
+                        return TryGetKeywordTooltip(keyword, out tooltipText);
 
-                    if (kwLen == 3 && string.Equals(lineText.Substring(i, 3), "REM", StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(keyword, "REM", StringComparison.OrdinalIgnoreCase))
                         return false; // everything from here to end of line is a comment
-                    if (kwLen == 4 && string.Equals(lineText.Substring(i, 4), "DATA", StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(keyword, "DATA", StringComparison.OrdinalIgnoreCase))
                         inDataArgs = true;
 
-                    i += kwLen;
+                    i += keyword.Length;
                     continue;
                 }
 
@@ -3976,30 +3970,6 @@ public partial class MainWindow : Window
 
         tooltipText = $"{name} - CHR$({(int)c})";
         return true;
-    }
-
-    // Returns the length of the longest BASIC keyword matching at position i, or 0 if none match.
-    private static int MatchHoverKeywordLength(string text, int i)
-    {
-        foreach (string keyword in _hoverKeywords)
-        {
-            int kwLen = keyword.Length;
-            if (i + kwLen > text.Length) continue;
-
-            bool isMatch = true;
-            for (int k = 0; k < kwLen; k++)
-            {
-                if (char.ToUpperInvariant(text[i + k]) != keyword[k])
-                {
-                    isMatch = false;
-                    break;
-                }
-            }
-
-            if (isMatch) return kwLen;
-        }
-
-        return 0;
     }
 
     /// <summary>

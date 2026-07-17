@@ -1,0 +1,9 @@
+{
+  "solution": {
+    "path": "ReadyCode.sln",
+    "projects": [
+      "ReadyCode\\ReadyCode.csproj",
+      "ReadyCode.Tests\\ReadyCode.Tests.csproj"
+    ]
+  }
+}
