@@ -24,13 +24,14 @@ public static class BasicDiagnostics
 {
     #region Private Fields
 
-    private static readonly Regex _forRegex =
+    // Internal (not private): reused as-is by BasicFoldingStrategy for FOR/NEXT fold detection.
+    internal static readonly Regex _forRegex =
         new(@"^FOR\s*([A-Z][A-Z0-9$]?)\s*=", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    private static readonly Regex _bareNextRegex =
+    internal static readonly Regex _bareNextRegex =
         new(@"^NEXT\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    private static readonly Regex _nextVarsRegex =
+    internal static readonly Regex _nextVarsRegex =
         new(@"^NEXT\s*(?:[A-Z][A-Z0-9$]*\s*,\s*)*[A-Z][A-Z0-9$]*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // Matches one NEXT variable name at a time (used to walk "NEXT X,Y,Z" left to right).
@@ -76,6 +77,59 @@ public static class BasicDiagnostics
 
         diagnostics.Sort((a, b) => a.Offset.CompareTo(b.Offset));
         return diagnostics;
+    }
+
+    /// <summary>
+    /// Mirrors <see cref="ReadyCode.Minify.CodeMinifier.SplitBasicLine"/>'s leading-number parse,
+    /// but keeps the raw offset/length (SplitBasicLine's zero-stripped string return can't place
+    /// a squiggle - or a fold boundary - precisely). Reused by <c>BasicFoldingStrategy</c>.
+    /// </summary>
+    internal static bool TryParseLineNumber(string line, out int number, out int offset, out int length, out int codeStart)
+    {
+        number = 0; offset = 0; length = 0; codeStart = 0;
+
+        int j = 0;
+        while (j < line.Length && line[j] == ' ') j++;
+        if (j >= line.Length || !char.IsDigit(line[j])) return false;
+
+        int numStart = j;
+        while (j < line.Length && char.IsDigit(line[j])) j++;
+        if (!int.TryParse(line.AsSpan(numStart, j - numStart), out number)) return false;
+
+        offset = numStart;
+        length = j - numStart;
+
+        while (j < line.Length && line[j] == ' ') j++;
+        codeStart = j;
+        return true;
+    }
+
+    /// <summary>
+    /// Finds where a top-level (not inside a string) REM keyword starts in <paramref name="code"/>,
+    /// or <c>code.Length</c> if none. Reused by <c>BasicFoldingStrategy</c>.
+    /// </summary>
+    internal static int FindTopLevelRemStart(string code)
+    {
+        bool inString = false;
+        int i = 0;
+        while (i < code.Length)
+        {
+            char c = code[i];
+            if (c == '"') { inString = !inString; i++; continue; }
+            if (inString) { i++; continue; }
+
+            if (char.IsLetter(c))
+            {
+                if (BasicTokens.TryMatchKeyword(code, i, BasicTokens.WordKeywordsLongestFirst, out string keyword))
+                {
+                    if (string.Equals(keyword, "REM", StringComparison.OrdinalIgnoreCase)) return i;
+                    i += keyword.Length;
+                    continue;
+                }
+            }
+            i++;
+        }
+        return code.Length;
     }
 
     #endregion
@@ -128,53 +182,6 @@ public static class BasicDiagnostics
             AnalyzeTargetsAndStrings(stmt, stmtOffset, pendingTargets, diagnostics);
             stmtOffset += stmt.Length + 1; // +1 for the ':' separator consumed between statements
         }
-    }
-
-    // Mirrors CodeMinifier.SplitBasicLine's leading-number parse, but keeps the raw offset/length
-    // (SplitBasicLine's zero-stripped string return can't place a squiggle precisely).
-    private static bool TryParseLineNumber(string line, out int number, out int offset, out int length, out int codeStart)
-    {
-        number = 0; offset = 0; length = 0; codeStart = 0;
-
-        int j = 0;
-        while (j < line.Length && line[j] == ' ') j++;
-        if (j >= line.Length || !char.IsDigit(line[j])) return false;
-
-        int numStart = j;
-        while (j < line.Length && char.IsDigit(line[j])) j++;
-        if (!int.TryParse(line.AsSpan(numStart, j - numStart), out number)) return false;
-
-        offset = numStart;
-        length = j - numStart;
-
-        while (j < line.Length && line[j] == ' ') j++;
-        codeStart = j;
-        return true;
-    }
-
-    // Finds where a top-level (not inside a string) REM keyword starts, or code.Length if none.
-    private static int FindTopLevelRemStart(string code)
-    {
-        bool inString = false;
-        int i = 0;
-        while (i < code.Length)
-        {
-            char c = code[i];
-            if (c == '"') { inString = !inString; i++; continue; }
-            if (inString) { i++; continue; }
-
-            if (char.IsLetter(c))
-            {
-                if (BasicTokens.TryMatchKeyword(code, i, BasicTokens.WordKeywordsLongestFirst, out string keyword))
-                {
-                    if (string.Equals(keyword, "REM", StringComparison.OrdinalIgnoreCase)) return i;
-                    i += keyword.Length;
-                    continue;
-                }
-            }
-            i++;
-        }
-        return code.Length;
     }
 
     // Detects FOR/bare-NEXT/NEXT-with-vars in a single statement, pushing/popping forStack -

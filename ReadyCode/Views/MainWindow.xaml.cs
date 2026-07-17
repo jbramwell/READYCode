@@ -16,6 +16,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using ICSharpCode.AvalonEdit.CodeCompletion;
 using ICSharpCode.AvalonEdit.Document;
+using ICSharpCode.AvalonEdit.Folding;
 using ICSharpCode.AvalonEdit.Rendering;
 using Microsoft.Win32;
 using ReadyCode.Diagnostics;
@@ -65,6 +66,11 @@ public partial class MainWindow : Window
     // Debounces BasicDiagnostics.Analyze so a full re-analysis doesn't run on every keystroke.
     private readonly DispatcherTimer _diagnosticsTimer;
     private IReadOnlyList<BasicDiagnostic> _currentDiagnostics = Array.Empty<BasicDiagnostic>();
+
+    // Code folding - bound to whichever document is currently on Editor.TextArea; reinstalled per
+    // tab activation (see ActivateTab) since FoldingManager can't be rebound to a new document.
+    private FoldingManager? _foldingManager;
+    private readonly BasicFoldingStrategy _foldingStrategy = new();
 
     // Tab management state
     private bool _tabSwitching;
@@ -202,7 +208,7 @@ public partial class MainWindow : Window
         _errorSquiggleRenderer = new ErrorSquiggleRenderer(Editor);
         Editor.TextArea.TextView.BackgroundRenderers.Add(_errorSquiggleRenderer);
         _diagnosticsTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
-        _diagnosticsTimer.Tick += (_, _) => { _diagnosticsTimer.Stop(); RunDiagnostics(); };
+        _diagnosticsTimer.Tick += (_, _) => { _diagnosticsTimer.Stop(); RunDiagnostics(); RunFolding(); };
         Editor.TextArea.Caret.PositionChanged += (_, _) =>
         {
             _lineNumberColorizer.ActiveDocumentLineNumber =
@@ -791,11 +797,21 @@ public partial class MainWindow : Window
 
     private void ActivateTab(EditorTab? tab)
     {
-        // Persist outgoing tab's caret and scroll position
+        // Persist outgoing tab's caret, scroll position, and collapsed-fold state
         if (ViewModel.ActiveTab != null && !ReferenceEquals(ViewModel.ActiveTab, tab))
         {
             ViewModel.ActiveTab.CaretOffset = Editor.CaretOffset;
             ViewModel.ActiveTab.ScrollOffsetY = Editor.VerticalOffset;
+            SaveFoldingState(ViewModel.ActiveTab);
+        }
+
+        // FoldingManager is bound to whichever document was on the TextArea at Install time and
+        // must be uninstalled before the shared Editor control is rebound to a different one -
+        // there's no "reinstall"/rebind API, so a fresh manager is created per activation below.
+        if (_foldingManager != null)
+        {
+            FoldingManager.Uninstall(_foldingManager);
+            _foldingManager = null;
         }
 
         _activatingTab = true;
@@ -810,6 +826,11 @@ public partial class MainWindow : Window
             Editor.CaretOffset = Math.Min(tab.CaretOffset, tab.Document.TextLength);
             Editor.ScrollToVerticalOffset(tab.ScrollOffsetY);
             Editor.Focus();
+
+            _foldingManager = FoldingManager.Install(Editor.TextArea);
+            RunFolding();
+            foreach (var fs in _foldingManager.AllFoldings)
+                fs.IsFolded = tab.CollapsedFoldStartOffsets.Contains(fs.StartOffset);
         }
 
         _activatingTab = false;
@@ -3818,6 +3839,26 @@ public partial class MainWindow : Window
             : Array.Empty<BasicDiagnostic>();
         _errorSquiggleRenderer.SetDiagnostics(_currentDiagnostics);
         Editor.TextArea.TextView.Redraw();
+    }
+
+    // Recomputes fold regions on the current (not reinstalled) manager. Deliberately doesn't
+    // touch IsFolded - FoldingManager.UpdateFoldings already preserves it for sections that still
+    // match after a same-tab edit, which is what should govern live-typing recomputation. Only
+    // ActivateTab's fresh-manager path needs to explicitly restore collapsed state.
+    private void RunFolding()
+    {
+        if (_foldingManager == null || Editor.Document == null) return;
+        _foldingStrategy.UpdateFoldings(_foldingManager, Editor.Document);
+    }
+
+    // Snapshots which folds are currently collapsed onto the tab being switched away from, so
+    // ActivateTab can restore it next time this tab becomes active.
+    private void SaveFoldingState(EditorTab tab)
+    {
+        tab.CollapsedFoldStartOffsets.Clear();
+        if (_foldingManager == null) return;
+        foreach (var fs in _foldingManager.AllFoldings)
+            if (fs.IsFolded) tab.CollapsedFoldStartOffsets.Add(fs.StartOffset);
     }
 
     // Shows a hover tooltip over either a user variable ("(variable) {type} {name}") or a BASIC

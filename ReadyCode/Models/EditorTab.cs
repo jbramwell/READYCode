@@ -94,6 +94,12 @@ public class EditorTab : INotifyPropertyChanged
     /// </summary>
     public double ScrollOffsetY { get; set; }
 
+    /// <summary>
+    /// Gets the start offsets of folds that were collapsed the last time this tab was active, so
+    /// switching away and back preserves fold state. In-memory only for the session, not persisted.
+    /// </summary>
+    public HashSet<int> CollapsedFoldStartOffsets { get; } = new();
+
     #endregion
 
     #region Interface Implementations
