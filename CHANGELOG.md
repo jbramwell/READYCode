@@ -1,5 +1,38 @@
 # Change Log
 
+## [v1.2.0] - 2026-07-18
+
+### New Features
+
+- **Variables window** - new panel showing all variables declared in the current program
+- **Static analysis (linting)** - red squiggles flag syntax errors inline before you transfer to the C64U or VICE
+- **Code folding** - collapse REM blocks and FOR/NEXT loops to reduce visual noise in longer programs
+- **Renumber** - renumbers line numbers across the entire program, automatically updating all GOTO and GOSUB references (Code menu)
+- **Go to line from GOTO/GOSUB** - Press F12 on a line number reference to jump directly to that line
+- **Reopen closed tab** (Ctrl+Shift+T) - tab history tracks recently closed files so you can reopen them
+- **Restore tabs on startup** - previously open files are automatically restored when READYCode launches
+- **Drag-and-drop** - drag .prg files from Windows Explorer directly onto READYCode to open them
+- **Ctrl+Tab / Shift+Ctrl+Tab** - cycle forward and backward through open editor tabs
+- **Tooltips for keywords and variables** - hover over any keyword or variable to see a description
+- **Tooltips for special characters** - hover over PETSCII special characters to see their name and PETSCII value
+- **Function keys in Quick Keys pane** - F1-F8 key mappings now appear in the Quick Keys panel
+- **File > Close Folder** - new menu item to close the current folder
+
+### Improvements
+
+- Syntax highlighting now covers string literals and numeric literals in addition to keywords
+- Improved Commodore 64 color theme accuracy
+- Tokenized byte count is now displayed in the status bar when saving a file
+- BASIC keyword descriptions updated to be clearer and more descriptive
+- Code prettify spacing corrected around operators and keywords
+- Context menus cleaned up; added option to bring VICE Emulator to the foreground
+- Keyboard shortcuts for Transfer and Run commands remapped for consistency
+
+### Bug Fixes
+
+- Fixed Minify incorrectly stripping values from DATA statements (thanks for the tip, @johnginno5671)
+- Fixed line number auto-increment generating numbers between existing lines when pressing Enter mid-program
+
 ## [v1.1.0] - 2026-07-11
 
 This release of READYCode v1.1 contains a few new features and improvements as well as a few bug fixes. As always, please [open an issue](https://github.com/jbramwell/READYCode/issues/new/choose) if you run into any problems or have feature requests.
