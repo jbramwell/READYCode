@@ -336,6 +336,9 @@
                         <TreeViewItem Header="Formatting"
                                       Tag="formatting"
                                       x:Name="TreeFormatting"/>
+                        <TreeViewItem Header="Code Analysis"
+                                      Tag="code-analysis"
+                                      x:Name="TreeCodeAnalysis"/>
                     </TreeViewItem>
                     <TreeViewItem Header="Code"
                                   Tag="code-minify"
@@ -488,6 +491,38 @@
                                     <TextBox Width="60"
                                              HorizontalAlignment="Left"
                                              Text="{Binding WrapColumnText, UpdateSourceTrigger=PropertyChanged}"/>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+
+                        <!-- TEXT EDITOR › CODE ANALYSIS -->
+                        <StackPanel x:Name="PanelCodeAnalysis"
+                                    Margin="24,20,24,20"
+                                    Visibility="Collapsed">
+
+                            <TextBlock Style="{StaticResource SectionBreadcrumb}"
+                                       Text="Text Editor  ›  Code Analysis"/>
+
+                            <Border Style="{StaticResource SettingRow}">
+                                <StackPanel>
+                                    <CheckBox FontSize="12"
+                                              Content="Linting"
+                                              IsChecked="{Binding EnableLinting}"/>
+                                    <TextBlock Style="{StaticResource SettingDesc}"
+                                               Margin="20,2,0,0"
+                                               Text="Flags duplicate line numbers, unterminated strings, invalid GOTO/GOSUB line numbers, and unmatched NEXT variables as squiggle underlines."/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource SettingRowLast}">
+                                <StackPanel>
+                                    <CheckBox FontSize="12"
+                                              Content="Code folding"
+                                              IsChecked="{Binding EnableCodeFolding}"/>
+                                    <TextBlock Style="{StaticResource SettingDesc}"
+                                               Margin="20,2,0,0"
+                                               Text="Allows FOR/NEXT and multi-line REM statements to be collapsed in the editor."/>
                                 </StackPanel>
                             </Border>
 

@@ -132,13 +132,12 @@ public static class BasicDiagnostics
         return code.Length;
     }
 
-    #endregion
-
-    #region Private Methods
-
-    // Splits source into (lineText, absoluteOffset) pairs on \r\n, \r, or \n - unlike
-    // CodePrettifier's SplitLines/JoinLines, this preserves the exact offsets diagnostics need.
-    private static IEnumerable<(string Line, int Offset)> EnumerateLines(string source)
+    /// <summary>
+    /// Splits source into (lineText, absoluteOffset) pairs on \r\n, \r, or \n - unlike
+    /// CodePrettifier's SplitLines/JoinLines, this preserves exact offsets. Reused by
+    /// <c>VariableCrossReference</c>.
+    /// </summary>
+    internal static IEnumerable<(string Line, int Offset)> EnumerateLines(string source)
     {
         int pos = 0;
         while (true)
@@ -153,6 +152,10 @@ public static class BasicDiagnostics
             pos = i;
         }
     }
+
+    #endregion
+
+    #region Private Methods
 
     private static void AnalyzeLine(
         string line, int lineOffset,

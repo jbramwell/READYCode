@@ -133,6 +133,22 @@ public class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Gets or sets whether the Variable Explorer section is shown below the Folder/C64U tree.
+    /// Changes are persisted to settings immediately.
+    /// </summary>
+    public bool ShowVariableExplorer
+    {
+        get => Settings.ShowVariableExplorer;
+        set
+        {
+            if (Settings.ShowVariableExplorer == value) return;
+            Settings.ShowVariableExplorer = value;
+            OnPropertyChanged();
+            Settings.Save();
+        }
+    }
+
+    /// <summary>
     /// Gets or sets whether the left panel (folder explorer) is open.
     /// </summary>
     public bool IsLeftPanelOpen
@@ -158,6 +174,13 @@ public class MainViewModel : INotifyPropertyChanged
         get => _folderItems;
         private set { _folderItems = value; OnPropertyChanged(); }
     }
+
+    /// <summary>
+    /// Gets the variables found in the active document's Variable Explorer tree, kept up to date
+    /// (and diffed in place, to preserve each node's expanded state) by <c>MainWindow</c> as the
+    /// document changes.
+    /// </summary>
+    public ObservableCollection<VariableInfo> Variables { get; } = new();
 
     /// <summary>
     /// Gets or sets the title shown above the folder explorer tree (the open folder's name).

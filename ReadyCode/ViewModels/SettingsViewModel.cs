@@ -37,6 +37,8 @@ public class SettingsViewModel : INotifyPropertyChanged
     private bool _minifyRemoveComments;
     private bool _minifySimplifyNext;
     private bool _minifyRenumberLines;
+    private bool _enableLinting;
+    private bool _enableCodeFolding;
 
     #endregion
 
@@ -71,6 +73,8 @@ public class SettingsViewModel : INotifyPropertyChanged
         _minifyRemoveComments = settings.MinifyRemoveComments;
         _minifySimplifyNext = settings.MinifySimplifyNext;
         _minifyRenumberLines = settings.MinifyRenumberLines;
+        _enableLinting = settings.EnableLinting;
+        _enableCodeFolding = settings.EnableCodeFolding;
     }
 
     #endregion
@@ -273,6 +277,26 @@ public class SettingsViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Gets or sets whether duplicate line numbers, unterminated strings, invalid GOTO/GOSUB
+    /// targets, and unmatched NEXT variables are flagged as squiggle diagnostics.
+    /// </summary>
+    public bool EnableLinting
+    {
+        get => _enableLinting;
+        set { if (_enableLinting == value) return; _enableLinting = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>
+    /// Gets or sets whether FOR/NEXT and multi-line REM statements can be collapsed via code
+    /// folding.
+    /// </summary>
+    public bool EnableCodeFolding
+    {
+        get => _enableCodeFolding;
+        set { if (_enableCodeFolding == value) return; _enableCodeFolding = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>
     /// Gets or sets whether code is automatically minified when transferred to the C64 Ultimate.
     /// </summary>
     public bool MinifyOnTransfer
@@ -394,6 +418,8 @@ public class SettingsViewModel : INotifyPropertyChanged
         settings.MinifyRemoveComments = MinifyRemoveComments;
         settings.MinifySimplifyNext = MinifySimplifyNext;
         settings.MinifyRenumberLines = MinifyRenumberLines;
+        settings.EnableLinting = EnableLinting;
+        settings.EnableCodeFolding = EnableCodeFolding;
     }
 
     #endregion

@@ -131,6 +131,28 @@ public class AppSettings
     public double RightPanelWidth { get; set; } = 230;
 
     /// <summary>
+    /// Remembers the height of the Folder Explorer section within the Explorer panel, relative
+    /// to the Variable Explorer section below it.
+    /// </summary>
+    public double ExplorerFolderTreeHeight { get; set; } = 250;
+
+    /// <summary>
+    /// Whether the Variable Explorer section is shown below the Folder/C64U tree.
+    /// </summary>
+    public bool ShowVariableExplorer { get; set; } = true;
+
+    /// <summary>
+    /// Whether the editor flags duplicate line numbers, unterminated strings, invalid GOTO/GOSUB
+    /// targets, and unmatched NEXT variables as squiggle diagnostics.
+    /// </summary>
+    public bool EnableLinting { get; set; } = true;
+
+    /// <summary>
+    /// Whether FOR/NEXT and multi-line REM statements can be collapsed via code folding.
+    /// </summary>
+    public bool EnableCodeFolding { get; set; } = true;
+
+    /// <summary>
     /// Remembers the left position of the main window. Left and Top are
     /// nullable so they can be reset to default (centered) if needed.
     /// </summary>

@@ -101,12 +101,13 @@ public partial class SettingsWindow : Window
     {
         TreeViewItem item = tag switch
         {
-            "general"     => TreeGeneral,
-            "formatting"  => TreeFormatting,
-            "code-minify" => TreeMinify,
-            "c64u"        => TreeC64U,
-            "vice"        => TreeVice,
-            _             => TreeAppGeneral,
+            "general"       => TreeGeneral,
+            "formatting"    => TreeFormatting,
+            "code-analysis" => TreeCodeAnalysis,
+            "code-minify"   => TreeMinify,
+            "c64u"          => TreeC64U,
+            "vice"          => TreeVice,
+            _               => TreeAppGeneral,
         };
         item.IsSelected = true;
     }
@@ -116,12 +117,13 @@ public partial class SettingsWindow : Window
         if (e.NewValue is not TreeViewItem item) return;
 
         string tag = item.Tag?.ToString() ?? "";
-        PanelAppGeneral.Visibility = tag == "app-general"  ? Visibility.Visible : Visibility.Collapsed;
-        PanelGeneral.Visibility    = tag == "general"      ? Visibility.Visible : Visibility.Collapsed;
-        PanelFormatting.Visibility = tag == "formatting"   ? Visibility.Visible : Visibility.Collapsed;
-        PanelMinify.Visibility     = tag == "code-minify"  ? Visibility.Visible : Visibility.Collapsed;
-        PanelC64U.Visibility       = tag == "c64u"         ? Visibility.Visible : Visibility.Collapsed;
-        PanelVice.Visibility       = tag == "vice"         ? Visibility.Visible : Visibility.Collapsed;
+        PanelAppGeneral.Visibility   = tag == "app-general"   ? Visibility.Visible : Visibility.Collapsed;
+        PanelGeneral.Visibility      = tag == "general"       ? Visibility.Visible : Visibility.Collapsed;
+        PanelFormatting.Visibility   = tag == "formatting"    ? Visibility.Visible : Visibility.Collapsed;
+        PanelCodeAnalysis.Visibility = tag == "code-analysis" ? Visibility.Visible : Visibility.Collapsed;
+        PanelMinify.Visibility       = tag == "code-minify"   ? Visibility.Visible : Visibility.Collapsed;
+        PanelC64U.Visibility         = tag == "c64u"          ? Visibility.Visible : Visibility.Collapsed;
+        PanelVice.Visibility         = tag == "vice"          ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ── VICE Emulator ────────────────────────────────────────────────────────

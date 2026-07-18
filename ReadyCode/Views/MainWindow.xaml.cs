@@ -175,11 +175,14 @@ public partial class MainWindow : Window
         ViewExplorerCommand         = new RelayCommand(_ => FocusExplorer());
         ViewWordWrapCommand         = new RelayCommand(_ => { ViewModel.WordWrap = !ViewModel.WordWrap; });
         ViewCodeStatisticsCommand   = new RelayCommand(_ => ShowCodeStatistics(), _ => HasNonEmptyActiveTab());
+        ViewVariablesCommand        = new RelayCommand(_ => { ViewModel.ShowVariableExplorer = !ViewModel.ShowVariableExplorer; });
 
         ViewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(MainViewModel.ShowColumnGuide) or nameof(MainViewModel.WordWrap))
                 ApplyEditorAppearance();
+            if (e.PropertyName == nameof(MainViewModel.ShowVariableExplorer))
+                ApplyVariableExplorerVisibility();
         };
 
         FindBar.CloseRequested      += (_, _) => { _findHighlightColorizer.Clear(); Editor.TextArea.TextView.Redraw(); Editor.Focus(); };
@@ -208,7 +211,7 @@ public partial class MainWindow : Window
         _errorSquiggleRenderer = new ErrorSquiggleRenderer(Editor);
         Editor.TextArea.TextView.BackgroundRenderers.Add(_errorSquiggleRenderer);
         _diagnosticsTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
-        _diagnosticsTimer.Tick += (_, _) => { _diagnosticsTimer.Stop(); RunDiagnostics(); RunFolding(); };
+        _diagnosticsTimer.Tick += (_, _) => { _diagnosticsTimer.Stop(); RunDiagnostics(); RunFolding(); RunVariableIndex(); };
         Editor.TextArea.Caret.PositionChanged += (_, _) =>
         {
             _lineNumberColorizer.ActiveDocumentLineNumber =
@@ -292,6 +295,8 @@ public partial class MainWindow : Window
                 panel.Visibility = isTarget ? Visibility.Visible : Visibility.Collapsed;
             }
         }
+        ApplyVariableExplorerVisibility();
+
         if (ViewModel.Project.IsOpen && Directory.Exists(ViewModel.Project.RootPath))
         {
             ViewModel.LoadFolder(ViewModel.Project.RootPath);
@@ -393,6 +398,8 @@ public partial class MainWindow : Window
     public ICommand ViewWordWrapCommand         { get; }
     /// <summary>Gets the command that shows the code statistics dialog.</summary>
     public ICommand ViewCodeStatisticsCommand   { get; }
+    /// <summary>Gets the command that toggles the Variable Explorer section.</summary>
+    public ICommand ViewVariablesCommand        { get; }
 
     #endregion
 
@@ -417,6 +424,10 @@ public partial class MainWindow : Window
             ViewModel.Settings.LeftPanelWidth = LeftPanelCol.Width.Value;
         if (RightPanelCol.Width.Value > 0)
             ViewModel.Settings.RightPanelWidth = RightPanelCol.Width.Value;
+        // FolderTreeRow.Height is Star-sized (not absolute) while the Variable Explorer is
+        // hidden - .Value would just be the star weight then, not a real pixel height.
+        if (FolderTreeRow.Height.IsAbsolute && FolderTreeRow.Height.Value > 0)
+            ViewModel.Settings.ExplorerFolderTreeHeight = FolderTreeRow.Height.Value;
 
         ViewModel.Settings.IsMainWindowMaximized = WindowState == WindowState.Maximized;
 
@@ -827,10 +838,19 @@ public partial class MainWindow : Window
             Editor.ScrollToVerticalOffset(tab.ScrollOffsetY);
             Editor.Focus();
 
-            _foldingManager = FoldingManager.Install(Editor.TextArea);
-            RunFolding();
-            foreach (var fs in _foldingManager.AllFoldings)
-                fs.IsFolded = tab.CollapsedFoldStartOffsets.Contains(fs.StartOffset);
+            if (ViewModel.Settings.EnableCodeFolding)
+            {
+                _foldingManager = FoldingManager.Install(Editor.TextArea);
+                RunFolding();
+                foreach (var fs in _foldingManager.AllFoldings)
+                    fs.IsFolded = tab.CollapsedFoldStartOffsets.Contains(fs.StartOffset);
+            }
+
+            RunVariableIndex();
+        }
+        else
+        {
+            ViewModel.Variables.Clear();
         }
 
         _activatingTab = false;
@@ -1401,17 +1421,23 @@ public partial class MainWindow : Window
 
         if (dialog.IsFileLineMode)
         {
-            int clamped = Math.Clamp(target, 1, document.LineCount);
-            Editor.TextArea.Caret.Line = clamped;
-            Editor.TextArea.Caret.Column = 1;
-            Editor.ScrollToLine(clamped);
-            Editor.TextArea.Caret.BringCaretToView();
-            Editor.Focus();
+            MoveCaretToDocumentLine(Math.Clamp(target, 1, document.LineCount));
             return;
         }
 
         if (!JumpToBasicLine(target))
             ViewModel.SetStatus($"BASIC line {target} not found.", StatusType.Warning);
+    }
+
+    // Moves the caret to the start of AvalonEdit document line `lineNumber` (1-based), scrolling
+    // it into view.
+    private void MoveCaretToDocumentLine(int lineNumber)
+    {
+        Editor.TextArea.Caret.Line = lineNumber;
+        Editor.TextArea.Caret.Column = 1;
+        Editor.ScrollToLine(lineNumber);
+        Editor.TextArea.Caret.BringCaretToView();
+        Editor.Focus();
     }
 
     // Moves the caret to the start of the document line whose leading BASIC line number equals
@@ -1423,11 +1449,7 @@ public partial class MainWindow : Window
         {
             if (TryGetBasicLineNumber(document, i, out int n) && n == target)
             {
-                Editor.TextArea.Caret.Line = i;
-                Editor.TextArea.Caret.Column = 1;
-                Editor.ScrollToLine(i);
-                Editor.TextArea.Caret.BringCaretToView();
-                Editor.Focus();
+                MoveCaretToDocumentLine(i);
                 return true;
             }
         }
@@ -3156,6 +3178,19 @@ public partial class MainWindow : Window
         return null;
     }
 
+    private static TreeViewItem? FindTreeViewItem(ItemsControl container, VariableInfo target)
+    {
+        foreach (var raw in container.Items)
+        {
+            var tvi = container.ItemContainerGenerator.ContainerFromItem(raw) as TreeViewItem;
+            if (tvi == null) continue;
+            if (raw == target) return tvi;
+            var found = FindTreeViewItem(tvi, target);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
     private static T? FindVisualChild<T>(DependencyObject parent, string name) where T : FrameworkElement
     {
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
@@ -3254,6 +3289,7 @@ public partial class MainWindow : Window
             dialog.ViewModel.ApplyTo(ViewModel.Settings);
             ViewModel.Settings.Save();
             ApplyEditorAppearance();
+            ApplyCodeAnalysisSettings();
             UpdateScreenPositionStatus();
             ViewModel.RefreshMenuVisibility();
         }
@@ -3834,7 +3870,7 @@ public partial class MainWindow : Window
     // unterminated strings, and duplicate line numbers, and refreshes the squiggle underlines.
     private void RunDiagnostics()
     {
-        _currentDiagnostics = Editor.Document != null
+        _currentDiagnostics = Editor.Document != null && ViewModel.Settings.EnableLinting
             ? BasicDiagnostics.Analyze(Editor.Document.Text)
             : Array.Empty<BasicDiagnostic>();
         _errorSquiggleRenderer.SetDiagnostics(_currentDiagnostics);
@@ -3859,6 +3895,208 @@ public partial class MainWindow : Window
         if (_foldingManager == null) return;
         foreach (var fs in _foldingManager.AllFoldings)
             if (fs.IsFolded) tab.CollapsedFoldStartOffsets.Add(fs.StartOffset);
+    }
+
+    // Reacts to the Code Analysis settings (Linting/Code folding) having just been changed in the
+    // Settings dialog: installs or uninstalls the FoldingManager to match, mirroring ActivateTab's
+    // own install/uninstall lifecycle, and re-runs diagnostics so squiggles appear/clear
+    // immediately. Linting has no persistent state to unwind - RunDiagnostics already clears
+    // _currentDiagnostics when the setting is off.
+    private void ApplyCodeAnalysisSettings()
+    {
+        bool foldingEnabled = ViewModel.Settings.EnableCodeFolding;
+        EditorTab? activeTab = ViewModel.ActiveTab;
+
+        if (foldingEnabled && _foldingManager == null && Editor.Document != null)
+        {
+            _foldingManager = FoldingManager.Install(Editor.TextArea);
+            RunFolding();
+            if (activeTab != null)
+                foreach (var fs in _foldingManager.AllFoldings)
+                    fs.IsFolded = activeTab.CollapsedFoldStartOffsets.Contains(fs.StartOffset);
+        }
+        else if (!foldingEnabled && _foldingManager != null)
+        {
+            if (activeTab != null) SaveFoldingState(activeTab);
+            FoldingManager.Uninstall(_foldingManager);
+            _foldingManager = null;
+        }
+
+        RunDiagnostics();
+    }
+
+    // Re-scans the active document for every variable's read/write occurrences, diffing the
+    // result into ViewModel.Variables rather than replacing it wholesale - reusing an existing
+    // VariableInfo instance for a name that's still present preserves its IsExpanded state (WPF's
+    // TreeViewItem container ties expansion to the bound object's identity), so the tree doesn't
+    // collapse everything the user just expanded on every debounce tick while typing.
+    private void RunVariableIndex()
+    {
+        var variables = ViewModel.Variables;
+        var document = Editor.Document;
+        if (document == null) { variables.Clear(); return; }
+
+        var byName = VariableCrossReference.Analyze(document.Text)
+            .GroupBy(r => r.Name, StringComparer.Ordinal);
+
+        var seenNames = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var group in byName)
+        {
+            seenNames.Add(group.Key);
+
+            var existing = variables.FirstOrDefault(v => v.Name == group.Key);
+            if (existing == null)
+            {
+                existing = new VariableInfo(group.Key);
+                int insertAt = 0;
+                while (insertAt < variables.Count && string.CompareOrdinal(variables[insertAt].Name, group.Key) < 0)
+                    insertAt++;
+                variables.Insert(insertAt, existing);
+            }
+
+            existing.Occurrences.Clear();
+            foreach (var reference in group.OrderBy(r => r.Offset))
+            {
+                var line = document.GetLineByOffset(reference.Offset);
+                TryGetBasicLineNumber(document, line.LineNumber, out int basicLineNumber);
+                existing.Occurrences.Add(new VariableOccurrenceInfo(line.LineNumber, basicLineNumber, reference.IsWrite));
+            }
+        }
+
+        for (int i = variables.Count - 1; i >= 0; i--)
+            if (!seenNames.Contains(variables[i].Name)) variables.RemoveAt(i);
+    }
+
+    // Double-clicking an occurrence (line number) row jumps to that line - a single click just
+    // selects the row, matching how the folder tree only opens a file on double-click too.
+    private void VariablesTree_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (VariablesTree.SelectedItem is VariableOccurrenceInfo occurrence)
+            MoveCaretToDocumentLine(occurrence.DocumentLineNumber);
+    }
+
+    private void VariablesTree_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.F2 && VariablesTree.SelectedItem is VariableInfo variable)
+        {
+            BeginInlineRenameVariable(variable);
+            e.Handled = true;
+        }
+    }
+
+    private void VariableOccurrenceContextGoToLine_Click(object sender, RoutedEventArgs e)
+    {
+        if (VariablesTree.SelectedItem is VariableOccurrenceInfo occurrence)
+            MoveCaretToDocumentLine(occurrence.DocumentLineNumber);
+    }
+
+    private void VariableContextRename_Click(object sender, RoutedEventArgs e)
+    {
+        if (VariablesTree.SelectedItem is VariableInfo variable)
+            BeginInlineRenameVariable(variable);
+    }
+
+    private void BeginInlineRenameVariable(VariableInfo variable)
+    {
+        variable.IsRenaming = true;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Render, () =>
+        {
+            var tvi = FindTreeViewItem(VariablesTree, variable);
+            if (tvi == null) return;
+            var box = FindVisualChild<TextBox>(tvi, "RenameBox");
+            if (box == null) return;
+            box.Focus();
+            box.SelectAll();
+        });
+    }
+
+    private void VariableRenameBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Return)      { CommitVariableRename((TextBox)sender); e.Handled = true; }
+        else if (e.Key == Key.Escape) { CancelVariableRename((TextBox)sender); e.Handled = true; }
+    }
+
+    private void VariableRenameBox_LostFocus(object sender, RoutedEventArgs e)
+        => CommitVariableRename((TextBox)sender);
+
+    private void CancelVariableRename(TextBox box)
+    {
+        if (box.DataContext is VariableInfo variable) variable.IsRenaming = false;
+    }
+
+    private void CommitVariableRename(TextBox box)
+    {
+        if (box.DataContext is not VariableInfo variable || !variable.IsRenaming) return;
+        variable.IsRenaming = false;
+
+        string newName = box.Text.Trim().ToUpperInvariant();
+        if (string.IsNullOrEmpty(newName) || newName == variable.Name) return;
+
+        if (!IsValidVariableName(newName))
+        {
+            ViewModel.SetStatus($"\"{newName}\" isn't a valid BASIC variable name.", StatusType.Warning);
+            return;
+        }
+
+        RenameVariable(variable.Name, newName);
+    }
+
+    // A variable name is a letter, then letters/digits, with an optional trailing $ or % - same
+    // rule the analyzer and hover tooltip already use. Also rejects a name that IS a real BASIC
+    // keyword outright (e.g. "FOR") - the tokenizer would crunch it as that keyword rather than
+    // treat it as an identifier, unlike a name that merely contains one as a substring (e.g. "SCORE").
+    private static bool IsValidVariableName(string name)
+    {
+        int end = name.Length;
+        if (end > 0 && (name[end - 1] == '$' || name[end - 1] == '%')) end--;
+        if (end == 0 || !char.IsLetter(name[0])) return false;
+
+        for (int i = 1; i < end; i++)
+            if (!char.IsLetterOrDigit(name[i])) return false;
+
+        return !BasicTokens.TryMatchKeyword(name, 0, BasicTokens.WordKeywordsLongestFirst, out string keyword)
+            || keyword.Length != end;
+    }
+
+    // Renames every occurrence of oldName (as currently grouped in the Variable Explorer) to
+    // newName throughout the active document, as one grouped undo step, then refreshes the
+    // Variable Explorer immediately (rather than waiting for the debounce timer) to reflect it.
+    private void RenameVariable(string oldName, string newName)
+    {
+        var document = Editor.Document;
+        if (document == null) return;
+
+        var occurrences = VariableCrossReference.Analyze(document.Text)
+            .Where(r => r.Name == oldName)
+            .OrderByDescending(r => r.Offset) // back-to-front so earlier offsets stay valid
+            .ToList();
+        if (occurrences.Count == 0) return;
+
+        document.BeginUpdate();
+        try
+        {
+            foreach (var occurrence in occurrences)
+                document.Replace(occurrence.Offset, occurrence.Length, newName);
+        }
+        finally
+        {
+            document.EndUpdate();
+        }
+
+        RunVariableIndex();
+        ViewModel.SetStatus($"Renamed {oldName} to {newName} ({occurrences.Count} occurrence{(occurrences.Count == 1 ? "" : "s")}).");
+    }
+
+    // Continuously re-clamps FolderTreeRow during an active drag so it can never grow large
+    // enough to push the Variable Explorer's header past the bottom of the visible column -
+    // RowDefinition's own MinHeight only bounds the row being shrunk, not the one being grown,
+    // and VariablesRow's nominal "*" sizing doesn't protect it once a GridSplitter has touched it.
+    private void ExplorerRowSplitter_DragDelta(object sender, DragDeltaEventArgs e)
+    {
+        double maxFolderTreeHeight = ExplorerColumnGrid.ActualHeight - ExplorerRowSplitter.ActualHeight - VariablesRow.MinHeight;
+        if (maxFolderTreeHeight >= FolderTreeRow.MinHeight && FolderTreeRow.Height.Value > maxFolderTreeHeight)
+            FolderTreeRow.Height = new GridLength(maxFolderTreeHeight);
     }
 
     // Shows a hover tooltip over either a user variable ("(variable) {type} {name}") or a BASIC
@@ -4356,6 +4594,26 @@ public partial class MainWindow : Window
     #endregion
 
     #region UI Updates
+
+    // Shows/hides the Variable Explorer section, reclaiming its space for Explorer/C64U above it
+    // when hidden (FolderTreeRow becomes "*" instead of its persisted fixed height) and restoring
+    // the persisted split when shown again. Clamped defensively (not just relying on the
+    // RowDefinition's own MinHeight) so a bad persisted value can't leave the Variable Explorer
+    // effectively inaccessible after a restart.
+    private void ApplyVariableExplorerVisibility()
+    {
+        bool show = ViewModel.Settings.ShowVariableExplorer;
+
+        VariablesPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        ExplorerRowSplitter.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        // MinHeight still reserves space for a Collapsed row's content, leaving a blank gap -
+        // must be cleared too, not just Height.
+        VariablesRow.MinHeight = show ? 60 : 0;
+        VariablesRow.Height = show ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        FolderTreeRow.Height = show
+            ? new GridLength(Math.Clamp(ViewModel.Settings.ExplorerFolderTreeHeight, 60, 600))
+            : new GridLength(1, GridUnitType.Star);
+    }
 
     private void ApplyEditorAppearance()
     {

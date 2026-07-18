@@ -614,6 +614,7 @@
         <KeyBinding Key="B" Modifiers="Ctrl"       Command="{Binding ViewPrimarySideBarCommand}"/>
         <KeyBinding Key="B" Modifiers="Ctrl+Alt"   Command="{Binding ViewSecondarySideBarCommand}"/>
         <KeyBinding Key="E" Modifiers="Ctrl+Shift" Command="{Binding ViewExplorerCommand}"/>
+        <KeyBinding Key="V" Modifiers="Ctrl+Alt"   Command="{Binding ViewVariablesCommand}"/>
         <KeyBinding Key="Z" Modifiers="Alt"        Command="{Binding ViewWordWrapCommand}"/>
 
         <!-- C64U Menu -->
@@ -766,6 +767,10 @@
                 <MenuItem Header="_Explorer"
                           Command="{Binding ViewExplorerCommand}"
                           InputGestureText="Ctrl+Shift+E"/>
+                <MenuItem Header="_Variables"
+                          IsCheckable="True"
+                          IsChecked="{Binding ViewModel.ShowVariableExplorer, Mode=TwoWay}"
+                          InputGestureText="Ctrl+Alt+V"/>
                 <Separator/>
                 <MenuItem Header="_Word Wrap"
                           IsCheckable="True"
@@ -903,8 +908,17 @@
                 </StackPanel>
             </Border>
 
+            <!-- Left panel column: Explorer/C64U (mutually exclusive, toggled) on top, Variable
+                 Explorer always visible below - independent of which of those two is active. -->
+            <Grid x:Name="ExplorerColumnGrid" Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition x:Name="FolderTreeRow" Height="250" MinHeight="60"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition x:Name="VariablesRow" Height="*" MinHeight="60"/>
+                </Grid.RowDefinitions>
+
             <!-- Left panel: Explorer (file tree) -->
-            <Grid x:Name="ExplorerPanel" Grid.Column="1">
+            <Grid x:Name="ExplorerPanel" Grid.Row="0">
                 <DockPanel Background="{DynamicResource ThemeFolderExplorerBg}">
                     <Border x:Name="ExplorerHeaderBorder"
                             DockPanel.Dock="Top"
@@ -1081,8 +1095,107 @@
                 </DockPanel>
             </Grid>
 
+            <GridSplitter x:Name="ExplorerRowSplitter"
+                          Grid.Row="1"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          Height="4"
+                          Background="{DynamicResource ThemeSplitter}"
+                          ResizeDirection="Rows"
+                          ResizeBehavior="PreviousAndNext"
+                          ShowsPreview="False"
+                          DragDelta="ExplorerRowSplitter_DragDelta"/>
+
+            <!-- Variable Explorer: always visible regardless of which left panel (Explorer/C64U)
+                 is active. Every variable in the active document, with each read/write
+                 occurrence as a child node - click one to jump to that line. -->
+            <DockPanel x:Name="VariablesPanel" Grid.Row="2" Background="{DynamicResource ThemeFolderExplorerBg}">
+                    <Border DockPanel.Dock="Top"
+                            Background="{DynamicResource ThemeFolderExplorerHeaderBg}"
+                            BorderBrush="{DynamicResource ThemeFolderExplorerHeaderBorder}" BorderThickness="0,0,0,1"
+                            Height="32">
+                        <TextBlock Text="{Binding ViewModel.Variables.Count, StringFormat='VARIABLES ({0})'}"
+                                   FontSize="11" FontWeight="Bold" Foreground="{DynamicResource ThemeFileFg}"
+                                   VerticalAlignment="Center" Margin="10,0,0,0"/>
+                    </Border>
+
+                    <TreeView x:Name="VariablesTree"
+                              Background="{DynamicResource ThemeFolderExplorerBg}"
+                              BorderThickness="0"
+                              ItemsSource="{Binding ViewModel.Variables}"
+                              MouseDoubleClick="VariablesTree_MouseDoubleClick"
+                              PreviewKeyDown="VariablesTree_PreviewKeyDown">
+                        <TreeView.Resources>
+                            <ContextMenu x:Key="VariableContextMenu">
+                                <MenuItem Header="_Rename" InputGestureText="F2" Click="VariableContextRename_Click"/>
+                            </ContextMenu>
+                            <ContextMenu x:Key="VariableOccurrenceContextMenu">
+                                <MenuItem Header="_Go to Line" Click="VariableOccurrenceContextGoToLine_Click"/>
+                            </ContextMenu>
+
+                            <HierarchicalDataTemplate DataType="{x:Type models:VariableInfo}" ItemsSource="{Binding Occurrences}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="nameText" Grid.Column="0" Text="{Binding Name}"
+                                               FontSize="12" Foreground="{DynamicResource ThemeFileFg}"
+                                               Margin="0,1" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="RenameBox" Grid.Column="0"
+                                             Visibility="Collapsed"
+                                             Text="{Binding Name, Mode=OneTime}"
+                                             CharacterCasing="Upper"
+                                             FontSize="12"
+                                             Foreground="{DynamicResource ThemeFileFg}"
+                                             Background="{DynamicResource ThemeSettingsInputBg}"
+                                             BorderBrush="{DynamicResource ThemeSettingsAccent}"
+                                             BorderThickness="1"
+                                             CaretBrush="{DynamicResource ThemeFileFg}"
+                                             Padding="2,0" Margin="-3,0"
+                                             VerticalContentAlignment="Center"
+                                             KeyDown="VariableRenameBox_KeyDown"
+                                             LostFocus="VariableRenameBox_LostFocus"/>
+                                    <Border Grid.Column="1"
+                                            Background="{DynamicResource ThemeFolderExplorerHoverBg}"
+                                            CornerRadius="2" Padding="4,0" Margin="4,0,8,0"
+                                            VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding TypeBadge}" FontSize="9" FontWeight="Bold"
+                                                   Foreground="{DynamicResource ThemeFolderExplorerIconFg}"/>
+                                    </Border>
+                                </Grid>
+                                <HierarchicalDataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsRenaming}" Value="True">
+                                        <Setter TargetName="nameText"  Property="Visibility" Value="Collapsed"/>
+                                        <Setter TargetName="RenameBox" Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </HierarchicalDataTemplate.Triggers>
+                            </HierarchicalDataTemplate>
+                            <DataTemplate DataType="{x:Type models:VariableOccurrenceInfo}">
+                                <TextBlock Text="{Binding DisplayText}"
+                                           FontSize="12" Foreground="{DynamicResource ThemeFileFg}"
+                                           Margin="0,1" VerticalAlignment="Center"/>
+                            </DataTemplate>
+
+                            <Style x:Key="VariableTreeViewItemStyle" TargetType="TreeViewItem" BasedOn="{StaticResource ExplorerTreeItemStyle}">
+                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                                <Setter Property="ContextMenu" Value="{StaticResource VariableContextMenu}"/>
+                                <EventSetter Event="PreviewMouseRightButtonDown" Handler="TreeViewItem_PreviewMouseRightButtonDown"/>
+                            </Style>
+                            <Style x:Key="VariableOccurrenceTreeViewItemStyle" TargetType="TreeViewItem" BasedOn="{StaticResource ExplorerTreeItemStyle}">
+                                <Setter Property="ContextMenu" Value="{StaticResource VariableOccurrenceContextMenu}"/>
+                                <EventSetter Event="PreviewMouseRightButtonDown" Handler="TreeViewItem_PreviewMouseRightButtonDown"/>
+                            </Style>
+                        </TreeView.Resources>
+                        <TreeView.ItemContainerStyleSelector>
+                            <local:VariableTreeItemStyleSelector VariableStyle="{StaticResource VariableTreeViewItemStyle}"
+                                                                  OccurrenceStyle="{StaticResource VariableOccurrenceTreeViewItemStyle}"/>
+                        </TreeView.ItemContainerStyleSelector>
+                    </TreeView>
+            </DockPanel>
+
             <!-- Left panel: C64U (FTP explorer) -->
-            <Grid x:Name="C64UPanel" Grid.Column="1" Visibility="Collapsed">
+            <Grid x:Name="C64UPanel" Grid.Row="0" Visibility="Collapsed">
                 <DockPanel Background="{DynamicResource ThemeFolderExplorerBg}">
                     <Border DockPanel.Dock="Top"
                             Background="{DynamicResource ThemeFolderExplorerHeaderBg}"
@@ -1355,6 +1468,7 @@
                         </TreeView>
                     </Grid>
                 </DockPanel>
+            </Grid>
             </Grid>
 
             <!-- Left GridSplitter -->
