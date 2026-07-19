@@ -6,32 +6,35 @@ using ReadyCode.Tokenizer;
 namespace ReadyCode.Editor;
 
 /// <summary>
-/// Full C64 BASIC V2 keyword completion table.
+/// Full 6502 assembly mnemonic completion table.
 /// Snippets use '|' to mark the initial caret position after insertion.
 /// </summary>
-public static class BasicCompletionProvider
+public static class AsmCompletionProvider
 {
     #region Public Properties
 
     /// <summary>
-    /// Gets the full list of completion entries for the C64 BASIC V2 keyword set.
+    /// Gets the full list of completion entries for the 6502 mnemonic set.
     /// </summary>
     public static readonly IReadOnlyList<KeywordCompletionData> AllItems = Build();
 
     /// <summary>
-    /// Gets the display order for keyword categories (e.g. for the "BASIC Keywords" reference panel).
+    /// Gets the display order for mnemonic categories.
     /// </summary>
     public static readonly IReadOnlyList<string> CategoryOrder =
     [
-        "Control Flow",
-        "Program Editing",
-        "Variables & Data",
-        "Math Functions",
-        "String Functions",
-        "Input & Output",
-        "Files & Devices",
-        "System & Memory",
-        "Logical Operators",
+        "Load/Store",
+        "Arithmetic",
+        "Logical",
+        "Shift/Rotate",
+        "Increment/Decrement",
+        "Compare",
+        "Branch",
+        "Jump/Subroutine",
+        "Stack",
+        "Transfer",
+        "Flags",
+        "System",
     ];
 
     #endregion
@@ -54,14 +57,12 @@ public static class BasicCompletionProvider
 
     #region Private Methods
 
-    // Built from BasicTokens.Keywords, the single source of truth for keyword metadata, so
-    // completion can never drift out of sync with the token table. Keywords with no completion
-    // metadata (the single-character operators) are excluded.
+    // Built from AsmTokens.Mnemonics, the single source of truth for mnemonic metadata, so
+    // completion can never drift out of sync with the mnemonic table.
     private static KeywordCompletionData[] Build() =>
     [
-        .. BasicTokens.Keywords
-            .Where(kv => kv.Value.Snippet != null)
-            .Select(kv => new KeywordCompletionData(kv.Key, kv.Value.Snippet!, kv.Value.Description!, kv.Value.Category!))
+        .. AsmTokens.Mnemonics
+            .Select(kv => new KeywordCompletionData(kv.Key, kv.Value.Snippet, kv.Value.Description, kv.Value.Category))
     ];
 
     #endregion

@@ -32,6 +32,8 @@ public static class FileClassifier
         switch (Path.GetExtension(nameOrPath).ToLowerInvariant())
         {
             case ".bas": return C64UFileKind.Bas;
+            case ".asm":
+            case ".s": return C64UFileKind.Asm;
             case ".d64": return C64UFileKind.D64;
             case ".d81": return C64UFileKind.D81;
             case ".prg":

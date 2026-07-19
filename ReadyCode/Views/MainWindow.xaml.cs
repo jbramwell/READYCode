@@ -51,6 +51,12 @@ public partial class MainWindow : Window
 
     private static readonly Regex _leadingLineNumberPattern = new(@"^(\s*)(\d+)", RegexOptions.Compiled);
 
+    // The editor's default BASIC font (also set as Editor.FontFamily's XAML default) and the
+    // font assembly tabs switch to instead - Pet Me 64 renders PETSCII glyphs BASIC relies on,
+    // but has no useful bearing on plain 6502 assembly text.
+    private static readonly FontFamily _basicEditorFont = new(new Uri("pack://application:,,,/ReadyCode;component/Assets/Fonts/"), "./#Pet Me 64");
+    private static readonly FontFamily _asmEditorFont = new("Consolas");
+
     private readonly BasicKeywordColorizer _keywordColorizer = new();
     private readonly LineNumberColorizer _lineNumberColorizer = new();
     private readonly NumberLiteralColorizer _numberLiteralColorizer = new();
@@ -58,6 +64,11 @@ public partial class MainWindow : Window
     private readonly DataLiteralColorizer _dataLiteralColorizer = new();
     private readonly RemCommentColorizer _remCommentColorizer = new();
     private readonly FindHighlightColorizer _findHighlightColorizer = new();
+    private readonly AsmMnemonicColorizer _asmMnemonicColorizer = new();
+    private readonly AsmNumberLiteralColorizer _asmNumberLiteralColorizer = new();
+    private readonly AsmLabelColorizer _asmLabelColorizer = new();
+    private readonly AsmCommentColorizer _asmCommentColorizer = new();
+    private readonly AsmLineNumberMargin _asmLineNumberMargin = new();
     private List<(int Offset, int Length)> _findMatches = new();
     private int _findMatchIndex = -1;
     private CurrentLineBorderRenderer _currentLineBorderRenderer = null!;
@@ -71,6 +82,7 @@ public partial class MainWindow : Window
     // tab activation (see ActivateTab) since FoldingManager can't be rebound to a new document.
     private FoldingManager? _foldingManager;
     private readonly BasicFoldingStrategy _foldingStrategy = new();
+    private readonly AsmFoldingStrategy _asmFoldingStrategy = new();
 
     // Tab management state
     private bool _tabSwitching;
@@ -148,15 +160,15 @@ public partial class MainWindow : Window
         EditPasteCommand = new RelayCommand(_ => EditPaste_Click(this, new RoutedEventArgs()), _ => HasActiveTab());
         EditDeleteCommand = new RelayCommand(_ => EditDelete_Click(this, new RoutedEventArgs()), _ => HasNonEmptyActiveTab());
         EditSelectAllCommand = new RelayCommand(_ => EditSelectAll_Click(this, new RoutedEventArgs()));
-        EditCommentCommand   = new RelayCommand(_ => ExecuteCommentSelection(), _ => HasNonEmptyActiveTab());
-        EditUncommentCommand = new RelayCommand(_ => ExecuteUncommentSelection(), _ => HasNonEmptyActiveTab());
+        EditCommentCommand   = new RelayCommand(_ => ExecuteCommentSelection(), _ => HasNonEmptyBasicActiveTab());
+        EditUncommentCommand = new RelayCommand(_ => ExecuteUncommentSelection(), _ => HasNonEmptyBasicActiveTab());
         EditMakeUppercaseCommand = new RelayCommand(_ => ExecuteChangeSelectionCase(upper: true),  _ => HasNonEmptyActiveTab());
         EditMakeLowercaseCommand = new RelayCommand(_ => ExecuteChangeSelectionCase(upper: false), _ => HasNonEmptyActiveTab());
-        EditMinifyCommand    = new RelayCommand(_ => ExecuteMinifyCode(), _ => HasNonEmptyActiveTab());
-        EditPrettifyCommand  = new RelayCommand(_ => ExecutePrettifyCode(), _ => HasNonEmptyActiveTab());
-        EditRenumberCommand  = new RelayCommand(_ => ExecuteRenumberCode(), _ => HasNonEmptyActiveTab());
+        EditMinifyCommand    = new RelayCommand(_ => ExecuteMinifyCode(), _ => HasNonEmptyBasicActiveTab());
+        EditPrettifyCommand  = new RelayCommand(_ => ExecutePrettifyCode(), _ => HasNonEmptyBasicActiveTab());
+        EditRenumberCommand  = new RelayCommand(_ => ExecuteRenumberCode(), _ => HasNonEmptyBasicActiveTab());
         EditGoToLineCommand  = new RelayCommand(_ => ExecuteGoToLine(), _ => HasNonEmptyActiveTab());
-        GoToDefinitionCommand = new RelayCommand(_ => ExecuteGoToGotoTarget(), _ => HasNonEmptyActiveTab());
+        GoToDefinitionCommand = new RelayCommand(_ => ExecuteGoToGotoTarget(), _ => HasNonEmptyBasicActiveTab());
         PreferencesSettingsCommand = new RelayCommand(_ => SettingsPreferences_Click(this, new RoutedEventArgs()));
         FileOpenFolderCommand = new RelayCommand(_ => OpenFolderDialog());
         FileCloseFolderCommand = new RelayCommand(_ => CloseFolder(), _ => HasFolderOpen());
@@ -199,13 +211,7 @@ public partial class MainWindow : Window
         Editor.TextArea.SelectionChanged += Editor_SelectionChanged;
         Editor.TextArea.Caret.PositionChanged += Editor_CaretPositionChanged;
 
-        Editor.TextArea.TextView.LineTransformers.Add(_lineNumberColorizer);
-        Editor.TextArea.TextView.LineTransformers.Add(_keywordColorizer);
-        Editor.TextArea.TextView.LineTransformers.Add(_numberLiteralColorizer);
-        Editor.TextArea.TextView.LineTransformers.Add(_stringLiteralColorizer);
-        Editor.TextArea.TextView.LineTransformers.Add(_dataLiteralColorizer);
-        Editor.TextArea.TextView.LineTransformers.Add(_remCommentColorizer);
-        Editor.TextArea.TextView.LineTransformers.Add(_findHighlightColorizer);
+        ApplyLineTransformersForLanguage(EditorLanguage.Basic);
         _currentLineBorderRenderer = new CurrentLineBorderRenderer(Editor);
         Editor.TextArea.TextView.BackgroundRenderers.Add(_currentLineBorderRenderer);
         _errorSquiggleRenderer = new ErrorSquiggleRenderer(Editor);
@@ -496,7 +502,7 @@ public partial class MainWindow : Window
     {
         var dialog = new OpenFileDialog
         {
-            Filter = "Commodore 64 Programs (*.prg)|*.prg|All Files (*.*)|*.*",
+            Filter = "Commodore 64 Programs (*.prg)|*.prg|6502 Assembly (*.asm;*.s)|*.asm;*.s|All Files (*.*)|*.*",
             Title = "Open File"
         };
         if (dialog.ShowDialog() == true)
@@ -560,6 +566,7 @@ public partial class MainWindow : Window
             {
                 FilePath = path,
                 Kind = FileClassifier.Classify(path, isFolder: false, prgData != null ? () => prgData : null),
+                Language = LanguageClassifier.Classify(path),
             };
             tab.Document.Text = text;
             ViewModel.OpenTabs.Add(tab);
@@ -635,11 +642,14 @@ public partial class MainWindow : Window
 
     private void FileSaveAs_Click(object sender, RoutedEventArgs e)
     {
+        bool isAsm = ViewModel.ActiveTab?.Language == EditorLanguage.Asm;
         var dialog = new SaveFileDialog
         {
-            Filter = "Commodore 64 Programs (*.prg)|*.prg|All Files (*.*)|*.*",
+            Filter = isAsm
+                ? "6502 Assembly (*.asm;*.s)|*.asm;*.s|All Files (*.*)|*.*"
+                : "Commodore 64 Programs (*.prg)|*.prg|All Files (*.*)|*.*",
             Title = "Save File As",
-            DefaultExt = ".prg",
+            DefaultExt = isAsm ? ".asm" : ".prg",
             AddExtension = true
         };
         if (!string.IsNullOrEmpty(ViewModel.CurrentFilePath))
@@ -648,21 +658,36 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() == true)
         {
             ViewModel.CurrentFilePath = dialog.FileName;
+            if (ViewModel.ActiveTab != null)
+                ViewModel.ActiveTab.Language = LanguageClassifier.Classify(ViewModel.CurrentFilePath!);
             SaveFile(ViewModel.CurrentFilePath!);
             RefreshExplorerForSavedFile(ViewModel.CurrentFilePath!);
         }
     }
 
+    // Writes the active tab's content to filePath - plain text for assembly source, or
+    // BASIC-tokenized PRG bytes otherwise. Must check the tab's language rather than always
+    // tokenizing, or saving a .asm file would silently overwrite it with binary PRG data.
     private void SaveFile(string filePath)
     {
         try
         {
-            var converter = new PrgConverter();
-            var prgData = converter.ConvertToPrg(Editor.Text);
-            File.WriteAllBytes(filePath, prgData);
-            ViewModel.IsModified = false;
-            TrackRecentFile(filePath);
-            ViewModel.SetStatus($"File saved: {prgData.Length:N0} tokenized bytes.");
+            if (ViewModel.ActiveTab?.Language == EditorLanguage.Asm)
+            {
+                File.WriteAllText(filePath, Editor.Text, Encoding.UTF8);
+                ViewModel.IsModified = false;
+                TrackRecentFile(filePath);
+                ViewModel.SetStatus("File saved.");
+            }
+            else
+            {
+                var converter = new PrgConverter();
+                var prgData = converter.ConvertToPrg(Editor.Text);
+                File.WriteAllBytes(filePath, prgData);
+                ViewModel.IsModified = false;
+                TrackRecentFile(filePath);
+                ViewModel.SetStatus($"File saved: {prgData.Length:N0} tokenized bytes.");
+            }
         }
         catch (Exception ex)
         {
@@ -697,27 +722,43 @@ public partial class MainWindow : Window
     // Returns false if the user cancels.
     private bool SaveTabWithDialog(EditorTab tab)
     {
+        bool isAsm = tab.Language == EditorLanguage.Asm;
         if (string.IsNullOrEmpty(tab.FilePath))
         {
             var dialog = new SaveFileDialog
             {
-                Filter = "Commodore 64 Programs (*.prg)|*.prg|All Files (*.*)|*.*",
+                Filter = isAsm
+                    ? "6502 Assembly (*.asm;*.s)|*.asm;*.s|All Files (*.*)|*.*"
+                    : "Commodore 64 Programs (*.prg)|*.prg|All Files (*.*)|*.*",
                 Title = "Save File",
-                DefaultExt = ".prg",
+                DefaultExt = isAsm ? ".asm" : ".prg",
                 AddExtension = true
             };
             if (dialog.ShowDialog() != true) return false;
             tab.FilePath = dialog.FileName;
+            tab.Language = LanguageClassifier.Classify(tab.FilePath);
+            isAsm = tab.Language == EditorLanguage.Asm;
         }
         try
         {
-            var converter = new PrgConverter();
-            var prgData = converter.ConvertToPrg(tab.Document.Text);
-            File.WriteAllBytes(tab.FilePath, prgData);
-            tab.IsModified = false;
-            TrackRecentFile(tab.FilePath);
-            RefreshExplorerForSavedFile(tab.FilePath);
-            ViewModel.SetStatus($"File saved: {prgData.Length:N0} tokenized bytes.");
+            if (isAsm)
+            {
+                File.WriteAllText(tab.FilePath, tab.Document.Text, Encoding.UTF8);
+                tab.IsModified = false;
+                TrackRecentFile(tab.FilePath);
+                RefreshExplorerForSavedFile(tab.FilePath);
+                ViewModel.SetStatus("File saved.");
+            }
+            else
+            {
+                var converter = new PrgConverter();
+                var prgData = converter.ConvertToPrg(tab.Document.Text);
+                File.WriteAllBytes(tab.FilePath, prgData);
+                tab.IsModified = false;
+                TrackRecentFile(tab.FilePath);
+                RefreshExplorerForSavedFile(tab.FilePath);
+                ViewModel.SetStatus($"File saved: {prgData.Length:N0} tokenized bytes.");
+            }
             return true;
         }
         catch (Exception ex)
@@ -795,6 +836,11 @@ public partial class MainWindow : Window
     // stale previous tab's content while Editor itself sits hidden with zero tabs open.
     private bool HasNonEmptyActiveTab() => !string.IsNullOrEmpty(ViewModel.ActiveTab?.Document.Text);
 
+    // Gates commands that run BASIC-specific text transforms (prettify/minify/renumber, GOTO
+    // navigation, REM comment toggling) and would corrupt or misparse assembly source.
+    private bool HasNonEmptyBasicActiveTab() =>
+        HasNonEmptyActiveTab() && ViewModel.ActiveTab?.Language != EditorLanguage.Asm;
+
     // Gates Cut/Copy, which need an actual text selection rather than just non-empty content.
     private bool HasSelection() => ViewModel.ActiveTab != null && Editor.SelectionLength > 0;
 
@@ -834,6 +880,7 @@ public partial class MainWindow : Window
             // counts as the visible text changing), so the guard must still be up here -
             // otherwise Editor_TextChanged marks the freshly activated tab as modified.
             Editor.Document = tab.Document;
+            ApplyLineTransformersForLanguage(tab.Language);
             Editor.CaretOffset = Math.Min(tab.CaretOffset, tab.Document.TextLength);
             Editor.ScrollToVerticalOffset(tab.ScrollOffsetY);
             Editor.Focus();
@@ -868,6 +915,45 @@ public partial class MainWindow : Window
         // the overflow menu, keyboard shortcuts, etc., not just clicking a visible tab.
         if (tab != null)
             TabBar.ScrollIntoView(tab);
+    }
+
+    // Swaps which set of syntax colorizers is attached to the editor, and which font it displays,
+    // for the given language, so switching tabs never leaves BASIC transformers running over
+    // assembly text (or vice versa) - e.g. RemCommentColorizer's un-bounded "REM" scan would
+    // wrongly comment out the rest of a line containing a label like "TREMOR:".
+    // FindHighlightColorizer is language-agnostic and stays active either way. Also shows a
+    // sequential editor-line-number gutter for Asm only - BASIC already shows its own line
+    // numbers as ordinary source text, so a duplicate gutter would look redundant there.
+    private void ApplyLineTransformersForLanguage(EditorLanguage language)
+    {
+        var transformers = Editor.TextArea.TextView.LineTransformers;
+        transformers.Clear();
+
+        if (language == EditorLanguage.Asm)
+        {
+            transformers.Add(_asmMnemonicColorizer);
+            transformers.Add(_asmNumberLiteralColorizer);
+            transformers.Add(_asmLabelColorizer);
+            transformers.Add(_asmCommentColorizer);
+
+            if (!Editor.TextArea.LeftMargins.Contains(_asmLineNumberMargin))
+                Editor.TextArea.LeftMargins.Insert(0, _asmLineNumberMargin);
+        }
+        else
+        {
+            transformers.Add(_lineNumberColorizer);
+            transformers.Add(_keywordColorizer);
+            transformers.Add(_numberLiteralColorizer);
+            transformers.Add(_stringLiteralColorizer);
+            transformers.Add(_dataLiteralColorizer);
+            transformers.Add(_remCommentColorizer);
+
+            Editor.TextArea.LeftMargins.Remove(_asmLineNumberMargin);
+        }
+
+        transformers.Add(_findHighlightColorizer);
+
+        Editor.FontFamily = language == EditorLanguage.Asm ? _asmEditorFont : _basicEditorFont;
     }
 
     // Cycles the active tab forward (right) or backward (left) through ViewModel.OpenTabs,
@@ -978,6 +1064,7 @@ public partial class MainWindow : Window
         _closedTabHistory.RemoveAt(_closedTabHistory.Count - 1);
 
         var tab = new EditorTab { FilePath = snapshot.FilePath };
+        if (snapshot.FilePath != null) tab.Language = LanguageClassifier.Classify(snapshot.FilePath);
         tab.Document.Text = snapshot.Text;
         tab.CaretOffset = Math.Min(snapshot.CaretOffset, tab.Document.TextLength);
         tab.ScrollOffsetY = snapshot.ScrollOffsetY;
@@ -2994,7 +3081,7 @@ public partial class MainWindow : Window
             // Open the blank tab directly instead of routing through OpenFileByPath, which re-reads the
             // file from disk and, for .prg paths, runs it through the PRG binary parser - a freshly
             // created empty file is too small to be a valid PRG and would fail that parse.
-            var tab = new EditorTab { FilePath = path };
+            var tab = new EditorTab { FilePath = path, Language = LanguageClassifier.Classify(path) };
             ViewModel.OpenTabs.Add(tab);
             ActivateTab(tab);
             tab.IsModified = false;
@@ -3346,7 +3433,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var matches = BasicCompletionProvider.GetMatches(word);
+        var matches = GetCompletionMatches(word);
         if (matches.Count == 0)
         {
             ClearGhostText();
@@ -3379,7 +3466,7 @@ public partial class MainWindow : Window
         var (wordStart, word) = GetWordBeforeCaret();
         if (string.IsNullOrEmpty(word)) return;
 
-        var matches = BasicCompletionProvider.GetMatches(word);
+        var matches = GetCompletionMatches(word);
         if (matches.Count == 0) return;
 
         ClearGhostText();
@@ -3398,11 +3485,9 @@ public partial class MainWindow : Window
 
         var (wordStart, word) = GetWordBeforeCaret();
 
-        List<BasicCompletionData> matches;
-        if (string.IsNullOrEmpty(word) || word.All(char.IsDigit))
-            matches = [.. BasicCompletionProvider.AllItems.OrderBy(i => i.Text, StringComparer.OrdinalIgnoreCase)];
-        else
-            matches = BasicCompletionProvider.GetMatches(word);
+        List<KeywordCompletionData> matches = string.IsNullOrEmpty(word) || word.All(char.IsDigit)
+            ? GetAllCompletionItems()
+            : GetCompletionMatches(word);
 
         if (matches.Count == 0) return;
 
@@ -3415,6 +3500,20 @@ public partial class MainWindow : Window
         _completionWindow.Show();
     }
 
+    // Returns completion entries matching prefix from whichever provider matches the active
+    // tab's language, so ghost text/Ctrl+Space never mixes BASIC keywords and assembly mnemonics.
+    private List<KeywordCompletionData> GetCompletionMatches(string prefix) =>
+        ViewModel.ActiveTab?.Language == EditorLanguage.Asm
+            ? AsmCompletionProvider.GetMatches(prefix)
+            : BasicCompletionProvider.GetMatches(prefix);
+
+    // Returns every completion entry for the active tab's language, alphabetically - used for
+    // the Ctrl+Space "no prefix typed yet" fallback.
+    private List<KeywordCompletionData> GetAllCompletionItems() =>
+        ViewModel.ActiveTab?.Language == EditorLanguage.Asm
+            ? [.. AsmCompletionProvider.AllItems.OrderBy(i => i.Text, StringComparer.OrdinalIgnoreCase)]
+            : [.. BasicCompletionProvider.AllItems.OrderBy(i => i.Text, StringComparer.OrdinalIgnoreCase)];
+
     /// <summary>
     /// Populates the PETSCII Reference panel with three groups of character cells:
     /// printable (32-127), graphics SET 1 (96-127 overlap shown separately via description),
@@ -3425,7 +3524,7 @@ public partial class MainWindow : Window
     {
         PetsciiTablePanel.Children.Clear();
 
-        var petMe64  = new FontFamily(new Uri("pack://application:,,,/ReadyCode;component/Assets/Fonts/"), "./#Pet Me 64");
+        var petMe64  = _basicEditorFont;
         var segoeUi  = new FontFamily("Segoe UI");
 
         Brush R(string key) => (Brush)FindResource(key);
@@ -3868,9 +3967,11 @@ public partial class MainWindow : Window
 
     // Re-analyzes the active document for undefined GOTO/GOSUB/THEN targets, unmatched FOR/NEXT,
     // unterminated strings, and duplicate line numbers, and refreshes the squiggle underlines.
+    // BASIC-specific - assembly tabs never get diagnostics, so squiggles are just cleared.
     private void RunDiagnostics()
     {
-        _currentDiagnostics = Editor.Document != null && ViewModel.Settings.EnableLinting
+        bool isBasic = ViewModel.ActiveTab?.Language != EditorLanguage.Asm;
+        _currentDiagnostics = Editor.Document != null && isBasic && ViewModel.Settings.EnableLinting
             ? BasicDiagnostics.Analyze(Editor.Document.Text)
             : Array.Empty<BasicDiagnostic>();
         _errorSquiggleRenderer.SetDiagnostics(_currentDiagnostics);
@@ -3884,7 +3985,10 @@ public partial class MainWindow : Window
     private void RunFolding()
     {
         if (_foldingManager == null || Editor.Document == null) return;
-        _foldingStrategy.UpdateFoldings(_foldingManager, Editor.Document);
+        if (ViewModel.ActiveTab?.Language == EditorLanguage.Asm)
+            _asmFoldingStrategy.UpdateFoldings(_foldingManager, Editor.Document);
+        else
+            _foldingStrategy.UpdateFoldings(_foldingManager, Editor.Document);
     }
 
     // Snapshots which folds are currently collapsed onto the tab being switched away from, so
@@ -3930,11 +4034,12 @@ public partial class MainWindow : Window
     // VariableInfo instance for a name that's still present preserves its IsExpanded state (WPF's
     // TreeViewItem container ties expansion to the bound object's identity), so the tree doesn't
     // collapse everything the user just expanded on every debounce tick while typing.
+    // BASIC-specific - assembly has no variable cross-reference in this phase.
     private void RunVariableIndex()
     {
         var variables = ViewModel.Variables;
         var document = Editor.Document;
-        if (document == null) { variables.Clear(); return; }
+        if (document == null || ViewModel.ActiveTab?.Language == EditorLanguage.Asm) { variables.Clear(); return; }
 
         var byName = VariableCrossReference.Analyze(document.Text)
             .GroupBy(r => r.Name, StringComparer.Ordinal);
@@ -4112,12 +4217,15 @@ public partial class MainWindow : Window
         string lineText = Editor.Document.GetText(line);
         int col = position.Value.Column - 1; // AvalonEdit columns are 1-based
 
+        bool isAsm = ViewModel.ActiveTab?.Language == EditorLanguage.Asm;
+
         string tooltipText;
         if (TryGetDiagnosticAt(line.Offset + col, out var diagnostic))
         {
             tooltipText = diagnostic.Message;
         }
-        else if (!TryGetHoverTooltip(lineText, col, out tooltipText))
+        else if (isAsm ? !TryGetAsmHoverTooltip(lineText, col, out tooltipText)
+                       : !TryGetHoverTooltip(lineText, col, out tooltipText))
         {
             CloseHoverToolTip();
             return;
@@ -4176,6 +4284,40 @@ public partial class MainWindow : Window
         _hoverToolTip.IsOpen = false;
         _hoverToolTip = null;
     }
+
+    // Builds the hover tooltip text for the mnemonic at column `col` on the given assembly line,
+    // as "{Mnemonic} - {Description}". Returns false for comment text, or when `col` isn't on a
+    // mnemonic - no variable/label tooltip is offered, since address/label resolution is out of
+    // scope for assembly editing.
+    private static bool TryGetAsmHoverTooltip(string lineText, int col, out string tooltipText)
+    {
+        tooltipText = "";
+        if (col < 0 || col > lineText.Length) return false;
+
+        int commentStart = lineText.IndexOf(';');
+        if (commentStart >= 0 && col >= commentStart) return false;
+
+        for (int i = 0; i < lineText.Length; i++)
+        {
+            if (!char.IsLetter(lineText[i])) continue;
+
+            bool leftBoundary = i == 0 || !IsAsmWordChar(lineText[i - 1]);
+            if (!leftBoundary || i + 3 > lineText.Length) continue;
+
+            string candidate = lineText.Substring(i, 3);
+            bool rightBoundary = i + 3 == lineText.Length || !IsAsmWordChar(lineText[i + 3]);
+            if (rightBoundary && col >= i && col < i + 3 &&
+                AsmTokens.Mnemonics.TryGetValue(candidate, out var info))
+            {
+                tooltipText = $"{candidate.ToUpperInvariant()} - {info.Description}";
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsAsmWordChar(char c) => char.IsLetterOrDigit(c) || c == '_';
 
     // Builds the hover tooltip text for the token at column `col` on the given line - either
     // "(variable) {type} {name}" for a user variable, or "{Keyword} - {Description}" (reusing
@@ -4554,7 +4696,10 @@ public partial class MainWindow : Window
 
     private void Editor_PreviewTextInput(object sender, TextCompositionEventArgs e)
     {
-        // C64 BASIC is upper case by default - force typed text to match
+        // C64 BASIC is upper case by default - force typed text to match. Assembly source case
+        // is significant (labels, comments) - leave it to AvalonEdit's normal input handling.
+        if (ViewModel.ActiveTab?.Language == EditorLanguage.Asm) return;
+
         e.Handled = true;
 
         string upperText = e.Text.ToUpperInvariant();
@@ -4586,6 +4731,8 @@ public partial class MainWindow : Window
             e.CancelCommand();
             return;
         }
+
+        if (ViewModel.ActiveTab?.Language == EditorLanguage.Asm) return; // preserve pasted case for assembly
 
         string text = (string)e.DataObject.GetData(DataFormats.Text);
         e.DataObject = new DataObject(text.ToUpperInvariant());
@@ -4633,6 +4780,15 @@ public partial class MainWindow : Window
         _stringLiteralColorizer.StringBrush     = (Brush)FindResource("ThemeEditorStringFg");
         _dataLiteralColorizer.StringBrush       = (Brush)FindResource("ThemeEditorStringFg");
         _remCommentColorizer.CommentBrush       = (Brush)FindResource("ThemeEditorCommentFg");
+        _asmMnemonicColorizer.MnemonicBrush     = (Brush)FindResource("ThemeEditorKeywordFg");
+        _asmNumberLiteralColorizer.NumberBrush  = (Brush)FindResource("ThemeEditorNumberLiteralFg");
+        _asmLabelColorizer.LabelBrush           = (Brush)FindResource("ThemeEditorLineNumberFg");
+        _asmCommentColorizer.CommentBrush       = (Brush)FindResource("ThemeEditorCommentFg");
+        _asmLineNumberMargin.TextBrush   = (Brush)FindResource("ThemeEditorLineNumberFg");
+        _asmLineNumberMargin.FontSize    = ViewModel.Settings.EditorFontSize;
+        _asmLineNumberMargin.ZeroPadWidth = ViewModel.Settings.LineNumberPadding;
+        _asmLineNumberMargin.InvalidateMeasure();
+        _asmLineNumberMargin.InvalidateVisual();
         _findHighlightColorizer.MatchBrush          = (Brush)FindResource("ThemeFindMatchBg");
         _findHighlightColorizer.MatchFgBrush        = (Brush)FindResource("ThemeFindMatchFg");
         _findHighlightColorizer.CurrentMatchBrush   = (Brush)FindResource("ThemeFindCurrentBg");

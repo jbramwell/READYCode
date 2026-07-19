@@ -8,6 +8,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Input;
+using ReadyCode.Assembler;
 using ReadyCode.C64U;
 using ReadyCode.Minify;
 using ReadyCode.Models;
@@ -1041,14 +1042,14 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    // Transfers the current BASIC code to VICE without running it. The user can type RUN
+    // Transfers the current code to VICE without running it. The user can type RUN
     // from within the emulator to start it.
     private async Task TransferToViceAsync()
     {
         string? text = ActiveTab?.Document.Text;
         if (string.IsNullOrWhiteSpace(text))
         {
-            SetStatus("No code to transfer. Write some BASIC code first.", StatusType.Error);
+            SetStatus("No code to transfer. Write some code first.", StatusType.Error);
             return;
         }
 
@@ -1058,15 +1059,15 @@ public class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        if (!TryBuildPrgData(text, out byte[]? prgData))
+            return;
+
         try
         {
             SetStatus("Transferring program to VICE…");
 
-            var converter = new PrgConverter();
-            var prgData = converter.ConvertToPrg(PrepareCodeForTransfer(text));
-
             var client = new ViceClient(Settings.ViceMonitorHost, Settings.ViceMonitorPort);
-            await client.TransferAsync(Settings.ViceEmulatorPath, prgData, ActiveTab!.FileName, Settings.ViceBringToForeground);
+            await client.TransferAsync(Settings.ViceEmulatorPath, prgData!, ActiveTab!.FileName, Settings.ViceBringToForeground);
 
             SetStatus("Program transferred to VICE. Type RUN in the emulator to start it.");
         }
@@ -1076,13 +1077,13 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    // Transfers the current BASIC code to VICE and starts execution.
+    // Transfers the current code to VICE and starts execution.
     private async Task RunOnViceAsync()
     {
         string? text = ActiveTab?.Document.Text;
         if (string.IsNullOrWhiteSpace(text))
         {
-            SetStatus("There is no code to run. Please write some BASIC code first.", StatusType.Error);
+            SetStatus("There is no code to run. Please write some code first.", StatusType.Error);
             return;
         }
 
@@ -1092,15 +1093,16 @@ public class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        if (!TryBuildPrgData(text, out byte[]? prgData))
+            return;
+
         try
         {
-            var converter = new PrgConverter();
-            var prgData = converter.ConvertToPrg(PrepareCodeForTransfer(text));
             var client = new ViceClient(Settings.ViceMonitorHost, Settings.ViceMonitorPort);
 
             SetStatus("Transferring program to VICE…");
 
-            await client.RunAsync(Settings.ViceEmulatorPath, prgData, ActiveTab!.FileName, Settings.ViceBringToForeground);
+            await client.RunAsync(Settings.ViceEmulatorPath, prgData!, ActiveTab!.FileName, Settings.ViceBringToForeground);
 
             SetStatus("Program transferred and running on VICE.", StatusType.Info);
         }
@@ -1108,6 +1110,34 @@ public class MainViewModel : INotifyPropertyChanged
         {
             SetStatus($"Transfer/program execution failed: {ex.Message}", StatusType.Error);
         }
+    }
+
+    // Builds the .prg bytes to send to VICE: assembles machine code for an Asm tab, or tokenizes
+    // BASIC otherwise. On assembly failure, shows every error in a dialog and returns false
+    // without ever constructing a ViceClient, keeping "assembly failed" distinct from "transfer
+    // failed".
+    private bool TryBuildPrgData(string text, out byte[]? prgData)
+    {
+        if (ActiveTab!.Language == EditorLanguage.Asm)
+        {
+            var asmResult = new Asm6502Assembler().Assemble(text);
+            if (!asmResult.Success)
+            {
+                MessageBox.Show(
+                    string.Join(Environment.NewLine, asmResult.Errors.Select(e => $"Line {e.LineNumber}: {e.Message}")),
+                    "Assembly Errors", MessageBoxButton.OK, MessageBoxImage.Error);
+                SetStatus($"Assembly failed with {asmResult.Errors.Count} error(s).", StatusType.Error);
+                prgData = null;
+                return false;
+            }
+
+            prgData = asmResult.PrgBytes;
+            return true;
+        }
+
+        var converter = new PrgConverter();
+        prgData = converter.ConvertToPrg(PrepareCodeForTransfer(text));
+        return true;
     }
 
     // Performs a machine action (reset, reboot, pause, resume, poweroff) on VICE via its binary monitor.

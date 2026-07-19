@@ -34,10 +34,10 @@ public sealed class EditorSegment(int offset, int length) : ISegment
 }
 
 /// <summary>
-/// A single C64 BASIC keyword entry in the completion list.
-/// The snippet string uses '|' to mark where the caret lands after insertion.
+/// A single keyword/mnemonic completion list entry, shared by the BASIC and Assembly completion
+/// providers. The snippet string uses '|' to mark where the caret lands after insertion.
 /// </summary>
-public class BasicCompletionData : ICompletionData
+public class KeywordCompletionData : ICompletionData
 {
     #region Private Fields
 
@@ -48,13 +48,13 @@ public class BasicCompletionData : ICompletionData
     #region Constructors
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="BasicCompletionData"/> class.
+    /// Initializes a new instance of the <see cref="KeywordCompletionData"/> class.
     /// </summary>
     /// <param name="text">The keyword text inserted when this entry is selected.</param>
     /// <param name="snippet">The snippet to insert, with '|' marking the caret position.</param>
     /// <param name="description">The description shown for this entry.</param>
     /// <param name="category">The reference-panel category this keyword is grouped under.</param>
-    public BasicCompletionData(string text, string snippet, string description, string category)
+    public KeywordCompletionData(string text, string snippet, string description, string category)
     {
         Text = text;
         _snippet = snippet;

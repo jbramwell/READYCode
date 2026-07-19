@@ -25,6 +25,9 @@ public enum C64UFileKind
     /// <summary>A tokenized program file (.prg) that is machine language rather than BASIC.</summary>
     Ml,
 
+    /// <summary>A 6502 assembly source file (.asm/.s).</summary>
+    Asm,
+
     /// <summary>A 1541 disk image (.d64).</summary>
     D64,
 
@@ -223,6 +226,7 @@ public class C64UFileItem : INotifyPropertyChanged
         C64UFileKind.Prg => "PRG",
         C64UFileKind.Bas => "BAS",
         C64UFileKind.Ml => "ML",
+        C64UFileKind.Asm => "ASM",
         _ => null,
     };
 

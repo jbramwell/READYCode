@@ -55,13 +55,16 @@
     <!-- C64U Explorer file-type badges: three more colors pulled from the authentic Pepto VIC-II
          palette (see the header comment), the same source as this theme's whole palette - Blue
          for disk images, Orange for machine language (caution), Green for confirmed-runnable
-         BASIC (go/ready), same reasoning as the other themes but using real C64 hardware colors. -->
+         BASIC (go/ready), Purple for 6502 assembly source, same reasoning as the other themes
+         but using real C64 hardware colors. -->
     <SolidColorBrush x:Key="ThemeBadgeDiskBg" Color="#352879"/>
     <SolidColorBrush x:Key="ThemeBadgeDiskFg" Color="#FFFFFF"/>
     <SolidColorBrush x:Key="ThemeBadgeMlBg"   Color="#6F4F25"/>
     <SolidColorBrush x:Key="ThemeBadgeMlFg"   Color="#FFFFFF"/>
     <SolidColorBrush x:Key="ThemeBadgePrgBg"  Color="#588D43"/>
     <SolidColorBrush x:Key="ThemeBadgePrgFg"  Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="ThemeBadgeAsmBg"  Color="#6F3D86"/>
+    <SolidColorBrush x:Key="ThemeBadgeAsmFg"  Color="#FFFFFF"/>
 
     <!-- Status Bar -->
     <SolidColorBrush x:Key="ThemeStatusBarBg"     Color="#1F1850"/>

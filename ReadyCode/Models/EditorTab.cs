@@ -65,6 +65,14 @@ public class EditorTab : INotifyPropertyChanged
     public C64UFileKind Kind { get; set; } = C64UFileKind.Bas;
 
     /// <summary>
+    /// Gets or sets the in-editor language this tab is edited as, classified by
+    /// <see cref="LanguageClassifier"/> when the tab was opened. Selects which colorizers,
+    /// completion provider, hover tooltips, and folding strategy are active for the tab.
+    /// Independent of <see cref="Kind"/>, which is about C64/C64U file semantics.
+    /// </summary>
+    public EditorLanguage Language { get; set; } = EditorLanguage.Basic;
+
+    /// <summary>
     /// Gets the display file name, falling back to <see cref="DisplayName"/> or "Untitled"
     /// if the tab has no <see cref="FilePath"/>.
     /// </summary>

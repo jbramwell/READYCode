@@ -125,6 +125,7 @@ public class FileTreeItem : INotifyPropertyChanged
         C64UFileKind.Prg => "PRG",
         C64UFileKind.Bas => "BAS",
         C64UFileKind.Ml => "ML",
+        C64UFileKind.Asm => "ASM",
         _ => null,
     };
 
