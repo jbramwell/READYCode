@@ -981,6 +981,25 @@ public partial class MainWindow : Window
         bool isAsm = language == EditorLanguage.Asm;
         VariablesPanel.Visibility = isAsm ? Visibility.Collapsed : Visibility.Visible;
         SymbolsPanel.Visibility = isAsm ? Visibility.Visible : Visibility.Collapsed;
+
+        // The BASIC Keywords / ASM Mnemonics activity-bar buttons only make sense for their
+        // matching language - hide whichever doesn't apply, closing its panel first if it was
+        // the one currently open (setting IsChecked here doesn't raise Click, so the panel
+        // must be closed explicitly rather than relying on AsmKeywordsToggle_Click etc).
+        BasicKeywordsToggle.Visibility = isAsm ? Visibility.Collapsed : Visibility.Visible;
+        AsmKeywordsToggle.Visibility = isAsm ? Visibility.Visible : Visibility.Collapsed;
+        if (isAsm && BasicKeywordsToggle.IsChecked == true)
+        {
+            BasicKeywordsToggle.IsChecked = false;
+            CloseRightPanel(BasicKeywordsPanel);
+            ViewModel.IsRightPanelOpen = RightPanelToggles.Any(t => t.Toggle.IsChecked == true);
+        }
+        else if (!isAsm && AsmKeywordsToggle.IsChecked == true)
+        {
+            AsmKeywordsToggle.IsChecked = false;
+            CloseRightPanel(AsmKeywordsPanel);
+            ViewModel.IsRightPanelOpen = RightPanelToggles.Any(t => t.Toggle.IsChecked == true);
+        }
     }
 
     // Cycles the active tab forward (right) or backward (left) through ViewModel.OpenTabs,
@@ -1851,13 +1870,21 @@ public partial class MainWindow : Window
         }
         else
         {
-            if (RightPanelCol.Width.Value > 0)
-                ViewModel.Settings.RightPanelWidth = RightPanelCol.Width.Value;
-            panel.Visibility = Visibility.Collapsed;
-            RightPanelCol.Width = new GridLength(0);
-            RightSplitterCol.Width = new GridLength(0);
+            CloseRightPanel(panel);
         }
         ViewModel.IsRightPanelOpen = RightPanelToggles.Any(t => t.Toggle.IsChecked == true);
+    }
+
+    // Collapses a single right panel and reclaims its column width. Shared by
+    // ActivateRightPanel's manual-toggle-off path and by language-driven auto-close
+    // (e.g. switching to an Asm tab force-closes an open BASIC Keywords panel).
+    private void CloseRightPanel(DockPanel panel)
+    {
+        if (RightPanelCol.Width.Value > 0)
+            ViewModel.Settings.RightPanelWidth = RightPanelCol.Width.Value;
+        panel.Visibility = Visibility.Collapsed;
+        RightPanelCol.Width = new GridLength(0);
+        RightSplitterCol.Width = new GridLength(0);
     }
 
     private void SpecialCharsToggle_Click(object sender, RoutedEventArgs e) => ActivateRightPanel(SpecialCharsToggle, SpecialCharsPanel);

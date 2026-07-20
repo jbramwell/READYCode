@@ -9,6 +9,7 @@ using System.Windows.Documents;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Xps;
+using ReadyCode.Models;
 using ReadyCode.Tokenizer;
 using FormsPageSetupDialog = System.Windows.Forms.PageSetupDialog;
 using FormsPrintDialog = System.Windows.Forms.PrintDialog;
@@ -38,6 +39,10 @@ public class SourcePrinter
     // correctly even on a machine that hasn't installed the Pet Me 64 font separately.
     private static readonly FontFamily _petMe64Font = new(new Uri("pack://application:,,,/ReadyCode;component/Assets/Fonts/"), "./#Pet Me 64");
 
+    // Matches the editor's Asm font (see MainWindow._asmEditorFont) so printed assembly source
+    // looks the same as it does on screen, instead of BASIC's PETSCII-mapped Pet Me 64 font.
+    private static readonly FontFamily _asmFont = new("Consolas");
+
     private readonly PrintDocument _pageSettings = new();
 
     #endregion
@@ -60,10 +65,11 @@ public class SourcePrinter
     /// <param name="owner">The window that owns the dialog.</param>
     /// <param name="text">The source text to print.</param>
     /// <param name="documentName">The document name shown in the print queue.</param>
-    public void Print(Window owner, string text, string documentName)
+    /// <param name="language">The source language, selecting the font (and PETSCII glyph mapping for BASIC) used.</param>
+    public void Print(Window owner, string text, string documentName, EditorLanguage language)
     {
         var (width, height) = GetPageSize();
-        var document = BuildFlowDocument(text, width, height);
+        var document = BuildFlowDocument(text, width, height, language);
         DocumentPaginator paginator = ((IDocumentPaginatorSource)document).DocumentPaginator;
         if (!paginator.IsPageCountValid)
             paginator.ComputePageCount();
@@ -93,10 +99,11 @@ public class SourcePrinter
     /// <param name="owner">The window that owns the preview window.</param>
     /// <param name="text">The source text to preview.</param>
     /// <param name="documentName">The document name shown in the preview window title.</param>
-    public void PrintPreview(Window owner, string text, string documentName)
+    /// <param name="language">The source language, selecting the font (and PETSCII glyph mapping for BASIC) used.</param>
+    public void PrintPreview(Window owner, string text, string documentName, EditorLanguage language)
     {
         var (width, height) = GetPageSize();
-        var document = BuildFlowDocument(text, width, height);
+        var document = BuildFlowDocument(text, width, height, language);
         var reader = new FlowDocumentReader { Document = document, ViewingMode = FlowDocumentReaderViewingMode.Page };
 
         new Window
@@ -122,12 +129,13 @@ public class SourcePrinter
         return _pageSettings.DefaultPageSettings.Landscape ? (height, width) : (width, height);
     }
 
-    private FlowDocument BuildFlowDocument(string text, double pageWidth, double pageHeight)
+    private FlowDocument BuildFlowDocument(string text, double pageWidth, double pageHeight, EditorLanguage language)
     {
+        bool isAsm = language == EditorLanguage.Asm;
         var margins = _pageSettings.DefaultPageSettings.Margins;
         var document = new FlowDocument
         {
-            FontFamily = _petMe64Font,
+            FontFamily = isAsm ? _asmFont : _petMe64Font,
             FontSize = 10.0 * _pointsToDeviceUnits,
             PageWidth = pageWidth,
             PageHeight = pageHeight,
@@ -144,7 +152,8 @@ public class SourcePrinter
         for (int i = 0; i < lines.Length; i++)
         {
             if (i > 0) paragraph.Inlines.Add(new LineBreak());
-            paragraph.Inlines.Add(new Run(MapPetsciiGlyphs(lines[i].TrimEnd('\r'))));
+            string line = lines[i].TrimEnd('\r');
+            paragraph.Inlines.Add(new Run(isAsm ? line : MapPetsciiGlyphs(line)));
         }
         document.Blocks.Add(paragraph);
         return document;

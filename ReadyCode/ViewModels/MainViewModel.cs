@@ -958,7 +958,7 @@ public class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        _printer.Print((Window)Application.Current.MainWindow, text, ActiveTab!.FileName);
+        _printer.Print((Window)Application.Current.MainWindow, text, ActiveTab!.FileName, ActiveTab.Language);
     }
 
     // Shows a print preview of the active tab's source code. Shows a status message if there is nothing to print.
@@ -971,7 +971,7 @@ public class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        _printer.PrintPreview((Window)Application.Current.MainWindow, text, ActiveTab!.FileName);
+        _printer.PrintPreview((Window)Application.Current.MainWindow, text, ActiveTab!.FileName, ActiveTab.Language);
     }
 
     // Gates Transfer/Run: both need an open tab with at least one character typed into it.

@@ -90,10 +90,14 @@
 
         <!-- Context menu for the text editor -->
         <ContextMenu x:Key="EditorContextMenu">
-            <MenuItem Header="Transfer"        InputGestureText="Ctrl+F5"     Click="EditorContextTransfer_Click"/>
-            <MenuItem Header="Run"             InputGestureText="F5"          Click="EditorContextRun_Click"/>
-            <MenuItem Header="Transfer (VICE)" InputGestureText="Ctrl+Alt+F5" Click="EditorContextViceTransfer_Click"/>
-            <MenuItem Header="Run (VICE)"      InputGestureText="Alt+F5"      Click="EditorContextViceRun_Click"/>
+            <MenuItem Header="Load">
+                <MenuItem Header="C64U" InputGestureText="Ctrl+F5"     Click="EditorContextTransfer_Click"/>
+                <MenuItem Header="VICE" InputGestureText="Ctrl+Alt+F5" Click="EditorContextViceTransfer_Click"/>
+            </MenuItem>
+            <MenuItem Header="Run">
+                <MenuItem Header="C64U" InputGestureText="F5"     Click="EditorContextRun_Click"/>
+                <MenuItem Header="VICE" InputGestureText="Alt+F5" Click="EditorContextViceRun_Click"/>
+            </MenuItem>
             <Separator/>
             <MenuItem Header="Go to Definition" InputGestureText="F12" Click="EditorContextGoToLineNumber_Click"/>
             <Separator/>
@@ -692,11 +696,10 @@
         <Menu DockPanel.Dock="Top" Background="{DynamicResource ThemeMenuBg}" Foreground="{DynamicResource ThemeMenuFg}" Height="25">
 
             <MenuItem Header="_File">
-                <MenuItem Header="_New"             Command="{Binding FileNewCommand}"          InputGestureText="Ctrl+N">
+                <MenuItem Header="_New">
                     <MenuItem.Icon><TextBlock Text="&#xE7C3;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
-                </MenuItem>
-                <MenuItem Header="New _Assembly File" Command="{Binding FileNewAsmCommand}" InputGestureText="Ctrl+Alt+N">
-                    <MenuItem.Icon><TextBlock Text="&#xE7C3;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
+                    <MenuItem Header="_Program File"  Command="{Binding FileNewCommand}"    InputGestureText="Ctrl+N"/>
+                    <MenuItem Header="_Assembly File" Command="{Binding FileNewAsmCommand}" InputGestureText="Ctrl+Alt+N"/>
                 </MenuItem>
                 <Separator/>
                 <MenuItem Header="_Open File..."    Command="{Binding FileOpenCommand}"         InputGestureText="Ctrl+O">
@@ -2560,7 +2563,8 @@
                                   Style="{StaticResource ActivityBarButtonRight}"
                                   ToolTip="ASM Mnemonics"
                                   Click="AsmKeywordsToggle_Click">
-                        <TextBlock Text="&#xE943;" FontSize="18" FontFamily="Segoe MDL2 Assets"
+                        <TextBlock Text="&#xE82D;" FontSize="18" FontFamily="Segoe MDL2 Assets"
+                                   Margin="2,4,0,0"
                                    Foreground="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}"/>
                     </ToggleButton>
                     <ToggleButton x:Name="MusicNotesToggle"
