@@ -530,6 +530,134 @@ public class Asm6502AssemblerTests
         Assert.Equal(expected, code);
     }
 
+    // ── .text directive ───────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Assemble_TextDirectiveMatchesByteDirectiveGrammar()
+    {
+        // ".text" is a pure alias of ".byte" - same grammar, same output.
+        Assert.Equal(AssembleCode(".byte \"HI\""), AssembleCode(".text \"HI\""));
+    }
+
+    [Fact]
+    public void Assemble_TextDirectiveMixedStringAndNumeric()
+    {
+        Assert.Equal(new byte[] { 0x48, 0x49, 0x00 }, AssembleCode(".text \"HI\", 0"));
+    }
+
+    // ── .org directive ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Assemble_NoOrgDirectiveDefaultsToFixedOriginWithStub()
+    {
+        // Regression guard: a program with no ".org" must produce byte-identical output to
+        // before ".org" support existed - the 15-byte BASIC stub followed by code at $080E.
+        var result = new Asm6502Assembler().Assemble("LDA #$01");
+
+        Assert.True(result.Success);
+        Assert.Equal(0x080E, result.Origin);
+        Assert.Equal(17, result.PrgBytes!.Length);
+        Assert.Equal(new byte[] { 0xA9, 0x01 }, result.PrgBytes[15..]);
+    }
+
+    [Fact]
+    public void Assemble_OrgDirectiveSetsOriginAndOmitsStub()
+    {
+        var result = new Asm6502Assembler().Assemble(".org $2000\nLDA #$01");
+
+        Assert.True(result.Success);
+        Assert.Equal(0x2000, result.Origin);
+        Assert.Equal(new byte[] { 0x00, 0x20, 0xA9, 0x01 }, result.PrgBytes);
+    }
+
+    [Fact]
+    public void Assemble_OrgDirectiveRetargetsLabelAddresses()
+    {
+        var result = new Asm6502Assembler().Assemble(".org $2000\nSTART:\nLDA #$01\nJMP START");
+
+        Assert.True(result.Success);
+        Assert.Equal(new byte[] { 0x00, 0x20, 0xA9, 0x01, 0x4C, 0x00, 0x20 }, result.PrgBytes);
+    }
+
+    [Fact]
+    public void Assemble_OrgDirectiveAfterCodeFails()
+    {
+        var result = new Asm6502Assembler().Assemble("NOP\n.org $2000");
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Message.Contains("must appear before any code"));
+    }
+
+    [Fact]
+    public void Assemble_DuplicateOrgDirectiveFails()
+    {
+        var result = new Asm6502Assembler().Assemble(".org $2000\n.org $3000\nNOP");
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Message.Contains("Duplicate '.org'"));
+    }
+
+    [Fact]
+    public void Assemble_OrgDirectiveWithSymbolValueFails()
+    {
+        var result = new Asm6502Assembler().Assemble(".org LABEL\nLABEL: NOP");
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Message.Contains("numeric literal"));
+    }
+
+    // ── .word directive ───────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Assemble_WordDirectiveNumericLiteral()
+    {
+        Assert.Equal(new byte[] { 0x34, 0x12 }, AssembleCode(".word $1234"));
+    }
+
+    [Fact]
+    public void Assemble_WordDirectiveJumpTableOfForwardLabels()
+    {
+        // TABLE: (origin) -> .word ENTRY1, ENTRY2 (4 bytes) -> ENTRY1: NOP ($0812) -> ENTRY2: NOP ($0813).
+        byte[] code = AssembleCode("TABLE:\n.word ENTRY1, ENTRY2\nENTRY1: NOP\nENTRY2: NOP");
+
+        Assert.Equal(new byte[] { 0x12, 0x08, 0x13, 0x08, 0xEA, 0xEA }, code);
+    }
+
+    [Fact]
+    public void Assemble_WordDirectiveLabelPlusOffset()
+    {
+        byte[] code = AssembleCode(".word LABEL+1\nLABEL:\nNOP");
+
+        Assert.Equal(new byte[] { 0x11, 0x08, 0xEA }, code);
+    }
+
+    [Fact]
+    public void Assemble_WordDirectiveUndefinedLabelFails()
+    {
+        var result = new Asm6502Assembler().Assemble(".word MISSING");
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Message.Contains("MISSING"));
+    }
+
+    [Fact]
+    public void Assemble_WordDirectiveRequiresAtLeastOneValue()
+    {
+        var result = new Asm6502Assembler().Assemble(".word");
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Message.Contains(".word requires at least one value"));
+    }
+
+    [Fact]
+    public void Assemble_WordDirectiveInvalidValueFails()
+    {
+        var result = new Asm6502Assembler().Assemble(".word $ZZ");
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Message.Contains("Invalid .word value"));
+    }
+
     // ── Regression guard ──────────────────────────────────────────────────────────
     // OpcodeTable and AsmTokens are independent tables (encoding vs. reference metadata) that
     // must still describe the exact same 56 mnemonics - this catches either one drifting.

@@ -112,7 +112,7 @@
                                Fill="{DynamicResource ThemeSettingsDivider}"
                                Margin="0,4"/>
 
-                    <TextBlock Grid.Row="4" Grid.Column="0" Style="{StaticResource StatLabel}" Text="Tokenized bytes"/>
+                    <TextBlock Grid.Row="4" Grid.Column="0" Style="{StaticResource StatLabel}" x:Name="TokenBytesLabelText"/>
                     <TextBlock Grid.Row="4" Grid.Column="1" Style="{StaticResource StatValue}" x:Name="TokenBytesText"/>
                 </Grid>
 
@@ -120,7 +120,7 @@
                            Foreground="{DynamicResource ThemeSettingsDescFg}"
                            TextWrapping="Wrap"
                            Margin="0,0,0,16"
-                           Text="Tokenized bytes is the C64 BASIC memory footprint (of 38,911 bytes available)."/>
+                           x:Name="TokenBytesDescriptionText"/>
 
                 <Button Style="{StaticResource OkButton}"
                         Content="OK" Width="90" Height="30"

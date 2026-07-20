@@ -35,6 +35,7 @@ public static class AsmCompletionProvider
         "Transfer",
         "Flags",
         "System",
+        "Directives",
     ];
 
     #endregion
@@ -57,12 +58,14 @@ public static class AsmCompletionProvider
 
     #region Private Methods
 
-    // Built from AsmTokens.Mnemonics, the single source of truth for mnemonic metadata, so
-    // completion can never drift out of sync with the mnemonic table.
+    // Built from AsmTokens.Mnemonics and AsmTokens.Directives, the single source of truth for
+    // mnemonic/directive metadata, so completion can never drift out of sync with those tables.
     private static KeywordCompletionData[] Build() =>
     [
         .. AsmTokens.Mnemonics
-            .Select(kv => new KeywordCompletionData(kv.Key, kv.Value.Snippet, kv.Value.Description, kv.Value.Category))
+            .Select(kv => new KeywordCompletionData(kv.Key, kv.Value.Snippet, kv.Value.Description, kv.Value.Category)),
+        .. AsmTokens.Directives
+            .Select(kv => new KeywordCompletionData(kv.Key, kv.Value.Snippet, kv.Value.Description, kv.Value.Category)),
     ];
 
     #endregion

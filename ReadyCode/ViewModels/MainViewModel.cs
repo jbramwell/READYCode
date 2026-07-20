@@ -184,6 +184,13 @@ public class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<VariableInfo> Variables { get; } = new();
 
     /// <summary>
+    /// Gets the labels and constants found in the active assembly document's Symbol Explorer
+    /// tree, kept up to date (and diffed in place, to preserve each node's expanded state) by
+    /// <c>MainWindow</c> as the document changes.
+    /// </summary>
+    public ObservableCollection<AsmSymbolInfo> Symbols { get; } = new();
+
+    /// <summary>
     /// Gets or sets the title shown above the folder explorer tree (the open folder's name).
     /// </summary>
     public string ExplorerTitle
@@ -973,14 +980,14 @@ public class MainViewModel : INotifyPropertyChanged
     // Gates Print/Print Preview, which only need an open tab regardless of its content.
     private bool HasActiveTab() => ActiveTab != null;
 
-    // Transfers the current BASIC code to the C64 Ultimate.
+    // Transfers the current code to the C64 Ultimate.
     // Shows status messages and errors in the status bar.
     private async Task TransferCurrentProgramAsync()
     {
         string? text = ActiveTab?.Document.Text;
         if (string.IsNullOrWhiteSpace(text))
         {
-            SetStatus("No code to transfer. Write some BASIC code first.", StatusType.Error);
+            SetStatus("No code to transfer. Write some code first.", StatusType.Error);
             return;
         }
 
@@ -990,15 +997,15 @@ public class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        if (!TryBuildPrgData(text, out byte[]? prgData))
+            return;
+
         try
         {
             SetStatus("Transferring program to C64 Ultimate…");
 
-            var converter = new PrgConverter();
-            var prgData = converter.ConvertToPrg(PrepareCodeForTransfer(text));
-
             var client = new C64UltimateClient();
-            await client.LoadPrgAsync(Settings.C64UUrl, prgData);
+            await client.LoadPrgAsync(Settings.C64UUrl, prgData!);
 
             SetStatus("Program transferred to C64 Ultimate successfully.");
         }
@@ -1008,13 +1015,13 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    // Transfers the current BASIC code to the C64 Ultimate and starts execution.
+    // Transfers the current code to the C64 Ultimate and starts execution.
     private async Task RunCurrentProgramAsync()
     {
         string? text = ActiveTab?.Document.Text;
         if (string.IsNullOrWhiteSpace(text))
         {
-            SetStatus("There is no code to run. Please write some BASIC code first.", StatusType.Error);
+            SetStatus("There is no code to run. Please write some code first.", StatusType.Error);
             return;
         }
 
@@ -1024,15 +1031,16 @@ public class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        if (!TryBuildPrgData(text, out byte[]? prgData))
+            return;
+
         try
         {
-            var converter = new PrgConverter();
-            var prgData = converter.ConvertToPrg(PrepareCodeForTransfer(text));
             var client = new C64UltimateClient();
 
             SetStatus("Transferring program to C64 Ultimate…");
 
-            await client.RunPrgAsync(Settings.C64UUrl, prgData);
+            await client.RunPrgAsync(Settings.C64UUrl, prgData!);
 
             SetStatus("Program transferred and running on the C64 Ultimate.", StatusType.Info);
         }

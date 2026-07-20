@@ -20,16 +20,20 @@ public partial class CodeStatisticsWindow : Window
     /// <param name="charCount">The total character count.</param>
     /// <param name="wordCount">The total word count.</param>
     /// <param name="lineCount">The total line count.</param>
-    /// <param name="tokenBytes">The tokenized program size in bytes.</param>
-    public CodeStatisticsWindow(int charCount, int wordCount, int lineCount, int tokenBytes)
+    /// <param name="byteCountLabel">The label for the byte-count row, e.g. "Tokenized bytes" or "Assembled bytes".</param>
+    /// <param name="byteCountValue">The already-formatted byte-count value, e.g. "123 / 38,911" or "Assembly errors".</param>
+    /// <param name="byteCountDescription">The explanatory text shown below the stats grid.</param>
+    public CodeStatisticsWindow(int charCount, int wordCount, int lineCount, string byteCountLabel, string byteCountValue, string byteCountDescription)
     {
         Opacity = 0;
         InitializeComponent();
 
-        CharCountText.Text  = charCount.ToString("N0");
-        WordCountText.Text  = wordCount.ToString("N0");
-        LineCountText.Text  = lineCount.ToString("N0");
-        TokenBytesText.Text = $"{tokenBytes:N0} / 38,911";
+        CharCountText.Text        = charCount.ToString("N0");
+        WordCountText.Text        = wordCount.ToString("N0");
+        LineCountText.Text        = lineCount.ToString("N0");
+        TokenBytesLabelText.Text  = byteCountLabel;
+        TokenBytesText.Text       = byteCountValue;
+        TokenBytesDescriptionText.Text = byteCountDescription;
 
         Loaded += (_, _) => { Opacity = 1; };
     }

@@ -19,6 +19,7 @@ using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Folding;
 using ICSharpCode.AvalonEdit.Rendering;
 using Microsoft.Win32;
+using ReadyCode.Assembler;
 using ReadyCode.Diagnostics;
 using ReadyCode.Editor;
 using ReadyCode.Minify;
@@ -76,7 +77,12 @@ public partial class MainWindow : Window
 
     // Debounces BasicDiagnostics.Analyze so a full re-analysis doesn't run on every keystroke.
     private readonly DispatcherTimer _diagnosticsTimer;
-    private IReadOnlyList<BasicDiagnostic> _currentDiagnostics = Array.Empty<BasicDiagnostic>();
+    private IReadOnlyList<EditorDiagnostic> _currentDiagnostics = Array.Empty<EditorDiagnostic>();
+
+    // The most recent assembly result for the active Asm tab, refreshed by RunAsmSymbolIndex on
+    // the same debounce tick as diagnostics - reused by the hover tooltip so it doesn't need to
+    // re-assemble on every mouse move.
+    private AssemblyResult? _lastAsmResult;
 
     // Code folding - bound to whichever document is currently on Editor.TextArea; reinstalled per
     // tab activation (see ActivateTab) since FoldingManager can't be rebound to a new document.
@@ -148,6 +154,7 @@ public partial class MainWindow : Window
 
         // Initialize commands
         FileNewCommand = new RelayCommand(_ => FileNew_Click(this, new RoutedEventArgs()));
+        FileNewAsmCommand = new RelayCommand(_ => FileNewAsm_Click(this, new RoutedEventArgs()));
         FileOpenCommand = new RelayCommand(_ => FileOpen_Click(this, new RoutedEventArgs()));
         FileSaveCommand = new RelayCommand(_ => FileSave_Click(this, new RoutedEventArgs()));
         FileSaveAsCommand = new RelayCommand(_ => FileSaveAs_Click(this, new RoutedEventArgs()));
@@ -168,7 +175,7 @@ public partial class MainWindow : Window
         EditPrettifyCommand  = new RelayCommand(_ => ExecutePrettifyCode(), _ => HasNonEmptyBasicActiveTab());
         EditRenumberCommand  = new RelayCommand(_ => ExecuteRenumberCode(), _ => HasNonEmptyBasicActiveTab());
         EditGoToLineCommand  = new RelayCommand(_ => ExecuteGoToLine(), _ => HasNonEmptyActiveTab());
-        GoToDefinitionCommand = new RelayCommand(_ => ExecuteGoToGotoTarget(), _ => HasNonEmptyBasicActiveTab());
+        GoToDefinitionCommand = new RelayCommand(_ => ExecuteGoToDefinition(), _ => HasNonEmptyActiveTab());
         PreferencesSettingsCommand = new RelayCommand(_ => SettingsPreferences_Click(this, new RoutedEventArgs()));
         FileOpenFolderCommand = new RelayCommand(_ => OpenFolderDialog());
         FileCloseFolderCommand = new RelayCommand(_ => CloseFolder(), _ => HasFolderOpen());
@@ -217,7 +224,7 @@ public partial class MainWindow : Window
         _errorSquiggleRenderer = new ErrorSquiggleRenderer(Editor);
         Editor.TextArea.TextView.BackgroundRenderers.Add(_errorSquiggleRenderer);
         _diagnosticsTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
-        _diagnosticsTimer.Tick += (_, _) => { _diagnosticsTimer.Stop(); RunDiagnostics(); RunFolding(); RunVariableIndex(); };
+        _diagnosticsTimer.Tick += (_, _) => { _diagnosticsTimer.Stop(); RunDiagnostics(); RunFolding(); RunVariableIndex(); RunAsmSymbolIndex(); };
         Editor.TextArea.Caret.PositionChanged += (_, _) =>
         {
             _lineNumberColorizer.ActiveDocumentLineNumber =
@@ -237,6 +244,7 @@ public partial class MainWindow : Window
             AdornerLayer.GetAdornerLayer(Editor.TextArea)?.Add(_ghostRenderer);
             BuildPetsciiTable();
             BuildBasicKeywordsList();
+            BuildAsmKeywordsList();
             BuildMusicNotesTable();
 
             // TabBar's ScrollViewer only exists once its control template is applied - hook up
@@ -330,8 +338,10 @@ public partial class MainWindow : Window
     public MainViewModel ViewModel { get; } = new();
 
     // Command properties
-    /// <summary>Gets the command that creates a new tab.</summary>
+    /// <summary>Gets the command that creates a new BASIC tab.</summary>
     public ICommand FileNewCommand { get; }
+    /// <summary>Gets the command that creates a new assembly tab.</summary>
+    public ICommand FileNewAsmCommand { get; }
     /// <summary>Gets the command that opens a file.</summary>
     public ICommand FileOpenCommand { get; }
     /// <summary>Gets the command that saves the active tab.</summary>
@@ -486,9 +496,19 @@ public partial class MainWindow : Window
 
     #region File Operations
 
-    private void FileNew_Click(object sender, RoutedEventArgs e)
+    private void FileNew_Click(object sender, RoutedEventArgs e) => CreateNewTab(EditorLanguage.Basic);
+
+    private void FileNewAsm_Click(object sender, RoutedEventArgs e) => CreateNewTab(EditorLanguage.Asm);
+
+    private void CreateNewTab(EditorLanguage language)
     {
-        var tab = new EditorTab();
+        var tab = new EditorTab { Language = language };
+        if (language == EditorLanguage.Asm)
+        {
+            tab.Kind = C64UFileKind.Asm;
+            tab.DisplayName = "Untitled.asm";
+        }
+
         ViewModel.OpenTabs.Add(tab);
         ActivateTab(tab);
 
@@ -894,10 +914,13 @@ public partial class MainWindow : Window
             }
 
             RunVariableIndex();
+            RunAsmSymbolIndex();
         }
         else
         {
             ViewModel.Variables.Clear();
+            ViewModel.Symbols.Clear();
+            _lastAsmResult = null;
         }
 
         _activatingTab = false;
@@ -954,6 +977,10 @@ public partial class MainWindow : Window
         transformers.Add(_findHighlightColorizer);
 
         Editor.FontFamily = language == EditorLanguage.Asm ? _asmEditorFont : _basicEditorFont;
+
+        bool isAsm = language == EditorLanguage.Asm;
+        VariablesPanel.Visibility = isAsm ? Visibility.Collapsed : Visibility.Visible;
+        SymbolsPanel.Visibility = isAsm ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // Cycles the active tab forward (right) or backward (left) through ViewModel.OpenTabs,
@@ -1368,9 +1395,23 @@ public partial class MainWindow : Window
 
     // ── Editor context menu ───────────────────────────────────────────────────
 
-    private void EditorContextMinify_Click(object sender, RoutedEventArgs e)    => ExecuteMinifyCode();
-    private void EditorContextPrettify_Click(object sender, RoutedEventArgs e)  => ExecutePrettifyCode();
-    private void EditorContextRenumber_Click(object sender, RoutedEventArgs e)  => ExecuteRenumberCode();
+    private void EditorContextMinify_Click(object sender, RoutedEventArgs e)
+    {
+        if (EditMinifyCommand.CanExecute(null))
+            EditMinifyCommand.Execute(null);
+    }
+
+    private void EditorContextPrettify_Click(object sender, RoutedEventArgs e)
+    {
+        if (EditPrettifyCommand.CanExecute(null))
+            EditPrettifyCommand.Execute(null);
+    }
+
+    private void EditorContextRenumber_Click(object sender, RoutedEventArgs e)
+    {
+        if (EditRenumberCommand.CanExecute(null))
+            EditRenumberCommand.Execute(null);
+    }
 
     // ── Comment / Uncomment ──────────────────────────────────────────────────
 
@@ -1543,8 +1584,18 @@ public partial class MainWindow : Window
         return false;
     }
 
-    // F12 / "Go to Line Number": if the caret sits on a GOTO/GOSUB line-number target (standard
-    // or computed, e.g. "ON X GOTO 100,200,300"), jumps to that BASIC line.
+    // F12 / "Go to Definition": dispatches to the BASIC or assembly implementation depending on
+    // the active tab's language, mirroring Editor_MouseHover's isAsm branching style.
+    private void ExecuteGoToDefinition()
+    {
+        if (ViewModel.ActiveTab?.Language == EditorLanguage.Asm)
+            ExecuteGoToAsmDefinition();
+        else
+            ExecuteGoToGotoTarget();
+    }
+
+    // If the caret sits on a GOTO/GOSUB line-number target (standard or computed, e.g.
+    // "ON X GOTO 100,200,300"), jumps to that BASIC line.
     private void ExecuteGoToGotoTarget()
     {
         var document = Editor.Document;
@@ -1560,6 +1611,55 @@ public partial class MainWindow : Window
 
         if (!JumpToBasicLine(target))
             ViewModel.SetStatus($"BASIC line {target} not found.", StatusType.Warning);
+    }
+
+    // If the caret sits on a label or constant reference, jumps to the document line where that
+    // symbol is defined ("NAME:" or "NAME = value").
+    private void ExecuteGoToAsmDefinition()
+    {
+        var document = Editor.Document;
+        var line = document.GetLineByOffset(Editor.CaretOffset);
+        string lineText = document.GetText(line);
+        int col = Editor.CaretOffset - line.Offset;
+
+        if (!TryGetAsmIdentifierAt(lineText, col, out string name))
+        {
+            ViewModel.SetStatus("Not on a label or constant reference.", StatusType.Warning);
+            return;
+        }
+
+        var definition = AsmSymbolIndex.Analyze(document.Text)
+            .FirstOrDefault(o => o.Name == name &&
+                (o.Kind == AsmSymbolKind.LabelDefinition || o.Kind == AsmSymbolKind.ConstantDefinition));
+
+        if (definition.Name == null)
+        {
+            ViewModel.SetStatus($"No definition found for \"{name}\".", StatusType.Warning);
+            return;
+        }
+
+        MoveCaretToDocumentLine(definition.LineNumber);
+    }
+
+    // Finds the identifier (label/constant name) spanning column `col` on the given assembly
+    // line, using the same word-boundary rule as TryGetAsmHoverTooltip's mnemonic scan.
+    private static bool TryGetAsmIdentifierAt(string lineText, int col, out string identifier)
+    {
+        identifier = "";
+        if (col < 0 || col > lineText.Length) return false;
+
+        int commentStart = lineText.IndexOf(';');
+        if (commentStart >= 0 && col >= commentStart) return false;
+
+        int start = col;
+        while (start > 0 && IsAsmWordChar(lineText[start - 1])) start--;
+        int end = col;
+        while (end < lineText.Length && IsAsmWordChar(lineText[end])) end++;
+
+        if (start == end || !(char.IsLetter(lineText[start]) || lineText[start] == '_')) return false;
+
+        identifier = lineText[start..end];
+        return true;
     }
 
     // Finds a GOTO/GOSUB/THEN keyword on the line (skipping string literals, stopping at REM),
@@ -1655,6 +1755,18 @@ public partial class MainWindow : Window
             ViewModel.C64URunCommand.Execute(null);
     }
 
+    private void EditorContextViceTransfer_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.ViceTransferCommand.CanExecute(null))
+            ViewModel.ViceTransferCommand.Execute(null);
+    }
+
+    private void EditorContextViceRun_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.ViceRunCommand.CanExecute(null))
+            ViewModel.ViceRunCommand.Execute(null);
+    }
+
     #endregion
 
     #region Side Panels
@@ -1712,6 +1824,7 @@ public partial class MainWindow : Window
         (SpecialCharsToggle,   SpecialCharsPanel,   "QuickKeys"),
         (PetsciiToggle,        PetsciiPanel,        "Petscii"),
         (BasicKeywordsToggle,  BasicKeywordsPanel,  "BasicKeywords"),
+        (AsmKeywordsToggle,    AsmKeywordsPanel,    "AsmKeywords"),
         (MusicNotesToggle,     MusicNotesPanel,     "MusicNotes"),
     };
 
@@ -1752,6 +1865,8 @@ public partial class MainWindow : Window
     private void PetsciiToggle_Click(object sender, RoutedEventArgs e) => ActivateRightPanel(PetsciiToggle, PetsciiPanel);
 
     private void BasicKeywordsToggle_Click(object sender, RoutedEventArgs e) => ActivateRightPanel(BasicKeywordsToggle, BasicKeywordsPanel);
+
+    private void AsmKeywordsToggle_Click(object sender, RoutedEventArgs e) => ActivateRightPanel(AsmKeywordsToggle, AsmKeywordsPanel);
 
     private void MusicNotesToggle_Click(object sender, RoutedEventArgs e) => ActivateRightPanel(MusicNotesToggle, MusicNotesPanel);
 
@@ -2257,14 +2372,38 @@ public partial class MainWindow : Window
 
     private void ShowCodeStatistics()
     {
-        string text      = Editor.Text;
-        int charCount    = text.Length;
-        int lineCount    = Editor.Document.LineCount;
-        int wordCount    = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
-        var prgData      = new PrgConverter().ConvertToPrg(text);
-        int tokenBytes   = prgData.Length - 2;  // subtract 2-byte load address header
+        string text   = Editor.Text;
+        int charCount = text.Length;
+        int lineCount = Editor.Document.LineCount;
+        int wordCount = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
 
-        var dlg = new CodeStatisticsWindow(charCount, wordCount, lineCount, tokenBytes) { Owner = this };
+        string byteLabel, byteValue, byteDescription;
+
+        if (ViewModel.ActiveTab?.Language == EditorLanguage.Asm)
+        {
+            var asmResult = new Asm6502Assembler().Assemble(text);
+            byteLabel = "Assembled bytes";
+            if (asmResult.Success)
+            {
+                byteValue = $"{asmResult.PrgBytes!.Length - 2:N0}";
+                byteDescription = "Assembled bytes is the size of the machine code, excluding the 2-byte load address header.";
+            }
+            else
+            {
+                byteValue = "Assembly errors";
+                byteDescription = "Fix the assembly errors in this file to see its assembled byte count.";
+            }
+        }
+        else
+        {
+            var prgData = new PrgConverter().ConvertToPrg(text);
+            int tokenBytes = prgData.Length - 2;  // subtract 2-byte load address header
+            byteLabel = "Tokenized bytes";
+            byteValue = $"{tokenBytes:N0} / 38,911";
+            byteDescription = "Tokenized bytes is the C64 BASIC memory footprint (of 38,911 bytes available).";
+        }
+
+        var dlg = new CodeStatisticsWindow(charCount, wordCount, lineCount, byteLabel, byteValue, byteDescription) { Owner = this };
         dlg.ShowDialog();
     }
 
@@ -3756,22 +3895,28 @@ public partial class MainWindow : Window
         }
     }
 
-    private void BuildBasicKeywordsList()
+    private void BuildBasicKeywordsList() =>
+        BuildKeywordsList(BasicKeywordsListPanel, BasicCompletionProvider.AllItems, BasicCompletionProvider.CategoryOrder);
+
+    private void BuildAsmKeywordsList() =>
+        BuildKeywordsList(AsmKeywordsListPanel, AsmCompletionProvider.AllItems, AsmCompletionProvider.CategoryOrder);
+
+    // Renders a reference panel (BASIC Keywords or ASM Mnemonics) as a series of category
+    // headers followed by name/description rows, shared by both languages' completion tables.
+    private void BuildKeywordsList(StackPanel targetPanel, IReadOnlyList<KeywordCompletionData> allItems, IReadOnlyList<string> categoryOrder)
     {
-        BasicKeywordsListPanel.Children.Clear();
+        targetPanel.Children.Clear();
 
         Brush R(string key) => (Brush)FindResource(key);
-        var headerFg = R("ThemeSpecialCharLabelFg");
         var nameFg   = R("ThemeFileFg");
         var descFg   = R("ThemeSpecialCharShortcutFg");
-        var sepBrush = R("ThemeFolderExplorerHeaderBorder");
         var labelBg  = R("ThemePanelHeaderBg");
         var labelFg  = R("ThemePanelHeaderFg");
-        var itemsByCategory = BasicCompletionProvider.AllItems.ToLookup(i => i.Category);
+        var itemsByCategory = allItems.ToLookup(i => i.Category);
 
-        foreach (var category in BasicCompletionProvider.CategoryOrder)
+        foreach (var category in categoryOrder)
         {
-            BasicKeywordsListPanel.Children.Add(new TextBlock
+            targetPanel.Children.Add(new TextBlock
             {
                 Text = category.ToUpperInvariant(),
                 FontSize = 10,
@@ -3804,7 +3949,7 @@ public partial class MainWindow : Window
                     Foreground = descFg,
                     Margin = new Thickness(0, 1, 0, 0)
                 });
-                BasicKeywordsListPanel.Children.Add(row);
+                targetPanel.Children.Add(row);
             }
         }
     }
@@ -3965,15 +4110,15 @@ public partial class MainWindow : Window
         _diagnosticsTimer.Start();
     }
 
-    // Re-analyzes the active document for undefined GOTO/GOSUB/THEN targets, unmatched FOR/NEXT,
-    // unterminated strings, and duplicate line numbers, and refreshes the squiggle underlines.
-    // BASIC-specific - assembly tabs never get diagnostics, so squiggles are just cleared.
+    // Re-analyzes the active document and refreshes the squiggle underlines: for BASIC, undefined
+    // GOTO/GOSUB/THEN targets, unmatched FOR/NEXT, unterminated strings, and duplicate line
+    // numbers; for assembly, whatever Asm6502Assembler reports as errors.
     private void RunDiagnostics()
     {
-        bool isBasic = ViewModel.ActiveTab?.Language != EditorLanguage.Asm;
-        _currentDiagnostics = Editor.Document != null && isBasic && ViewModel.Settings.EnableLinting
-            ? BasicDiagnostics.Analyze(Editor.Document.Text)
-            : Array.Empty<BasicDiagnostic>();
+        bool isAsm = ViewModel.ActiveTab?.Language == EditorLanguage.Asm;
+        _currentDiagnostics = Editor.Document != null && ViewModel.Settings.EnableLinting
+            ? (isAsm ? AsmDiagnostics.Analyze(Editor.Document.Text) : BasicDiagnostics.Analyze(Editor.Document.Text))
+            : Array.Empty<EditorDiagnostic>();
         _errorSquiggleRenderer.SetDiagnostics(_currentDiagnostics);
         Editor.TextArea.TextView.Redraw();
     }
@@ -4034,7 +4179,7 @@ public partial class MainWindow : Window
     // VariableInfo instance for a name that's still present preserves its IsExpanded state (WPF's
     // TreeViewItem container ties expansion to the bound object's identity), so the tree doesn't
     // collapse everything the user just expanded on every debounce tick while typing.
-    // BASIC-specific - assembly has no variable cross-reference in this phase.
+    // BASIC-specific - see RunAsmSymbolIndex for assembly's equivalent (labels/constants).
     private void RunVariableIndex()
     {
         var variables = ViewModel.Variables;
@@ -4071,6 +4216,70 @@ public partial class MainWindow : Window
 
         for (int i = variables.Count - 1; i >= 0; i--)
             if (!seenNames.Contains(variables[i].Name)) variables.RemoveAt(i);
+    }
+
+    // Re-scans the active document for every label/constant's definition/reference occurrences,
+    // diffing the result into ViewModel.Symbols exactly like RunVariableIndex diffs into
+    // ViewModel.Variables (same IsExpanded-preservation reasoning). Also caches the underlying
+    // AssemblyResult in _lastAsmResult so the hover tooltip can show resolved label/constant
+    // values without re-assembling on every mouse move. Assembly-specific - see RunVariableIndex
+    // for BASIC's equivalent.
+    private void RunAsmSymbolIndex()
+    {
+        var symbols = ViewModel.Symbols;
+        var document = Editor.Document;
+        if (document == null || ViewModel.ActiveTab?.Language != EditorLanguage.Asm)
+        {
+            symbols.Clear();
+            _lastAsmResult = null;
+            return;
+        }
+
+        var asmResult = new Asm6502Assembler().Assemble(document.Text);
+        _lastAsmResult = asmResult;
+
+        var byName = AsmSymbolIndex.Analyze(document.Text)
+            .GroupBy(o => o.Name, StringComparer.Ordinal);
+
+        var seenNames = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var group in byName)
+        {
+            seenNames.Add(group.Key);
+
+            var existing = symbols.FirstOrDefault(s => s.Name == group.Key);
+            if (existing == null)
+            {
+                existing = new AsmSymbolInfo(group.Key);
+                int insertAt = 0;
+                while (insertAt < symbols.Count && string.CompareOrdinal(symbols[insertAt].Name, group.Key) < 0)
+                    insertAt++;
+                symbols.Insert(insertAt, existing);
+            }
+
+            bool isConstant = group.Any(o => o.Kind == AsmSymbolKind.ConstantDefinition);
+            existing.TypeBadge = isConstant ? "CONST" : "LABEL";
+            existing.ValueText = isConstant
+                ? (asmResult.Constants.TryGetValue(group.Key, out int constValue) ? FormatAsmSymbolValue(constValue) : null)
+                : (asmResult.Labels.TryGetValue(group.Key, out ushort labelAddress) ? FormatAsmSymbolValue(labelAddress) : null);
+
+            existing.Occurrences.Clear();
+            foreach (var occurrence in group.OrderBy(o => o.LineNumber))
+                existing.Occurrences.Add(new AsmSymbolOccurrenceInfo(occurrence.LineNumber, occurrence.Kind));
+        }
+
+        for (int i = symbols.Count - 1; i >= 0; i--)
+            if (!seenNames.Contains(symbols[i].Name)) symbols.RemoveAt(i);
+    }
+
+    private static string FormatAsmSymbolValue(int value) => $"${value:X4}";
+
+    // Double-clicking an occurrence (line number) row jumps to that line - mirrors
+    // VariablesTree_MouseDoubleClick below.
+    private void SymbolsTree_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (SymbolsTree.SelectedItem is AsmSymbolOccurrenceInfo occurrence)
+            MoveCaretToDocumentLine(occurrence.DocumentLineNumber);
     }
 
     // Double-clicking an occurrence (line number) row jumps to that line - a single click just
@@ -4224,7 +4433,7 @@ public partial class MainWindow : Window
         {
             tooltipText = diagnostic.Message;
         }
-        else if (isAsm ? !TryGetAsmHoverTooltip(lineText, col, out tooltipText)
+        else if (isAsm ? !TryGetAsmHoverTooltip(lineText, col, _lastAsmResult, out tooltipText)
                        : !TryGetHoverTooltip(lineText, col, out tooltipText))
         {
             CloseHoverToolTip();
@@ -4243,7 +4452,7 @@ public partial class MainWindow : Window
 
     // A squiggle's message takes priority over the keyword/variable tooltip when the mouse is
     // over both (e.g. hovering an undefined GOTO target, which is itself a number, not a keyword).
-    private bool TryGetDiagnosticAt(int offset, out BasicDiagnostic diagnostic)
+    private bool TryGetDiagnosticAt(int offset, out EditorDiagnostic diagnostic)
     {
         foreach (var d in _currentDiagnostics)
         {
@@ -4285,11 +4494,11 @@ public partial class MainWindow : Window
         _hoverToolTip = null;
     }
 
-    // Builds the hover tooltip text for the mnemonic at column `col` on the given assembly line,
-    // as "{Mnemonic} - {Description}". Returns false for comment text, or when `col` isn't on a
-    // mnemonic - no variable/label tooltip is offered, since address/label resolution is out of
-    // scope for assembly editing.
-    private static bool TryGetAsmHoverTooltip(string lineText, int col, out string tooltipText)
+    // Builds the hover tooltip text for column `col` on the given assembly line: a mnemonic match
+    // ("{Mnemonic} - {Description}") takes priority, falling back to a label/constant reference
+    // (see TryGetAsmSymbolHoverTooltip) if the word under the cursor isn't a mnemonic. Returns
+    // false for comment text, or when nothing recognizable is under the cursor.
+    private static bool TryGetAsmHoverTooltip(string lineText, int col, AssemblyResult? asmResult, out string tooltipText)
     {
         tooltipText = "";
         if (col < 0 || col > lineText.Length) return false;
@@ -4312,6 +4521,32 @@ public partial class MainWindow : Window
                 tooltipText = $"{candidate.ToUpperInvariant()} - {info.Description}";
                 return true;
             }
+        }
+
+        return TryGetAsmSymbolHoverTooltip(lineText, col, asmResult, out tooltipText);
+    }
+
+    // Builds the hover tooltip for a label/constant reference at column `col`, showing its
+    // resolved value (e.g. "(label) NAME = $080E"), mirroring TryGetHoverTooltip's BASIC
+    // variable-hover format ("(variable) {type} {name}"). Returns false if `col` isn't on an
+    // identifier, or the identifier isn't a currently-resolved label/constant (e.g. it's
+    // undefined, or the document currently has assembly errors so nothing resolved).
+    private static bool TryGetAsmSymbolHoverTooltip(string lineText, int col, AssemblyResult? asmResult, out string tooltipText)
+    {
+        tooltipText = "";
+        if (asmResult == null) return false;
+        if (!TryGetAsmIdentifierAt(lineText, col, out string name)) return false;
+
+        if (asmResult.Labels.TryGetValue(name, out ushort address))
+        {
+            tooltipText = $"(label) {name} = ${address:X4}";
+            return true;
+        }
+
+        if (asmResult.Constants.TryGetValue(name, out int constValue))
+        {
+            tooltipText = $"(constant) {name} = {FormatAsmSymbolValue(constValue)}";
+            return true;
         }
 
         return false;
@@ -4767,6 +5002,7 @@ public partial class MainWindow : Window
         ApplyTheme(ViewModel.Settings.Theme);
         BuildPetsciiTable();
         BuildBasicKeywordsList();
+        BuildAsmKeywordsList();
         BuildMusicNotesTable();
 
         Editor.Background = (Brush)FindResource("ThemeEditorBg");

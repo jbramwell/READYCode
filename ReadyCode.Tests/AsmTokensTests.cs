@@ -60,18 +60,42 @@ public class AsmTokensTests
     }
 
     // ── Completion parity ────────────────────────────────────────────────────────
-    // AsmCompletionProvider.AllItems is derived from AsmTokens.Mnemonics, so this can't drift
-    // by construction - kept as a regression guard against that derivation breaking.
+    // AsmCompletionProvider.AllItems is derived from AsmTokens.Mnemonics and AsmTokens.Directives,
+    // so this can't drift by construction - kept as a regression guard against that derivation
+    // breaking.
 
     [Fact]
-    public void CompletionProvider_MnemonicSetMatchesTable()
+    public void CompletionProvider_MnemonicAndDirectiveSetMatchesTables()
     {
-        var tableMnemonics = AsmTokens.Mnemonics.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var completionMnemonics = AsmCompletionProvider.AllItems
+        var tableEntries = AsmTokens.Mnemonics.Keys
+            .Concat(AsmTokens.Directives.Keys)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var completionEntries = AsmCompletionProvider.AllItems
             .Select(i => i.Text)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        Assert.Equal(tableMnemonics, completionMnemonics);
+        Assert.Equal(tableEntries, completionEntries);
+    }
+
+    // ── Directives ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Directives_ContainsOrgByteTextWord()
+    {
+        var directiveNames = AsmTokens.Directives.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        Assert.Equal(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".org", ".byte", ".text", ".word" }, directiveNames);
+    }
+
+    [Fact]
+    public void Directives_AllEntriesHaveNonEmptyDescriptionAndCategory()
+    {
+        foreach (var (directive, info) in AsmTokens.Directives)
+        {
+            Assert.False(string.IsNullOrWhiteSpace(info.Snippet), $"{directive} has an empty snippet.");
+            Assert.False(string.IsNullOrWhiteSpace(info.Description), $"{directive} has an empty description.");
+            Assert.False(string.IsNullOrWhiteSpace(info.Category), $"{directive} has an empty category.");
+        }
     }
 
     #endregion

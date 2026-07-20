@@ -8,13 +8,13 @@ using ReadyCode.Tokenizer;
 namespace ReadyCode.Diagnostics;
 
 /// <summary>
-/// A single flagged problem in a BASIC source document: an offset/length span (matching AvalonEdit's
-/// document offset model) plus a human-readable message.
+/// A single flagged problem in a source document (BASIC or assembly): an offset/length span
+/// (matching AvalonEdit's document offset model) plus a human-readable message.
 /// </summary>
 /// <param name="Offset">The character offset into the analyzed source where the problem starts.</param>
 /// <param name="Length">The number of characters the problem spans.</param>
 /// <param name="Message">A human-readable description of the problem.</param>
-public readonly record struct BasicDiagnostic(int Offset, int Length, string Message);
+public readonly record struct EditorDiagnostic(int Offset, int Length, string Message);
 
 /// <summary>
 /// Analyzes C64 BASIC source for common mistakes: undefined GOTO/GOSUB/THEN targets, unmatched
@@ -46,9 +46,9 @@ public static class BasicDiagnostics
     /// Analyzes the given BASIC source and returns every problem found, ordered by offset.
     /// </summary>
     /// <param name="source">The full BASIC source to analyze.</param>
-    public static IReadOnlyList<BasicDiagnostic> Analyze(string source)
+    public static IReadOnlyList<EditorDiagnostic> Analyze(string source)
     {
-        var diagnostics    = new List<BasicDiagnostic>();
+        var diagnostics    = new List<EditorDiagnostic>();
         var declaredLines  = new Dictionary<int, List<(int Offset, int Length)>>();
         var pendingTargets = new List<(int Number, int Offset, int Length)>();
         var forStack       = new Stack<(string Variable, int Offset)>();
@@ -61,18 +61,18 @@ public static class BasicDiagnostics
         foreach (var (number, offset, length) in pendingTargets)
         {
             if (!declaredLines.ContainsKey(number))
-                diagnostics.Add(new BasicDiagnostic(offset, length, $"Line {number} does not exist."));
+                diagnostics.Add(new EditorDiagnostic(offset, length, $"Line {number} does not exist."));
         }
 
         // Any FOR left on the stack after the whole document never found its NEXT.
         foreach (var (variable, offset) in forStack)
-            diagnostics.Add(new BasicDiagnostic(offset, 3, $"FOR {variable} has no matching NEXT."));
+            diagnostics.Add(new EditorDiagnostic(offset, 3, $"FOR {variable} has no matching NEXT."));
 
         foreach (var (number, occurrences) in declaredLines)
         {
             if (occurrences.Count < 2) continue;
             foreach (var (offset, length) in occurrences)
-                diagnostics.Add(new BasicDiagnostic(offset, length, $"Duplicate line number {number}."));
+                diagnostics.Add(new EditorDiagnostic(offset, length, $"Duplicate line number {number}."));
         }
 
         diagnostics.Sort((a, b) => a.Offset.CompareTo(b.Offset));
@@ -162,7 +162,7 @@ public static class BasicDiagnostics
         Dictionary<int, List<(int Offset, int Length)>> declaredLines,
         List<(int Number, int Offset, int Length)> pendingTargets,
         Stack<(string Variable, int Offset)> forStack,
-        List<BasicDiagnostic> diagnostics)
+        List<EditorDiagnostic> diagnostics)
     {
         if (!TryParseLineNumber(line, out int lineNumber, out int numOffset, out int numLength, out int codeStart))
             return; // no leading line number - not a program line, nothing to analyze
@@ -193,7 +193,7 @@ public static class BasicDiagnostics
     private static void AnalyzeForNext(
         string stmt, int stmtOffset,
         Stack<(string Variable, int Offset)> forStack,
-        List<BasicDiagnostic> diagnostics)
+        List<EditorDiagnostic> diagnostics)
     {
         string trimmed       = stmt.TrimStart();
         int    trimmedOffset = stmtOffset + (stmt.Length - trimmed.Length);
@@ -208,7 +208,7 @@ public static class BasicDiagnostics
         if (_bareNextRegex.IsMatch(trimmed))
         {
             if (forStack.Count > 0) forStack.Pop();
-            else diagnostics.Add(new BasicDiagnostic(trimmedOffset, 4, "NEXT without a matching FOR."));
+            else diagnostics.Add(new EditorDiagnostic(trimmedOffset, 4, "NEXT without a matching FOR."));
             return;
         }
 
@@ -223,13 +223,13 @@ public static class BasicDiagnostics
 
                 if (forStack.Count == 0)
                 {
-                    diagnostics.Add(new BasicDiagnostic(trimmedOffset, 4, "NEXT without a matching FOR."));
+                    diagnostics.Add(new EditorDiagnostic(trimmedOffset, 4, "NEXT without a matching FOR."));
                     break;
                 }
 
                 var (forVariable, _) = forStack.Pop();
                 if (!string.Equals(forVariable, varName, StringComparison.OrdinalIgnoreCase))
-                    diagnostics.Add(new BasicDiagnostic(varOffset, varMatch.Length,
+                    diagnostics.Add(new EditorDiagnostic(varOffset, varMatch.Length,
                         $"NEXT {varName} does not match FOR {forVariable}."));
             }
         }
@@ -242,7 +242,7 @@ public static class BasicDiagnostics
     private static void AnalyzeTargetsAndStrings(
         string stmt, int stmtOffset,
         List<(int Number, int Offset, int Length)> pendingTargets,
-        List<BasicDiagnostic> diagnostics)
+        List<EditorDiagnostic> diagnostics)
     {
         bool inString  = false;
         int  quoteStart = -1;
@@ -295,7 +295,7 @@ public static class BasicDiagnostics
         }
 
         if (inString)
-            diagnostics.Add(new BasicDiagnostic(stmtOffset + quoteStart, stmt.Length - quoteStart, "Unterminated string literal."));
+            diagnostics.Add(new EditorDiagnostic(stmtOffset + quoteStart, stmt.Length - quoteStart, "Unterminated string literal."));
     }
 
     #endregion

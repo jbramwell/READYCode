@@ -10,9 +10,10 @@ using ReadyCode.Diagnostics;
 namespace ReadyCode.Editor;
 
 /// <summary>
-/// Draws a red squiggly underline beneath each <see cref="BasicDiagnostic"/> span reported by
+/// Draws a red squiggly underline beneath each <see cref="EditorDiagnostic"/> span reported by
 /// <see cref="ReadyCode.Diagnostics.BasicDiagnostics"/> (undefined GOTO/GOSUB/THEN targets,
-/// unmatched FOR/NEXT, unterminated strings, duplicate line numbers).
+/// unmatched FOR/NEXT, unterminated strings, duplicate line numbers) or
+/// <see cref="ReadyCode.Diagnostics.AsmDiagnostics"/> (assembly errors).
 /// </summary>
 public sealed class ErrorSquiggleRenderer : IBackgroundRenderer
 {
@@ -23,7 +24,7 @@ public sealed class ErrorSquiggleRenderer : IBackgroundRenderer
 
     private readonly TextEditor _editor;
     private Pen _pen;
-    private IReadOnlyList<BasicDiagnostic> _diagnostics = Array.Empty<BasicDiagnostic>();
+    private IReadOnlyList<EditorDiagnostic> _diagnostics = Array.Empty<EditorDiagnostic>();
 
     #endregion
 
@@ -62,12 +63,12 @@ public sealed class ErrorSquiggleRenderer : IBackgroundRenderer
     /// Replaces the set of diagnostics to underline.
     /// </summary>
     /// <param name="diagnostics">The diagnostics to underline.</param>
-    public void SetDiagnostics(IReadOnlyList<BasicDiagnostic> diagnostics) => _diagnostics = diagnostics;
+    public void SetDiagnostics(IReadOnlyList<EditorDiagnostic> diagnostics) => _diagnostics = diagnostics;
 
     /// <summary>
     /// Clears all diagnostics.
     /// </summary>
-    public void Clear() => _diagnostics = Array.Empty<BasicDiagnostic>();
+    public void Clear() => _diagnostics = Array.Empty<EditorDiagnostic>();
 
     /// <summary>
     /// Draws a squiggly underline beneath every diagnostic that overlaps a visible line.

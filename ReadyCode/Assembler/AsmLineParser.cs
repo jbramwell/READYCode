@@ -48,6 +48,14 @@ public enum OperandForm
 }
 
 /// <summary>
+/// A single resolved-or-symbolic entry in a ".word" directive's data list.
+/// </summary>
+/// <param name="NumericValue">The entry's numeric value, or null if it references a symbol.</param>
+/// <param name="SymbolName">The entry's referenced symbol name, or null if it is a numeric literal.</param>
+/// <param name="SymbolOffset">A constant integer added to <paramref name="SymbolName"/>'s resolved value (e.g. the "+1" in "msgptr+1"), 0 if none.</param>
+public sealed record AsmWordEntry(int? NumericValue, string? SymbolName, int SymbolOffset = 0);
+
+/// <summary>
 /// The result of parsing a single line of 6502 assembly source.
 /// </summary>
 /// <param name="LineNumber">1-based source line number.</param>
@@ -60,7 +68,9 @@ public enum OperandForm
 /// <param name="SymbolOffset">A constant integer added to <paramref name="SymbolName"/>'s resolved value (e.g. the "+1" in "msgptr+1"), 0 if none.</param>
 /// <param name="ConstantName">The name being defined, for a "NAME = value" constant declaration line, or null otherwise.</param>
 /// <param name="ConstantValue">The declared constant's numeric value, non-null exactly when <paramref name="ConstantName"/> is non-null.</param>
-/// <param name="ByteData">The literal bytes to emit, for a ".byte" directive line, or null otherwise.</param>
+/// <param name="ByteData">The literal bytes to emit, for a ".byte" or ".text" directive line, or null otherwise.</param>
+/// <param name="OrgAddress">The requested origin address, for an ".org" directive line, or null otherwise.</param>
+/// <param name="WordData">The literal-or-symbolic 16-bit entries to emit, for a ".word" directive line, or null otherwise.</param>
 public sealed record ParsedAsmLine(
     int LineNumber,
     string? Label,
@@ -72,7 +82,9 @@ public sealed record ParsedAsmLine(
     string? ConstantName = null,
     int? ConstantValue = null,
     IReadOnlyList<byte>? ByteData = null,
-    int SymbolOffset = 0);
+    int SymbolOffset = 0,
+    int? OrgAddress = null,
+    IReadOnlyList<AsmWordEntry>? WordData = null);
 
 /// <summary>
 /// Parses a single line of 6502 assembly source into its label, mnemonic, and operand shape.
@@ -119,18 +131,45 @@ public class AsmLineParser
         if (code.Length == 0)
             return new ParsedAsmLine(lineNumber, label, null, OperandForm.None, null, null, null);
 
-        // ".byte" directive (e.g. .byte "HELLO", $0d, $00) - a comma-separated list of quoted
-        // strings (each character becomes one byte, its plain character code - no PETSCII
-        // remapping) and/or numeric literals, checked before the mnemonic/operand split below
-        // since it has its own comma-delimited grammar rather than a single operand.
-        if (code.StartsWith(".byte", StringComparison.OrdinalIgnoreCase) &&
-            (code.Length == 5 || char.IsWhiteSpace(code[5])))
+        // ".org" directive (e.g. .org $2000) - sets the assembly origin. Only a single numeric
+        // literal is accepted (a symbol reference is nonsensical here, since a label's own
+        // address depends on the origin). Checked before the mnemonic/operand split below since
+        // it isn't a real mnemonic.
+        if (IsDirective(code, ".org", out string orgArgs))
         {
-            string argsText = code[5..].Trim();
-            if (!TryParseByteDirective(argsText, out List<byte>? byteData, out string? byteError))
+            if (!TryParseValue(orgArgs, out int orgValue, out string? orgSymbol) || orgSymbol != null)
+                return new ParsedAsmLine(lineNumber, label, null, OperandForm.None, null, null,
+                    $"'.org' value \"{orgArgs}\" must be a numeric literal.");
+            if (orgValue is < 0 or > 0xFFFF)
+                return new ParsedAsmLine(lineNumber, label, null, OperandForm.None, null, null,
+                    $"'.org' value {orgValue} does not fit a 16-bit address (0-65535).");
+
+            return new ParsedAsmLine(lineNumber, label, null, OperandForm.None, null, null, null, OrgAddress: orgValue);
+        }
+
+        // ".byte"/".text" directives (e.g. .byte "HELLO", $0d, $00) - a comma-separated list of
+        // quoted strings (each character becomes one byte, its plain character code - no PETSCII
+        // remapping) and/or numeric literals. ".text" is a pure alias of ".byte" - both directive
+        // names exist only to let source express intent (data vs. text), the grammar is
+        // identical. Checked before the mnemonic/operand split below since these directives have
+        // their own comma-delimited grammar rather than a single operand.
+        if (IsDirective(code, ".byte", out string byteArgs) || IsDirective(code, ".text", out byteArgs))
+        {
+            if (!TryParseByteDirective(byteArgs, out List<byte>? byteData, out string? byteError))
                 return new ParsedAsmLine(lineNumber, label, null, OperandForm.None, null, null, byteError);
 
             return new ParsedAsmLine(lineNumber, label, null, OperandForm.None, null, null, null, ByteData: byteData);
+        }
+
+        // ".word" directive (e.g. .word $1234, LABEL, LABEL+1) - a comma-separated list of
+        // 16-bit numeric literals and/or symbol references (unlike ".byte", symbols are allowed,
+        // since a jump/address table is ".word"'s main real-world use).
+        if (IsDirective(code, ".word", out string wordArgs))
+        {
+            if (!TryParseWordDirective(wordArgs, out List<AsmWordEntry>? wordData, out string? wordError))
+                return new ParsedAsmLine(lineNumber, label, null, OperandForm.None, null, null, wordError);
+
+            return new ParsedAsmLine(lineNumber, label, null, OperandForm.None, null, null, null, WordData: wordData);
         }
 
         // "NAME = value" constant declaration (e.g. "chrout = $ffd2") - checked before the
@@ -190,19 +229,8 @@ public class AsmLineParser
 
     private static ParsedAsmLine ResolveInner(int lineNumber, string? label, string mnemonic, OperandForm form, string innerText)
     {
-        // A trailing "+N"/"-N" (e.g. the "+1" in "msgptr+1") is a constant offset added to
-        // whatever the base resolves to. Skips index 0 so a value's own $/% prefix, or - if
-        // offsets are ever extended to numeric literals - a leading sign, is never mistaken
-        // for this separator.
-        string baseText = innerText;
-        int offset = 0;
-        int opIdx = innerText.IndexOfAny(['+', '-'], 1);
-        if (opIdx >= 0)
-        {
-            baseText = innerText[..opIdx].Trim();
-            if (!int.TryParse(innerText[opIdx..].Trim(), out offset))
-                return new ParsedAsmLine(lineNumber, label, mnemonic, OperandForm.None, null, null, $"Malformed operand \"{innerText}\".");
-        }
+        if (!TrySplitOffset(innerText, out string baseText, out int offset))
+            return new ParsedAsmLine(lineNumber, label, mnemonic, OperandForm.None, null, null, $"Malformed operand \"{innerText}\".");
 
         if (!TryParseValue(baseText, out int value, out string? symbol))
             return new ParsedAsmLine(lineNumber, label, mnemonic, OperandForm.None, null, null, $"Malformed operand \"{innerText}\".");
@@ -210,6 +238,34 @@ public class AsmLineParser
         return symbol != null
             ? new ParsedAsmLine(lineNumber, label, mnemonic, form, null, symbol, null, SymbolOffset: offset)
             : new ParsedAsmLine(lineNumber, label, mnemonic, form, value + offset, null, null);
+    }
+
+    // Returns whether code begins with the given directive name, splitting off its trimmed
+    // argument text. A directive name must be followed by whitespace or end-of-line so e.g.
+    // ".org" doesn't spuriously match a hypothetical ".organ" directive.
+    private static bool IsDirective(string code, string name, out string argsText)
+    {
+        argsText = string.Empty;
+        if (!code.StartsWith(name, StringComparison.OrdinalIgnoreCase)) return false;
+        if (code.Length > name.Length && !char.IsWhiteSpace(code[name.Length])) return false;
+
+        argsText = code.Length > name.Length ? code[name.Length..].Trim() : string.Empty;
+        return true;
+    }
+
+    // Splits a trailing "+N"/"-N" (e.g. the "+1" in "msgptr+1") off as a constant offset added
+    // to whatever the base resolves to. Skips index 0 so a value's own $/% prefix, or - if
+    // offsets are ever extended to numeric literals - a leading sign, is never mistaken for this
+    // separator.
+    private static bool TrySplitOffset(string text, out string baseText, out int offset)
+    {
+        baseText = text;
+        offset = 0;
+        int opIdx = text.IndexOfAny(['+', '-'], 1);
+        if (opIdx < 0) return true;
+
+        baseText = text[..opIdx].Trim();
+        return int.TryParse(text[opIdx..].Trim(), out offset);
     }
 
     // Parses a $hex / %binary / decimal numeric literal, or - failing that - accepts a bare
@@ -302,6 +358,51 @@ public class AsmLineParser
         }
 
         bytes = result;
+        return true;
+    }
+
+    // Parses a ".word" directive's comma-separated argument list into 16-bit entries, each
+    // either a numeric literal (resolved immediately) or a symbol reference with an optional
+    // "+N"/"-N" offset (resolved later, once every label's address is known).
+    private static bool TryParseWordDirective(string argsText, out List<AsmWordEntry>? entries, out string? error)
+    {
+        entries = null;
+        error = null;
+
+        if (argsText.Length == 0)
+        {
+            error = ".word requires at least one value.";
+            return false;
+        }
+
+        var result = new List<AsmWordEntry>();
+        foreach (string rawToken in argsText.Split(','))
+        {
+            string token = rawToken.Trim();
+            if (token.Length == 0)
+            {
+                error = $"Expected a value in .word list near \"{argsText}\".";
+                return false;
+            }
+
+            if (!TrySplitOffset(token, out string baseText, out int offset))
+            {
+                error = $"Malformed .word value \"{token}\".";
+                return false;
+            }
+
+            if (!TryParseValue(baseText, out int value, out string? symbol))
+            {
+                error = $"Invalid .word value \"{token}\".";
+                return false;
+            }
+
+            result.Add(symbol != null
+                ? new AsmWordEntry(null, symbol, offset)
+                : new AsmWordEntry(value + offset, null));
+        }
+
+        entries = result;
         return true;
     }
 

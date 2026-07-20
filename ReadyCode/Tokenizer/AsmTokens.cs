@@ -106,6 +106,17 @@ public static class AsmTokens
         { "NOP", new("NOP", "Performs no operation.",         "System") },
     };
 
+    /// <summary>
+    /// Single source of truth for every assembler directive and its reference metadata.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, MnemonicInfo> Directives = new Dictionary<string, MnemonicInfo>(StringComparer.OrdinalIgnoreCase)
+    {
+        { ".org",  new(".org $|",  "Sets the assembly origin. Must be the first thing in the file; omits the BASIC loader stub and emits a raw load-address header instead.", "Directives") },
+        { ".byte", new(".byte |",  "Emits literal byte data: quoted strings (one byte per character, no PETSCII remapping) and/or numeric literals, comma-separated.", "Directives") },
+        { ".text", new(".text |",  "Alias of \".byte\" - identical grammar, used to signal that the data is text rather than raw bytes.", "Directives") },
+        { ".word", new(".word |",  "Emits 16-bit little-endian data: numeric literals and/or label/constant references (with an optional +N/-N offset), comma-separated.", "Directives") },
+    };
+
     #endregion
 
     #region Public Methods

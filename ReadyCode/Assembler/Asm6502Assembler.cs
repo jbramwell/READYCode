@@ -6,11 +6,13 @@ using ReadyCode.Tokenizer;
 namespace ReadyCode.Assembler;
 
 /// <summary>
-/// A two-pass assembler for standard 6502 mnemonics, labels, comments, and the ".byte" data
-/// directive (no macros or other directives). Produces complete, ready-to-transfer .prg bytes:
-/// a tiny tokenized BASIC loader stub ("10 SYS 2062") followed immediately by the assembled
-/// machine code, so the result is an ordinary runnable C64 program - callers never need to know
-/// about the stub trick.
+/// A two-pass assembler for standard 6502 mnemonics, labels, comments, and the ".org", ".byte",
+/// ".text", and ".word" directives (no macros). When no ".org" directive is present, produces
+/// complete, ready-to-transfer .prg bytes: a tiny tokenized BASIC loader stub ("10 SYS 2062")
+/// followed immediately by the assembled machine code, so the result is an ordinary runnable C64
+/// program - callers never need to know about the stub trick. When ".org" is present, the stub
+/// is omitted and a raw 2-byte load-address header is emitted instead - see the ".org" handling
+/// in <see cref="Assemble"/>.
 /// </summary>
 public class Asm6502Assembler
 {
@@ -59,17 +61,43 @@ public class Asm6502Assembler
                 errors.Add(new AssemblyError(line.LineNumber, $"Duplicate constant \"{line.ConstantName}\"."));
         }
 
+        // Pre-pass: locate an optional ".org" directive. It must be the first thing in the file -
+        // before any label, mnemonic, ".byte", or ".word" line - since it retargets where code is
+        // placed and (unlike every other directive) changes what gets emitted at the very start
+        // of the .prg: a custom origin disables the auto-generated BASIC loader stub entirely,
+        // emitting a raw 2-byte load-address header instead (see the end of this method).
+        ushort? customOrigin = null;
+        bool codeSeen = false;
+        foreach (var line in parsedLines)
+        {
+            if (line.OrgAddress != null)
+            {
+                if (customOrigin != null)
+                    errors.Add(new AssemblyError(line.LineNumber, "Duplicate '.org' directive."));
+                else if (codeSeen)
+                    errors.Add(new AssemblyError(line.LineNumber, "'.org' must appear before any code in the file."));
+                else
+                    customOrigin = (ushort)line.OrgAddress.Value;
+            }
+
+            if (line.Label != null || line.Mnemonic != null || line.ByteData != null || line.WordData != null)
+                codeSeen = true;
+        }
+
+        ushort origin = customOrigin ?? _codeOrigin;
+
         // Case-sensitive, same reasoning as constants above.
         var labelAddresses = new Dictionary<string, ushort>(StringComparer.Ordinal);
-        // Mode is null for a ".byte" data line - kept in the same ordered list as instruction
-        // lines (rather than a separate list) so pass 2 emits data and code interleaved in
-        // exactly the order they appear in source, not all instructions followed by all data.
+        // Mode is null for a ".byte"/".word" data line - kept in the same ordered list as
+        // instruction lines (rather than a separate list) so pass 2 emits data and code
+        // interleaved in exactly the order they appear in source, not all instructions followed
+        // by all data.
         var encoded = new List<(ParsedAsmLine Line, ushort Address, AddressingMode? Mode)>();
 
         // Pass 1: assign every label's address and validate mnemonics/addressing modes. Sizing
         // never depends on a label's resolved value (see TryResolveMode), so this single forward
         // pass is enough - no iterative relaxation is needed.
-        ushort address = _codeOrigin;
+        ushort address = origin;
         foreach (var line in parsedLines)
         {
             if (line.Error != null)
@@ -93,6 +121,13 @@ public class Asm6502Assembler
                 continue;
             }
 
+            if (line.WordData != null)
+            {
+                encoded.Add((line, address, null));
+                address += (ushort)(2 * line.WordData.Count);
+                continue;
+            }
+
             if (line.Mnemonic == null) continue;
 
             if (!TryResolveMode(line, constants, out AddressingMode mode, out string? modeError))
@@ -106,7 +141,7 @@ public class Asm6502Assembler
         }
 
         if (errors.Count > 0)
-            return new AssemblyResult { Success = false, Errors = errors };
+            return new AssemblyResult { Success = false, Errors = errors, Origin = origin, Labels = labelAddresses, Constants = constants };
 
         // Pass 2: emit real bytes, resolving label references now that every address is known.
         var codeBytes = new List<byte>();
@@ -114,7 +149,29 @@ public class Asm6502Assembler
         {
             if (mode == null)
             {
-                codeBytes.AddRange(line.ByteData!);
+                if (line.ByteData != null)
+                {
+                    codeBytes.AddRange(line.ByteData);
+                    continue;
+                }
+
+                foreach (var entry in line.WordData!)
+                {
+                    if (!TryResolveValue(entry.SymbolName, entry.NumericValue, entry.SymbolOffset, constants, labelAddresses, out int wordValue, out string? wordError))
+                    {
+                        errors.Add(new AssemblyError(line.LineNumber, wordError!));
+                        continue;
+                    }
+
+                    if (wordValue is < 0 or > 0xFFFF)
+                    {
+                        errors.Add(new AssemblyError(line.LineNumber, $"Value {wordValue} does not fit a 16-bit operand (0-65535)."));
+                        continue;
+                    }
+
+                    codeBytes.Add((byte)(wordValue & 0xFF));
+                    codeBytes.Add((byte)((wordValue >> 8) & 0xFF));
+                }
                 continue;
             }
 
@@ -123,10 +180,21 @@ public class Asm6502Assembler
         }
 
         if (errors.Count > 0)
-            return new AssemblyResult { Success = false, Errors = errors };
+            return new AssemblyResult { Success = false, Errors = errors, Origin = origin, Labels = labelAddresses, Constants = constants };
 
-        byte[] stub = new PrgConverter().ConvertToPrg(_basicStubLine);
-        return new AssemblyResult { Success = true, PrgBytes = [.. stub, .. codeBytes] };
+        byte[] prgBytes;
+        if (customOrigin != null)
+        {
+            byte[] header = [(byte)(customOrigin.Value & 0xFF), (byte)((customOrigin.Value >> 8) & 0xFF)];
+            prgBytes = [.. header, .. codeBytes];
+        }
+        else
+        {
+            byte[] stub = new PrgConverter().ConvertToPrg(_basicStubLine);
+            prgBytes = [.. stub, .. codeBytes];
+        }
+
+        return new AssemblyResult { Success = true, PrgBytes = prgBytes, Origin = origin, Labels = labelAddresses, Constants = constants };
     }
 
     #endregion
@@ -236,7 +304,7 @@ public class Asm6502Assembler
                 return;
 
             case AddressingMode.Relative:
-                if (!TryResolveValue(line, constants, labelAddresses, out int target, out string? targetError))
+                if (!TryResolveValue(line.SymbolName, line.NumericValue, line.SymbolOffset, constants, labelAddresses, out int target, out string? targetError))
                 {
                     errors.Add(new AssemblyError(line.LineNumber, targetError!));
                     return;
@@ -254,7 +322,7 @@ public class Asm6502Assembler
                 return;
 
             case AddressingMode.Immediate:
-                if (!TryResolveValue(line, constants, labelAddresses, out int immValue, out string? immError))
+                if (!TryResolveValue(line.SymbolName, line.NumericValue, line.SymbolOffset, constants, labelAddresses, out int immValue, out string? immError))
                 {
                     errors.Add(new AssemblyError(line.LineNumber, immError!));
                     return;
@@ -284,7 +352,7 @@ public class Asm6502Assembler
             case AddressingMode.ZeroPageY:
             case AddressingMode.IndirectX:
             case AddressingMode.IndirectY:
-                if (!TryResolveValue(line, constants, labelAddresses, out int byteValue, out string? byteError))
+                if (!TryResolveValue(line.SymbolName, line.NumericValue, line.SymbolOffset, constants, labelAddresses, out int byteValue, out string? byteError))
                 {
                     errors.Add(new AssemblyError(line.LineNumber, byteError!));
                     return;
@@ -303,7 +371,7 @@ public class Asm6502Assembler
             case AddressingMode.AbsoluteX:
             case AddressingMode.AbsoluteY:
             case AddressingMode.Indirect:
-                if (!TryResolveValue(line, constants, labelAddresses, out int wordValue, out string? wordError))
+                if (!TryResolveValue(line.SymbolName, line.NumericValue, line.SymbolOffset, constants, labelAddresses, out int wordValue, out string? wordError))
                 {
                     errors.Add(new AssemblyError(line.LineNumber, wordError!));
                     return;
@@ -321,37 +389,40 @@ public class Asm6502Assembler
         }
     }
 
-    // Resolves a parsed line's operand to its final numeric value - the literal itself, a known
-    // constant's value, or a label's address looked up now that every label from pass 1 is known.
-    // Any "+N"/"-N" offset (e.g. the "+1" in "msgptr+1") is added on top of a symbol's resolved
-    // value here; for a plain numeric literal, an offset was already folded into NumericValue
-    // during parsing.
+    // Resolves an operand (an instruction's, or a ".word" entry's) to its final numeric value -
+    // the literal itself, a known constant's value, or a label's address looked up now that
+    // every label from pass 1 is known. Any "+N"/"-N" offset (e.g. the "+1" in "msgptr+1") is
+    // added on top of a symbol's resolved value here; for a plain numeric literal, an offset was
+    // already folded into numericValue during parsing. Takes the operand's fields directly
+    // (rather than a whole ParsedAsmLine) so both instruction operands and ".word" entries
+    // (AsmWordEntry) can share this exact resolution logic.
     private static bool TryResolveValue(
-        ParsedAsmLine line, IReadOnlyDictionary<string, int> constants, IReadOnlyDictionary<string, ushort> labelAddresses,
+        string? symbolName, int? numericValue, int symbolOffset,
+        IReadOnlyDictionary<string, int> constants, IReadOnlyDictionary<string, ushort> labelAddresses,
         out int value, out string? error)
     {
         error = null;
 
-        if (line.SymbolName != null)
+        if (symbolName != null)
         {
-            if (constants.TryGetValue(line.SymbolName, out int constValue))
+            if (constants.TryGetValue(symbolName, out int constValue))
             {
-                value = constValue + line.SymbolOffset;
+                value = constValue + symbolOffset;
                 return true;
             }
 
-            if (!labelAddresses.TryGetValue(line.SymbolName, out ushort labelAddress))
+            if (!labelAddresses.TryGetValue(symbolName, out ushort labelAddress))
             {
                 value = 0;
-                error = $"Undefined label \"{line.SymbolName}\".";
+                error = $"Undefined label \"{symbolName}\".";
                 return false;
             }
 
-            value = labelAddress + line.SymbolOffset;
+            value = labelAddress + symbolOffset;
             return true;
         }
 
-        value = line.NumericValue ?? 0;
+        value = numericValue ?? 0;
         return true;
     }
 

@@ -90,10 +90,12 @@
 
         <!-- Context menu for the text editor -->
         <ContextMenu x:Key="EditorContextMenu">
-            <MenuItem Header="Transfer" InputGestureText="Ctrl+F5" Click="EditorContextTransfer_Click"/>
-            <MenuItem Header="Run"      InputGestureText="F5"     Click="EditorContextRun_Click"/>
+            <MenuItem Header="Transfer"        InputGestureText="Ctrl+F5"     Click="EditorContextTransfer_Click"/>
+            <MenuItem Header="Run"             InputGestureText="F5"          Click="EditorContextRun_Click"/>
+            <MenuItem Header="Transfer (VICE)" InputGestureText="Ctrl+Alt+F5" Click="EditorContextViceTransfer_Click"/>
+            <MenuItem Header="Run (VICE)"      InputGestureText="Alt+F5"      Click="EditorContextViceRun_Click"/>
             <Separator/>
-            <MenuItem Header="Go to Line Number" InputGestureText="F12" Click="EditorContextGoToLineNumber_Click"/>
+            <MenuItem Header="Go to Definition" InputGestureText="F12" Click="EditorContextGoToLineNumber_Click"/>
             <Separator/>
             <MenuItem Header="Cut"   InputGestureText="Ctrl+X"   Click="EditCut_Click"/>
             <MenuItem Header="Copy"  InputGestureText="Ctrl+C"   Click="EditCopy_Click"/>
@@ -602,6 +604,7 @@
     <Window.InputBindings>
         <!-- File Menu -->
         <KeyBinding Key="N" Modifiers="Ctrl" Command="{Binding FileNewCommand}"/>
+        <KeyBinding Key="N" Modifiers="Ctrl+Alt" Command="{Binding FileNewAsmCommand}"/>
         <KeyBinding Key="O" Modifiers="Ctrl" Command="{Binding FileOpenCommand}"/>
         <KeyBinding Key="S" Modifiers="Ctrl" Command="{Binding FileSaveCommand}"/>
         <KeyBinding Key="S" Modifiers="Ctrl+Shift" Command="{Binding FileSaveAsCommand}"/>
@@ -690,6 +693,9 @@
 
             <MenuItem Header="_File">
                 <MenuItem Header="_New"             Command="{Binding FileNewCommand}"          InputGestureText="Ctrl+N">
+                    <MenuItem.Icon><TextBlock Text="&#xE7C3;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="New _Assembly File" Command="{Binding FileNewAsmCommand}" InputGestureText="Ctrl+Alt+N">
                     <MenuItem.Icon><TextBlock Text="&#xE7C3;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
                 </MenuItem>
                 <Separator/>
@@ -1213,6 +1219,62 @@
                             <local:VariableTreeItemStyleSelector VariableStyle="{StaticResource VariableTreeViewItemStyle}"
                                                                   OccurrenceStyle="{StaticResource VariableOccurrenceTreeViewItemStyle}"/>
                         </TreeView.ItemContainerStyleSelector>
+                    </TreeView>
+            </DockPanel>
+
+            <!-- Symbol Explorer: assembly's equivalent of the Variable Explorer above - every
+                 label/constant in the active document, with each definition/reference occurrence
+                 as a child node. Occupies the same grid cell as VariablesPanel; MainWindow toggles
+                 which of the two is visible based on the active tab's language. -->
+            <DockPanel x:Name="SymbolsPanel" Grid.Row="2" Visibility="Collapsed" Background="{DynamicResource ThemeFolderExplorerBg}">
+                    <Border DockPanel.Dock="Top"
+                            Background="{DynamicResource ThemeFolderExplorerHeaderBg}"
+                            BorderBrush="{DynamicResource ThemeFolderExplorerHeaderBorder}" BorderThickness="0,0,0,1"
+                            Height="32">
+                        <TextBlock Text="{Binding ViewModel.Symbols.Count, StringFormat='SYMBOLS ({0})'}"
+                                   FontSize="11" FontWeight="Bold" Foreground="{DynamicResource ThemeFileFg}"
+                                   VerticalAlignment="Center" Margin="10,0,0,0"/>
+                    </Border>
+
+                    <TreeView x:Name="SymbolsTree"
+                              Background="{DynamicResource ThemeFolderExplorerBg}"
+                              BorderThickness="0"
+                              ItemsSource="{Binding ViewModel.Symbols}"
+                              MouseDoubleClick="SymbolsTree_MouseDoubleClick">
+                        <TreeView.Resources>
+                            <HierarchicalDataTemplate DataType="{x:Type models:AsmSymbolInfo}" ItemsSource="{Binding Occurrences}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding Name}"
+                                               FontSize="12" Foreground="{DynamicResource ThemeFileFg}"
+                                               Margin="0,1" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding ValueText}"
+                                               FontSize="11" Foreground="{DynamicResource ThemeSettingsDescFg}"
+                                               Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <Border Grid.Column="2"
+                                            Background="{DynamicResource ThemeFolderExplorerHoverBg}"
+                                            CornerRadius="2" Padding="4,0" Margin="4,0,8,0"
+                                            VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding TypeBadge}" FontSize="9" FontWeight="Bold"
+                                                   Foreground="{DynamicResource ThemeFolderExplorerIconFg}"/>
+                                    </Border>
+                                </Grid>
+                            </HierarchicalDataTemplate>
+                            <DataTemplate DataType="{x:Type models:AsmSymbolOccurrenceInfo}">
+                                <TextBlock Text="{Binding DisplayText}"
+                                           FontSize="12" Foreground="{DynamicResource ThemeFileFg}"
+                                           Margin="0,1" VerticalAlignment="Center"/>
+                            </DataTemplate>
+                        </TreeView.Resources>
+                        <TreeView.ItemContainerStyle>
+                            <Style TargetType="TreeViewItem" BasedOn="{StaticResource ExplorerTreeItemStyle}">
+                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                            </Style>
+                        </TreeView.ItemContainerStyle>
                     </TreeView>
             </DockPanel>
 
@@ -2424,6 +2486,22 @@
                     </ScrollViewer>
                 </DockPanel>
 
+                <!-- ASM Mnemonics panel -->
+                <DockPanel x:Name="AsmKeywordsPanel" Background="{DynamicResource ThemeFolderExplorerBg}" Visibility="Collapsed">
+                    <Border DockPanel.Dock="Top"
+                            Background="{DynamicResource ThemeFolderExplorerHeaderBg}"
+                            BorderBrush="{DynamicResource ThemeFolderExplorerHeaderBorder}" BorderThickness="0,0,0,1"
+                            Height="32">
+                        <TextBlock Text="ASM MNEMONICS"
+                                   FontSize="11" FontWeight="Bold" Foreground="{DynamicResource ThemeFileFg}"
+                                   VerticalAlignment="Center" Margin="10,0,0,0"/>
+                    </Border>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="AsmKeywordsListPanel" />
+                    </ScrollViewer>
+                </DockPanel>
+
                 <!-- Music Notes panel -->
                 <DockPanel x:Name="MusicNotesPanel" Background="{DynamicResource ThemeFolderExplorerBg}" Visibility="Collapsed">
                     <Border DockPanel.Dock="Top"
@@ -2476,6 +2554,13 @@
                                   Click="BasicKeywordsToggle_Click">
                         <TextBlock Text="&#xE82D;" FontSize="18" FontFamily="Segoe MDL2 Assets"
                                    Margin="2,4,0,0"
+                                   Foreground="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}"/>
+                    </ToggleButton>
+                    <ToggleButton x:Name="AsmKeywordsToggle"
+                                  Style="{StaticResource ActivityBarButtonRight}"
+                                  ToolTip="ASM Mnemonics"
+                                  Click="AsmKeywordsToggle_Click">
+                        <TextBlock Text="&#xE943;" FontSize="18" FontFamily="Segoe MDL2 Assets"
                                    Foreground="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}"/>
                     </ToggleButton>
                     <ToggleButton x:Name="MusicNotesToggle"
