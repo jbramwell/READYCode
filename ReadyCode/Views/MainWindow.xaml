@@ -629,6 +629,8 @@
         <KeyBinding Key="R" Modifiers="Ctrl"       Command="{Binding EditRenumberCommand}"/>
         <KeyBinding Key="F" Modifiers="Ctrl" Command="{Binding EditFindCommand}"/>
         <KeyBinding Key="H" Modifiers="Ctrl" Command="{Binding EditReplaceCommand}"/>
+        <KeyBinding Key="F" Modifiers="Ctrl+Shift" Command="{Binding EditFindInFilesCommand}"/>
+        <KeyBinding Key="H" Modifiers="Ctrl+Shift" Command="{Binding EditReplaceInFilesCommand}"/>
 
         <!-- Tab management -->
         <KeyBinding Key="F4" Modifiers="Ctrl" Command="{Binding TabCloseCurrentCommand}"/>
@@ -770,8 +772,10 @@
                 <MenuItem Header="_Find"    Command="{Binding EditFindCommand}"    InputGestureText="Ctrl+F">
                     <MenuItem.Icon><TextBlock Text="&#xE721;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
                 </MenuItem>
-                <Separator/>
                 <MenuItem Header="R_eplace" Command="{Binding EditReplaceCommand}" InputGestureText="Ctrl+H"/>
+                <Separator/>
+                <MenuItem Header="Find in _Files"    Command="{Binding EditFindInFilesCommand}"    InputGestureText="Ctrl+Shift+F"/>
+                <MenuItem Header="Replace in Fi_les" Command="{Binding EditReplaceInFilesCommand}" InputGestureText="Ctrl+Shift+H"/>
             </MenuItem>
 
             <MenuItem Header="_View">
@@ -929,6 +933,13 @@
                                   ToolTip="C64U"
                                   Click="C64UToggle_Click">
                         <TextBlock Text="&#xE7F4;" FontFamily="Segoe MDL2 Assets" FontSize="18"
+                                   Foreground="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}"/>
+                    </ToggleButton>
+                    <ToggleButton x:Name="SearchToggle"
+                                  Style="{StaticResource ActivityBarButton}"
+                                  ToolTip="Search (Ctrl+Shift+F)"
+                                  Click="SearchToggle_Click">
+                        <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="18"
                                    Foreground="{Binding RelativeSource={RelativeSource AncestorType=ToggleButton}, Path=Foreground}"/>
                     </ToggleButton>
                 </StackPanel>
@@ -1559,6 +1570,211 @@
                             </TreeView.ItemContainerStyle>
                         </TreeView>
                     </Grid>
+                </DockPanel>
+            </Grid>
+
+            <!-- Left panel: Search (project-wide find/replace across the open project's files) -->
+            <Grid x:Name="SearchPanel" Grid.Row="0" Visibility="Collapsed">
+                <Grid.Resources>
+                    <Style x:Key="SearchToggleStyle" TargetType="ToggleButton">
+                        <Setter Property="Width" Value="24"/>
+                        <Setter Property="Height" Value="22"/>
+                        <Setter Property="FontSize" Value="11"/>
+                        <Setter Property="Cursor" Value="Hand"/>
+                        <Setter Property="Foreground" Value="{DynamicResource ThemeFileFg}"/>
+                        <Setter Property="BorderThickness" Value="1"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="Bd" CornerRadius="3"
+                                            Background="Transparent"
+                                            BorderBrush="Transparent"
+                                            BorderThickness="{TemplateBinding BorderThickness}">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeFolderExplorerHoverBg}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeFolderExplorerHoverBg}"/>
+                                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ThemeSettingsAccent}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                    <Style x:Key="SearchBtnStyle" TargetType="Button">
+                        <Setter Property="Height" Value="22"/>
+                        <Setter Property="FontSize" Value="11"/>
+                        <Setter Property="Cursor" Value="Hand"/>
+                        <Setter Property="Foreground" Value="{DynamicResource ThemeFileFg}"/>
+                        <Setter Property="BorderThickness" Value="1"/>
+                        <Setter Property="Padding" Value="6,0"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Bd" CornerRadius="3"
+                                            Background="Transparent"
+                                            BorderBrush="{DynamicResource ThemeSettingsInputBorder}"
+                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                            Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeFolderExplorerHoverBg}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter TargetName="Bd" Property="Opacity" Value="0.7"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Grid.Resources>
+                <DockPanel Background="{DynamicResource ThemeFolderExplorerBg}">
+                    <StackPanel DockPanel.Dock="Top"
+                                Background="{DynamicResource ThemeFolderExplorerHeaderBg}">
+                        <TextBlock Text="SEARCH"
+                                   FontSize="11" FontWeight="Bold" Foreground="{DynamicResource ThemeFileFg}"
+                                   Margin="10,8,0,6"/>
+                        <DockPanel Margin="8,0,8,4" LastChildFill="True">
+                            <ToggleButton x:Name="SearchReplaceExpandBtn"
+                                          DockPanel.Dock="Left"
+                                          Style="{StaticResource SearchToggleStyle}"
+                                          Width="20"
+                                          ToolTip="Toggle Replace"
+                                          Checked="SearchReplaceExpandBtn_Checked"
+                                          Unchecked="SearchReplaceExpandBtn_Unchecked">
+                                <TextBlock x:Name="SearchReplaceExpandArrow" Text="▸" FontSize="10"
+                                           Foreground="{DynamicResource ThemeFileFg}"/>
+                            </ToggleButton>
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="4,0,0,0">
+                                <ToggleButton x:Name="SearchMatchCaseBtn" Style="{StaticResource SearchToggleStyle}"
+                                              Content="Aa" ToolTip="Match Case"/>
+                                <ToggleButton x:Name="SearchWholeWordBtn" Style="{StaticResource SearchToggleStyle}"
+                                              Content="ab" ToolTip="Match Whole Word"/>
+                                <ToggleButton x:Name="SearchRegexBtn" Style="{StaticResource SearchToggleStyle}"
+                                              FontFamily="Consolas" Content=".*" ToolTip="Use Regular Expression"/>
+                            </StackPanel>
+                            <Grid Margin="4,0,0,0">
+                                <TextBox x:Name="SearchQueryBox"
+                                         Height="22"
+                                         BorderThickness="1"
+                                         BorderBrush="{DynamicResource ThemeSettingsInputBorder}"
+                                         Background="{DynamicResource ThemeSettingsInputBg}"
+                                         Foreground="{DynamicResource ThemeFileFg}"
+                                         CaretBrush="{DynamicResource ThemeFileFg}"
+                                         FontFamily="Consolas" FontSize="12"
+                                         Padding="4,2"
+                                         VerticalContentAlignment="Center"
+                                         KeyDown="SearchQueryBox_KeyDown"/>
+                                <TextBlock Text="Search" IsHitTestVisible="False"
+                                           FontFamily="Consolas" FontSize="12"
+                                           Foreground="{DynamicResource ThemeSettingsDescFg}"
+                                           Margin="6,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Text, ElementName=SearchQueryBox}" Value="">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                        </DockPanel>
+                        <DockPanel x:Name="SearchReplaceRow" Visibility="Collapsed"
+                                   Margin="8,0,8,6" LastChildFill="True">
+                            <!-- Spacer matching SearchReplaceExpandBtn's width, so the replace
+                                 box lines up under the search box above. -->
+                            <Rectangle DockPanel.Dock="Left" Width="20" Fill="Transparent"/>
+                            <Button DockPanel.Dock="Right" Style="{StaticResource SearchBtnStyle}"
+                                    Content="Replace All" Margin="4,0,0,0"
+                                    ToolTip="Replace All in Project"
+                                    Click="SearchReplaceAll_Click"/>
+                            <Grid Margin="4,0,0,0">
+                                <TextBox x:Name="SearchReplaceBox"
+                                         Height="22"
+                                         BorderThickness="1"
+                                         BorderBrush="{DynamicResource ThemeSettingsInputBorder}"
+                                         Background="{DynamicResource ThemeSettingsInputBg}"
+                                         Foreground="{DynamicResource ThemeFileFg}"
+                                         CaretBrush="{DynamicResource ThemeFileFg}"
+                                         FontFamily="Consolas" FontSize="12"
+                                         Padding="4,2"
+                                         VerticalContentAlignment="Center"/>
+                                <TextBlock Text="Replace" IsHitTestVisible="False"
+                                           FontFamily="Consolas" FontSize="12"
+                                           Foreground="{DynamicResource ThemeSettingsDescFg}"
+                                           Margin="6,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Text, ElementName=SearchReplaceBox}" Value="">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                        </DockPanel>
+                        <TextBlock x:Name="SearchStatusText"
+                                   FontSize="11" Foreground="{DynamicResource ThemeSettingsDescFg}"
+                                   Margin="10,0,0,8" Text=""/>
+                    </StackPanel>
+
+                    <TreeView x:Name="SearchResultsTree"
+                              Background="{DynamicResource ThemeFolderExplorerBg}"
+                              BorderThickness="0"
+                              ItemsSource="{Binding ViewModel.SearchResults}"
+                              MouseDoubleClick="SearchResultsTree_MouseDoubleClick">
+                        <TreeView.Resources>
+                            <HierarchicalDataTemplate DataType="{x:Type models:ProjectSearchFileResult}" ItemsSource="{Binding Matches}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding RelativeDisplayPath}"
+                                               FontSize="12" Foreground="{DynamicResource ThemeFileFg}"
+                                               Margin="0,1" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <Border Grid.Column="1"
+                                            Background="{DynamicResource ThemeFolderExplorerHoverBg}"
+                                            CornerRadius="2" Padding="4,0" Margin="4,0,8,0"
+                                            VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Matches.Count}" FontSize="9" FontWeight="Bold"
+                                                   Foreground="{DynamicResource ThemeFolderExplorerIconFg}"/>
+                                    </Border>
+                                </Grid>
+                            </HierarchicalDataTemplate>
+                            <DataTemplate DataType="{x:Type models:ProjectSearchMatchInfo}">
+                                <TextBlock Text="{Binding DisplayText}"
+                                           FontSize="12" Foreground="{DynamicResource ThemeFileFg}"
+                                           Margin="0,1" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </DataTemplate>
+                        </TreeView.Resources>
+                        <TreeView.ItemContainerStyle>
+                            <Style TargetType="TreeViewItem" BasedOn="{StaticResource ExplorerTreeItemStyle}">
+                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                                <!-- Caught here, at the item itself (the event's source), rather
+                                     than up on the TreeView - the TreeView's own template wraps
+                                     its items in a ScrollViewer that would otherwise auto-scroll
+                                     horizontally on selection before the event ever reached a
+                                     handler up there. -->
+                                <EventSetter Event="RequestBringIntoView" Handler="SearchResultsTree_RequestBringIntoView"/>
+                            </Style>
+                        </TreeView.ItemContainerStyle>
+                    </TreeView>
                 </DockPanel>
             </Grid>
             </Grid>

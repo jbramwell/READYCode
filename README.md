@@ -30,20 +30,20 @@ the real machine would show.
   the C64 Ultimate's FTP file service and browses its storage - USB drives, internal Flash, Temp -
   without leaving the editor. Right-click a `.d64`/`.d81` disk image to mount it to Drive A or B (a
   status footer shows what's currently mounted on each drive, with a one-click eject), or expand a
-  `.d64` image in place to see the individual programs stored on it and open any of them directly in
-  the editor. Enable it on the device under Ultimate menu -> Network Services -> FTP file service;
-  READYCode never auto-connects on its own, so nothing happens on the network until you click Connect.
+  `.d64`/`.d81` image in place to see the individual programs stored on it and open any of them
+  directly in the editor. Enable it on the device under Ultimate menu -> Network Services -> FTP file
+  service; READYCode never auto-connects on its own, so nothing happens on the network until you click
+  Connect.
 - **Tokenizing / `.prg` conversion** - converts BASIC source to/from the real tokenized `.prg` binary
   format (including the `$0801` load address), compatible with VICE and other emulators, not just the
   Ultimate. The same converter can also tell a real BASIC program apart from a raw machine-language
   `.prg` by validating its tokenized line structure, rather than just trusting the file's extension or
-  type byte - used to decide which files inside a `.d64` (in either Explorer) are safe to open as text.
+  type byte - used to decide which files inside a `.d64`/`.d81` (in either Explorer) are safe to open as text.
 - **File Explorer panels** - both the local Folder Explorer and the C64U Explorer share the same tree
   UI: inline (VS Code-style) new file/folder creation and rename, drag-and-drop (local only),
   cut/copy/paste/delete/reveal-in-Explorer, right-click-to-select, and a color-coded file-type badge and
   icon (folder, floppy disk, or document) for BASIC/machine-language/disk-image files. Both trees can
-  expand a `.d64` disk image in place to browse - and open - the programs stored inside it (`.d81` is
-  recognized and mountable but not yet browsable in place).
+  expand a `.d64`/`.d81` disk image in place to browse - and open - the programs stored inside it.
 - **Minify / Prettify** - reformat BASIC source for either compactness (token packing, optional line
   renumbering) or readability.
 - **Printing** - Print and Print Preview render the active tab through the same PETSCII-accurate
@@ -78,7 +78,7 @@ ReadyCode.sln
 │   ├── Minify/, Prettify/        # BASIC source-to-source transforms
 │   ├── Printing/                 # Print / Print Preview (FlowDocument over the XPS pipeline)
 │   ├── C64U/                     # REST client for the C64 Ultimate's local HTTP API, an FTP client
-│   │                            #   (FluentFTP) for its file service, and a .d64 disk image parser
+│   │                            #   (FluentFTP) for its file service, and a .d64/.d81 disk image parser
 │   ├── Converters/                # WPF value converters used by bindings in MainWindow.xaml
 │   │                            #   (e.g. cross-referencing a tree item's path against drive-mount
 │   │                            #   state to highlight what's mounted on Drive A/B)
@@ -115,11 +115,12 @@ matching the Ultimate's built-in FTP file service; enable that service on the de
 Ultimate menu -> Network Services -> FTP file service before connecting. READYCode never connects on
 its own - nothing happens on the network until you open the C64U Explorer tab and click Connect.
 
-`C64U/D64Image.cs` parses standard 35-track `.d64` disk images (no error info) directly from bytes -
-reading the BAM/directory chain starting at track 18 and following each file's own track/sector chain -
-so a disk image can be expanded in the tree to reveal the individual programs stored on it, without
-needing to mount it first. This works the same way in both the C64U Explorer (parsing bytes downloaded
-over FTP) and the local Folder Explorer (parsing bytes read straight from disk).
+`C64U/DiskImage.cs` parses standard `.d64` (35-track 1541) and `.d81` (80-track 1581) disk images
+directly from bytes, using the track/sector layout supplied by `C64U/DiskGeometry.cs` - reading the
+BAM/directory chain and following each file's own track/sector chain - so a disk image can be expanded
+in the tree to reveal the individual programs stored on it, without needing to mount it first. This
+works the same way in both the C64U Explorer (parsing bytes downloaded over FTP) and the local Folder
+Explorer (parsing bytes read straight from disk).
 
 ## Getting started
 

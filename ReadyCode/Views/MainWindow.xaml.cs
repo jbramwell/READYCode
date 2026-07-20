@@ -25,6 +25,7 @@ using ReadyCode.Editor;
 using ReadyCode.Minify;
 using ReadyCode.Models;
 using ReadyCode.Prettify;
+using ReadyCode.Search;
 using ReadyCode.Sid;
 using ReadyCode.Tokenizer;
 using ReadyCode.ViewModels;
@@ -188,6 +189,8 @@ public partial class MainWindow : Window
 
         EditFindCommand    = new RelayCommand(_ => OpenFind(), _ => HasNonEmptyActiveTab());
         EditReplaceCommand = new RelayCommand(_ => OpenReplace(), _ => HasNonEmptyActiveTab());
+        EditFindInFilesCommand    = new RelayCommand(_ => OpenProjectSearch(replaceMode: false), _ => ViewModel.Project.IsOpen);
+        EditReplaceInFilesCommand = new RelayCommand(_ => OpenProjectSearch(replaceMode: true),  _ => ViewModel.Project.IsOpen);
 
         ViewPrimarySideBarCommand   = new RelayCommand(_ => TogglePrimarySideBar());
         ViewSecondarySideBarCommand = new RelayCommand(_ => ToggleSecondarySideBar());
@@ -402,6 +405,10 @@ public partial class MainWindow : Window
     public ICommand EditFindCommand    { get; }
     /// <summary>Gets the command that opens the find bar in replace mode.</summary>
     public ICommand EditReplaceCommand { get; }
+    /// <summary>Gets the command that opens the project-wide Search panel.</summary>
+    public ICommand EditFindInFilesCommand { get; }
+    /// <summary>Gets the command that opens the project-wide Search panel with the Replace field expanded.</summary>
+    public ICommand EditReplaceInFilesCommand { get; }
 
     // View Menu
     /// <summary>Gets the command that toggles the left (folder explorer) panel.</summary>
@@ -1803,6 +1810,7 @@ public partial class MainWindow : Window
     {
         (ExplorerToggle, ExplorerPanel, "Explorer"),
         (C64UToggle,     C64UPanel,     "C64U"),
+        (SearchToggle,   SearchPanel,   "Search"),
     };
 
     private void ActivateLeftPanel(ToggleButton toggle, Grid panel, string settingsKey)
@@ -2522,46 +2530,13 @@ public partial class MainWindow : Window
             return;
         }
 
-        string docText = Editor.Document.Text;
-
-        if (FindBar.UseRegex)
-        {
-            try
-            {
-                var options = FindBar.MatchCase ? RegexOptions.None : RegexOptions.IgnoreCase;
-                foreach (Match m in new Regex(searchText, options | RegexOptions.Multiline).Matches(docText))
-                    if (m.Length > 0) _findMatches.Add((m.Index, m.Length));
-            }
-            catch { /* invalid regex — no matches */ }
-        }
-        else
-        {
-            var comparison = FindBar.MatchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-            int idx = 0;
-            while (idx < docText.Length)
-            {
-                int pos = docText.IndexOf(searchText, idx, comparison);
-                if (pos < 0) break;
-
-                if (FindBar.WholeWord)
-                {
-                    bool okStart = pos == 0 || !IsWordChar(docText[pos - 1]);
-                    bool okEnd   = pos + searchText.Length >= docText.Length || !IsWordChar(docText[pos + searchText.Length]);
-                    if (!okStart || !okEnd) { idx = pos + 1; continue; }
-                }
-
-                _findMatches.Add((pos, searchText.Length));
-                idx = pos + 1;
-            }
-        }
+        _findMatches.AddRange(ProjectSearcher.FindMatches(Editor.Document.Text, searchText, FindBar.MatchCase, FindBar.WholeWord, FindBar.UseRegex));
 
         _findMatchIndex = FindNearestMatchIndex(Editor.CaretOffset);
         _findHighlightColorizer.SetMatches(_findMatches, _findMatchIndex);
         Editor.TextArea.TextView.Redraw();
         FindBar.SetMatchCount(_findMatchIndex + 1, _findMatches.Count);
     }
-
-    private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '_';
 
     private int FindNearestMatchIndex(int caretOffset)
     {
@@ -2618,6 +2593,205 @@ public partial class MainWindow : Window
                 Editor.Document.Replace(_findMatches[i].Offset, _findMatches[i].Length, FindBar.ReplaceText);
         }
         UpdateFindMatches();
+    }
+
+    #endregion
+
+    #region Project Search
+
+    private void SearchToggle_Click(object sender, RoutedEventArgs e) => ActivateLeftPanel(SearchToggle, SearchPanel, "Search");
+
+    private void OpenProjectSearch(bool replaceMode)
+    {
+        if (SearchToggle.IsChecked != true)
+        {
+            SearchToggle.IsChecked = true;
+            SearchToggle_Click(this, new RoutedEventArgs());
+        }
+
+        SearchReplaceExpandBtn.IsChecked = replaceMode;
+        SearchReplaceRow.Visibility = replaceMode ? Visibility.Visible : Visibility.Collapsed;
+        SearchReplaceExpandArrow.Text = replaceMode ? "▾" : "▸";
+
+        SearchQueryBox.Focus();
+        SearchQueryBox.SelectAll();
+    }
+
+    private void SearchReplaceExpandBtn_Checked(object sender, RoutedEventArgs e)
+    {
+        SearchReplaceExpandArrow.Text = "▾";
+        SearchReplaceRow.Visibility = Visibility.Visible;
+    }
+
+    private void SearchReplaceExpandBtn_Unchecked(object sender, RoutedEventArgs e)
+    {
+        SearchReplaceExpandArrow.Text = "▸";
+        SearchReplaceRow.Visibility = Visibility.Collapsed;
+    }
+
+    private void SearchQueryBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) { RunProjectSearch(); e.Handled = true; }
+    }
+
+    // Runs an explicit (not live-as-you-type) search across every plain-text source file in the
+    // open project, replacing ViewModel.SearchResults wholesale. Synchronous - project folders at
+    // this app's scale don't need the Task.Run/cancellation machinery a larger IDE would.
+    private void RunProjectSearch()
+    {
+        ViewModel.SearchResults.Clear();
+
+        string root = ViewModel.Project.RootPath;
+        string query = SearchQueryBox.Text;
+        if (string.IsNullOrEmpty(root) || string.IsNullOrEmpty(query))
+        {
+            SearchStatusText.Text = string.IsNullOrEmpty(root) ? "Open a folder to search across its files." : "";
+            return;
+        }
+
+        bool matchCase = SearchMatchCaseBtn.IsChecked == true;
+        bool wholeWord = SearchWholeWordBtn.IsChecked == true;
+        bool useRegex  = SearchRegexBtn.IsChecked == true;
+
+        int totalMatches = 0;
+        foreach (string path in ProjectSearcher.EnumerateSearchableFiles(root))
+        {
+            string? text = ProjectSearcher.ReadSearchableText(path);
+            if (text == null) continue;
+
+            // Matches the padding OpenFileByPath applies when detokenizing a .prg for display,
+            // so a result's line/column here lines up with the offsets in the opened tab.
+            if (path.EndsWith(".prg", StringComparison.OrdinalIgnoreCase))
+                text = PadLineNumbers(text);
+
+            var matches = ProjectSearcher.FindMatches(text, query, matchCase, wholeWord, useRegex);
+            if (matches.Count == 0) continue;
+
+            var lineStarts = ComputeLineStartOffsets(text);
+            var fileResult = new ProjectSearchFileResult(path, Path.GetRelativePath(root, path));
+            foreach (var (offset, length) in matches)
+            {
+                var (lineNumber, columnOffset, preview) = LocateMatch(text, lineStarts, offset);
+                fileResult.Matches.Add(new ProjectSearchMatchInfo(fileResult, lineNumber, columnOffset, length, preview));
+            }
+            ViewModel.SearchResults.Add(fileResult);
+            totalMatches += matches.Count;
+        }
+
+        SearchStatusText.Text = totalMatches == 0
+            ? "No results found."
+            : $"{totalMatches} result{(totalMatches == 1 ? "" : "s")} in {ViewModel.SearchResults.Count} file{(ViewModel.SearchResults.Count == 1 ? "" : "s")}.";
+    }
+
+    // Line start offsets (0-based char offset of each line's first character), used to turn a
+    // match's absolute offset into a 1-based line number + in-line column without an O(n) scan
+    // per match.
+    private static List<int> ComputeLineStartOffsets(string text)
+    {
+        var offsets = new List<int> { 0 };
+        for (int i = 0; i < text.Length; i++)
+            if (text[i] == '\n') offsets.Add(i + 1);
+        return offsets;
+    }
+
+    private static (int LineNumber, int ColumnOffset, string LinePreview) LocateMatch(string text, List<int> lineStartOffsets, int offset)
+    {
+        int idx = lineStartOffsets.BinarySearch(offset);
+        if (idx < 0) idx = ~idx - 1;
+        int lineStart = lineStartOffsets[idx];
+        int lineEnd = idx + 1 < lineStartOffsets.Count ? lineStartOffsets[idx + 1] - 1 : text.Length;
+        if (lineEnd < lineStart) lineEnd = lineStart;
+        string lineText = text.Substring(lineStart, lineEnd - lineStart).TrimEnd('\r');
+        return (idx + 1, offset - lineStart, lineText.Trim());
+    }
+
+    // Selecting a row would otherwise auto-scroll the tree's horizontal ScrollViewer to bring
+    // the (often ellipsis-truncated, wider-than-the-pane) row fully into view, snapping the list
+    // back to its left edge - suppress that so the horizontal scroll position only ever moves via
+    // the scrollbar itself.
+    private void SearchResultsTree_RequestBringIntoView(object sender, RequestBringIntoViewEventArgs e)
+        => e.Handled = true;
+
+    // Double-clicking a match jumps to it, opening (or activating) its file first.
+    private void SearchResultsTree_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (SearchResultsTree.SelectedItem is not ProjectSearchMatchInfo match) return;
+
+        OpenFileByPath(match.File.FilePath);
+        int offset = Editor.Document.GetOffset(match.LineNumber, match.ColumnOffset + 1);
+        Editor.Select(offset, match.MatchLength);
+        Editor.ScrollToLine(match.LineNumber);
+        Editor.TextArea.Caret.BringCaretToView();
+        Editor.Focus();
+    }
+
+    // Replaces every current search result across all matching files, confirmed up front since
+    // it touches files that may not even be open. Files already open as a tab go through the
+    // AvalonEdit document (so undo/IsModified stay correct, same backwards-iteration trick as
+    // ExecuteReplaceAll); files not open are rewritten directly on disk.
+    private void SearchReplaceAll_Click(object sender, RoutedEventArgs e)
+    {
+        int totalMatches = ViewModel.SearchResults.Sum(f => f.Matches.Count);
+        if (totalMatches == 0) return;
+
+        string replacement = SearchReplaceBox.Text;
+        var result = MessageBox.Show(
+            $"Replace {totalMatches} occurrence{(totalMatches == 1 ? "" : "s")} across {ViewModel.SearchResults.Count} file{(ViewModel.SearchResults.Count == 1 ? "" : "s")}?",
+            "Replace All in Project", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (result != MessageBoxResult.Yes) return;
+
+        foreach (var fileResult in ViewModel.SearchResults.ToList())
+        {
+            var openTab = ViewModel.OpenTabs.FirstOrDefault(t =>
+                string.Equals(t.FilePath, fileResult.FilePath, StringComparison.OrdinalIgnoreCase));
+
+            if (openTab != null)
+            {
+                using (openTab.Document.RunUpdate())
+                {
+                    for (int i = fileResult.Matches.Count - 1; i >= 0; i--)
+                    {
+                        var m = fileResult.Matches[i];
+                        int offset = openTab.Document.GetOffset(m.LineNumber, m.ColumnOffset + 1);
+                        openTab.Document.Replace(offset, m.MatchLength, replacement);
+                    }
+                }
+                openTab.IsModified = true;
+                if (ReferenceEquals(openTab, ViewModel.ActiveTab))
+                    UpdateFindMatches();
+            }
+            else
+            {
+                try
+                {
+                    string? text = ProjectSearcher.ReadSearchableText(fileResult.FilePath);
+                    if (text == null) continue;
+                    bool isPrg = fileResult.FilePath.EndsWith(".prg", StringComparison.OrdinalIgnoreCase);
+                    if (isPrg) text = PadLineNumbers(text);
+
+                    var lineStarts = ComputeLineStartOffsets(text);
+                    var sb = new StringBuilder(text);
+                    // Backwards, so each earlier (larger-offset) replacement doesn't shift the
+                    // offsets - computed from lineStarts of the original text - that later,
+                    // smaller-offset matches still need.
+                    for (int i = fileResult.Matches.Count - 1; i >= 0; i--)
+                    {
+                        var m = fileResult.Matches[i];
+                        int offset = lineStarts[m.LineNumber - 1] + m.ColumnOffset;
+                        sb.Remove(offset, m.MatchLength);
+                        sb.Insert(offset, replacement);
+                    }
+                    ProjectSearcher.WriteSearchableText(fileResult.FilePath, sb.ToString());
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error updating {fileResult.RelativeDisplayPath}: {ex.Message}",
+                        "Replace All Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+
+        RunProjectSearch();
     }
 
     #endregion

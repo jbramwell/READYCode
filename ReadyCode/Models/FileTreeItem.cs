@@ -38,9 +38,9 @@ public class FileTreeItem : INotifyPropertyChanged
         IsFolder = isFolder;
         Kind = FileClassifier.Classify(path, isFolder, () => File.ReadAllBytes(path));
 
-        // Placeholder child so WPF shows the expand toggle arrow on folders and .d64 disk images.
+        // Placeholder child so WPF shows the expand toggle arrow on folders and disk images.
         // LoadChildren() removes it on first expansion before WPF renders.
-        if (isFolder || Kind == C64UFileKind.D64)
+        if (isFolder || Kind.IsDiskImageKind())
             Children.Add(new FileTreeItem());
     }
 
@@ -108,7 +108,7 @@ public class FileTreeItem : INotifyPropertyChanged
     public bool IsFolder { get; }
 
     /// <summary>
-    /// Gets the broad category of this item, used to pick its badge and (for .d64 disk images)
+    /// Gets the broad category of this item, used to pick its badge and (for disk images)
     /// whether it can be expanded.
     /// </summary>
     public C64UFileKind Kind { get; }
@@ -134,6 +134,11 @@ public class FileTreeItem : INotifyPropertyChanged
     /// tokenized program).
     /// </summary>
     public bool IsRunnable => Kind == C64UFileKind.Bas || Kind == C64UFileKind.Prg;
+
+    /// <summary>
+    /// Gets whether this file is a disk image that can be browsed in place or authored.
+    /// </summary>
+    public bool IsDiskImage => Kind.IsDiskImageKind();
 
     /// <summary>
     /// Gets the Segoe MDL2 Assets glyph shown next to this item's name: a floppy disk glyph for
@@ -194,7 +199,7 @@ public class FileTreeItem : INotifyPropertyChanged
             if (_isExpanded == value) return;
             _isExpanded = value;
             OnPropertyChanged();
-            if (value && (IsFolder || Kind == C64UFileKind.D64) && !_childrenLoaded)
+            if (value && (IsFolder || Kind.IsDiskImageKind()) && !_childrenLoaded)
                 LoadChildren();
         }
     }
@@ -232,8 +237,8 @@ public class FileTreeItem : INotifyPropertyChanged
     #region Public Methods
 
     /// <summary>
-    /// Loads this folder's child files and folders from disk, or - for a .d64 disk image - the
-    /// files stored inside it, replacing any existing children.
+    /// Loads this folder's child files and folders from disk, or - for a disk image - the files
+    /// stored inside it, replacing any existing children.
     /// </summary>
     public void LoadChildren()
     {
@@ -241,18 +246,18 @@ public class FileTreeItem : INotifyPropertyChanged
         _childrenLoaded = true;
         Children.Clear();
 
-        if (Kind == C64UFileKind.D64)
+        if (Kind.IsDiskImageKind())
         {
             try
             {
                 var diskBytes = File.ReadAllBytes(FullPath);
-                var entries = new D64Image().ReadDirectory(diskBytes);
+                var entries = DiskImage.ForKind(Kind).ReadDirectory(diskBytes);
                 foreach (var entry in entries)
                     Children.Add(new FileTreeItem(entry.Name, entry.Content, entry.Kind, FullPath));
             }
             catch
             {
-                // Read/parse failed (not a standard 35-track image, locked file, etc.).
+                // Read/parse failed (not a standard image, locked file, etc.).
                 _childrenLoaded = false;
                 Children.Clear();
             }

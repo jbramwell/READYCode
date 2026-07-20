@@ -8,7 +8,7 @@ using ReadyCode.Tokenizer;
 namespace ReadyCode.C64U;
 
 /// <summary>
-/// A single file entry read from a .d64 disk image's directory.
+/// A single file entry read from a disk image's directory.
 /// </summary>
 public class D64Entry
 {
@@ -33,45 +33,57 @@ public class D64Entry
 }
 
 /// <summary>
-/// Reads the directory and file contents of a standard 35-track 1541 disk image (.d64).
+/// Reads the directory and file contents of a CBM DOS disk image (.d64 or .d81), using the
+/// track/sector layout supplied by a <see cref="DiskGeometry"/>. The directory entry format (32
+/// bytes/entry, 8 entries/sector) and sector-chain-walk algorithm are identical between formats -
+/// only the geometry differs.
 /// </summary>
-public class D64Image
+public class DiskImage
 {
     #region Private Fields
 
-    // Sectors per track, 1-indexed (index 0 unused). Standard 35-track layout: tracks 1-17
-    // have 21 sectors, 18-24 have 19, 25-30 have 18, 31-35 have 17.
-    private static readonly int[] SectorsPerTrack =
-        [0, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21, 21,
-             19, 19, 19, 19, 19, 19, 19,
-             18, 18, 18, 18, 18, 18,
-             17, 17, 17, 17, 17];
+    private readonly DiskGeometry _geometry;
 
-    private const int StandardImageSize = 174_848; // 683 sectors x 256 bytes, no error info
-    private const int DirectoryTrack = 18;
-    private const int MaxChainSteps = 700; // more than the ~683 sectors on the whole disk
+    #endregion
+
+    #region Constructors
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DiskImage"/> class for the given geometry.
+    /// </summary>
+    /// <param name="geometry">The track/sector layout to read/write against.</param>
+    public DiskImage(DiskGeometry geometry)
+    {
+        _geometry = geometry;
+    }
 
     #endregion
 
     #region Public Methods
 
     /// <summary>
-    /// Reads the directory of a 35-track disk image, extracting the content of every entry.
+    /// Creates a <see cref="DiskImage"/> for the given file kind's disk format.
     /// </summary>
-    /// <param name="diskImage">The raw bytes of the .d64 file.</param>
+    /// <param name="kind">A disk image kind (<see cref="C64UFileKind.D64"/> or <see cref="C64UFileKind.D81"/>).</param>
+    public static DiskImage ForKind(C64UFileKind kind) => new(DiskGeometry.ForKind(kind));
+
+    /// <summary>
+    /// Reads the directory of a disk image, extracting the content of every entry.
+    /// </summary>
+    /// <param name="diskImage">The raw bytes of the disk image file.</param>
     /// <returns>The disk's directory entries, in on-disk order.</returns>
     public List<D64Entry> ReadDirectory(byte[] diskImage)
     {
-        if (diskImage.Length != StandardImageSize)
+        if (diskImage.Length != _geometry.StandardImageSize)
             throw new InvalidOperationException(
-                $"Not a standard 35-track .d64 image ({diskImage.Length} bytes; expected {StandardImageSize}).");
+                $"Not a standard disk image ({diskImage.Length} bytes; expected {_geometry.StandardImageSize}).");
 
         var entries = new List<D64Entry>();
-        int track = DirectoryTrack;
-        int sector = 1; // track 18/sector 0 is the BAM, the directory chain starts at sector 1
+        int track = _geometry.DirectoryTrack;
+        int sector = _geometry.DirectorySector;
         int steps = 0;
 
-        while (track != 0 && steps++ < MaxChainSteps)
+        while (track != 0 && steps++ < _geometry.MaxChainSteps)
         {
             var dirSector = ReadSector(diskImage, track, sector);
             int nextTrack = dirSector[0];
@@ -117,12 +129,12 @@ public class D64Image
 
     #region Private Methods
 
-    private static byte[] ReadFileChain(byte[] diskImage, int track, int sector)
+    private byte[] ReadFileChain(byte[] diskImage, int track, int sector)
     {
         using var content = new MemoryStream();
         int steps = 0;
 
-        while (track != 0 && steps++ < MaxChainSteps)
+        while (track != 0 && steps++ < _geometry.MaxChainSteps)
         {
             var data = ReadSector(diskImage, track, sector);
             int nextTrack = data[0];
@@ -143,20 +155,21 @@ public class D64Image
         return content.ToArray();
     }
 
-    private static byte[] ReadSector(byte[] diskImage, int track, int sector)
+    private byte[] ReadSector(byte[] diskImage, int track, int sector)
     {
         int offset = SectorOffset(track, sector);
         return diskImage.AsSpan(offset, 256).ToArray();
     }
 
-    private static int SectorOffset(int track, int sector)
+    private int SectorOffset(int track, int sector)
     {
-        if (track < 1 || track >= SectorsPerTrack.Length)
+        var sectorsPerTrack = _geometry.SectorsPerTrack;
+        if (track < 1 || track >= sectorsPerTrack.Length)
             throw new InvalidOperationException($"Invalid track {track} in disk image directory/file chain.");
 
         int sectorsBefore = 0;
         for (int t = 1; t < track; t++)
-            sectorsBefore += SectorsPerTrack[t];
+            sectorsBefore += sectorsPerTrack[t];
 
         return (sectorsBefore + sector) * 256;
     }

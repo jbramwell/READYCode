@@ -74,9 +74,9 @@ public class C64UFileItem : INotifyPropertyChanged
         Size = size;
         Kind = FileClassifier.Classify(Name, isFolder);
 
-        // Placeholder child so WPF shows the expand toggle arrow on folders and .d64 disk
-        // images. LoadChildrenAsync() removes it on first expansion before WPF renders.
-        if (isFolder || Kind == C64UFileKind.D64)
+        // Placeholder child so WPF shows the expand toggle arrow on folders and disk images.
+        // LoadChildrenAsync() removes it on first expansion before WPF renders.
+        if (isFolder || Kind.IsDiskImageKind())
             Children.Add(new C64UFileItem());
     }
 
@@ -194,7 +194,7 @@ public class C64UFileItem : INotifyPropertyChanged
     /// <summary>
     /// Gets whether this file is a disk image that can be mounted to a drive.
     /// </summary>
-    public bool IsDiskImage => Kind == C64UFileKind.D64 || Kind == C64UFileKind.D81;
+    public bool IsDiskImage => Kind.IsDiskImageKind();
 
     /// <summary>
     /// Gets the raw content of this file if it's a "virtual" entry read from inside a disk
@@ -247,7 +247,7 @@ public class C64UFileItem : INotifyPropertyChanged
             if (_isExpanded == value) return;
             _isExpanded = value;
             OnPropertyChanged();
-            if (value && (IsFolder || Kind == C64UFileKind.D64) && !_childrenLoaded)
+            if (value && (IsFolder || Kind.IsDiskImageKind()) && !_childrenLoaded)
                 _ = LoadChildrenAsync();
         }
     }
@@ -287,8 +287,8 @@ public class C64UFileItem : INotifyPropertyChanged
     #region Public Methods
 
     /// <summary>
-    /// Loads this folder's child files and folders over FTP, or - for a .d64 disk image - the
-    /// files stored inside it, replacing any existing children.
+    /// Loads this folder's child files and folders over FTP, or - for a disk image - the files
+    /// stored inside it, replacing any existing children.
     /// </summary>
     public async Task LoadChildrenAsync()
     {
@@ -297,10 +297,10 @@ public class C64UFileItem : INotifyPropertyChanged
 
         try
         {
-            if (Kind == C64UFileKind.D64)
+            if (Kind.IsDiskImageKind())
             {
                 var diskBytes = await _ftpClient.DownloadBytesAsync(FullPath);
-                var entries = new D64Image().ReadDirectory(diskBytes);
+                var entries = DiskImage.ForKind(Kind).ReadDirectory(diskBytes);
                 Children.Clear();
                 foreach (var entry in entries)
                     Children.Add(new C64UFileItem(entry.Name, entry.Content, entry.Kind, FullPath));

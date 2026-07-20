@@ -49,4 +49,10 @@ public static class FileClassifier
             default: return C64UFileKind.Other;
         }
     }
+
+    /// <summary>
+    /// Gets whether this kind is a disk image format (.d64 or .d81) that can be browsed in
+    /// place, mounted to a drive, or authored.
+    /// </summary>
+    public static bool IsDiskImageKind(this C64UFileKind kind) => kind is C64UFileKind.D64 or C64UFileKind.D81;
 }

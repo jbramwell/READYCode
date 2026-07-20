@@ -191,6 +191,13 @@ public class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<AsmSymbolInfo> Symbols { get; } = new();
 
     /// <summary>
+    /// Gets the project-wide Search panel's results, one entry per file with at least one match,
+    /// each holding its own matches as child nodes. Repopulated wholesale by <c>MainWindow</c>
+    /// each time a project-wide search runs.
+    /// </summary>
+    public ObservableCollection<ProjectSearchFileResult> SearchResults { get; } = new();
+
+    /// <summary>
     /// Gets or sets the title shown above the folder explorer tree (the open folder's name).
     /// </summary>
     public string ExplorerTitle
