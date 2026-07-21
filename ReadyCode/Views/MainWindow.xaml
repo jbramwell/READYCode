@@ -121,6 +121,8 @@
         <ContextMenu x:Key="FolderContextMenu" Opened="PasteContextMenu_Opened">
             <MenuItem Header="New File..."    Click="FolderContextNewFile_Click"/>
             <MenuItem Header="New Folder..."  Click="FolderContextNewFolder_Click"/>
+            <MenuItem Header="New .d64 Disk Image..." Click="FolderContextNewD64_Click"/>
+            <MenuItem Header="New .d81 Disk Image..." Click="FolderContextNewD81_Click"/>
             <Separator/>
             <MenuItem Header="Reveal in File Explorer" Click="FolderContextReveal_Click"/>
             <Separator/>
@@ -165,15 +167,37 @@
             <MenuItem Header="Delete"     InputGestureText="Delete" Click="FileContextDelete_Click"/>
         </ContextMenu>
 
-        <!-- Context menu for "virtual" runnable entries found inside a mounted .d64 image in
+        <!-- Context menu for "virtual" runnable entries found inside a mounted .d64/.d81 image in
              the Folder Explorer tree -->
         <ContextMenu x:Key="LocalDiskEntryContextMenu">
             <MenuItem Header="Open in editor" Click="LocalDiskEntryContextOpen_Click"/>
+            <Separator/>
+            <MenuItem Header="Rename..." Click="LocalDiskEntryContextRename_Click"/>
+            <MenuItem Header="Delete"    Click="LocalDiskEntryContextDelete_Click"/>
+        </ContextMenu>
+
+        <!-- Context menu for a .d64/.d81 disk image node itself in the Folder Explorer tree -->
+        <ContextMenu x:Key="LocalDiskImageContextMenu" Opened="PasteContextMenu_Opened">
+            <MenuItem Header="Add File..." Click="LocalDiskImageContextAddFile_Click"/>
+            <Separator/>
+            <MenuItem Header="Reveal in File Explorer" Click="FileContextReveal_Click"/>
+            <Separator/>
+            <MenuItem Header="Cut"   InputGestureText="Ctrl+X" Click="FileContextCut_Click"/>
+            <MenuItem Header="Copy"  InputGestureText="Ctrl+C" Click="FileContextCopy_Click"/>
+            <MenuItem Header="Paste" InputGestureText="Ctrl+V" Click="FileContextPaste_Click"/>
+            <Separator/>
+            <MenuItem Header="Copy Path"          Click="FileContextCopyPath_Click"/>
+            <MenuItem Header="Copy Relative Path" Click="FileContextCopyRelativePath_Click"/>
+            <Separator/>
+            <MenuItem Header="Rename..."  InputGestureText="F2"     Click="FileContextRename_Click"/>
+            <MenuItem Header="Delete"     InputGestureText="Delete" Click="FileContextDelete_Click"/>
         </ContextMenu>
 
         <!-- Context menu for folder items in the C64U tree -->
         <ContextMenu x:Key="C64UFolderContextMenu">
             <MenuItem Header="New Folder..." Click="C64UFolderContextNewFolder_Click"/>
+            <MenuItem Header="New .d64 Disk Image..." Click="C64UFolderContextNewD64_Click"/>
+            <MenuItem Header="New .d81 Disk Image..." Click="C64UFolderContextNewD81_Click"/>
             <MenuItem Header="Refresh"       Click="C64UFolderContextRefresh_Click"/>
             <Separator/>
             <MenuItem Header="Rename..."  InputGestureText="F2"     Click="C64UContextRename_Click"/>
@@ -203,6 +227,8 @@
 
         <!-- Context menu for .d64/.d81 disk image items in the C64U tree -->
         <ContextMenu x:Key="C64UDiskImageContextMenu">
+            <MenuItem Header="Add File..." Click="C64UDiskImageContextAddFile_Click"/>
+            <Separator/>
             <MenuItem Header="Mount to Drive A" Click="C64UFileContextMountA_Click"/>
             <MenuItem Header="Mount to Drive B" Click="C64UFileContextMountB_Click"/>
             <Separator/>
@@ -212,9 +238,12 @@
             <MenuItem Header="Delete"     InputGestureText="Delete" Click="C64UContextDelete_Click"/>
         </ContextMenu>
 
-        <!-- Context menu for "virtual" runnable entries found inside a mounted .d64 image -->
+        <!-- Context menu for "virtual" runnable entries found inside a mounted .d64/.d81 image -->
         <ContextMenu x:Key="C64UDiskEntryContextMenu">
             <MenuItem Header="Open in editor" Click="C64UFileContextOpen_Click"/>
+            <Separator/>
+            <MenuItem Header="Rename..." Click="C64UDiskEntryContextRename_Click"/>
+            <MenuItem Header="Delete"    Click="C64UDiskEntryContextDelete_Click"/>
         </ContextMenu>
 
         <!-- Shared visual template for Explorer/C64U tree items: expand arrow, hover/selection/drop
@@ -1115,6 +1144,11 @@
                                          after the IsFolder=False trigger above so it wins for this Kind. -->
                                     <DataTrigger Binding="{Binding Kind}" Value="Prg">
                                         <Setter Property="ContextMenu" Value="{StaticResource FilePrgContextMenu}"/>
+                                    </DataTrigger>
+                                    <!-- A .d64/.d81 disk image node itself gets "Add File..." alongside the usual
+                                         file actions; declared after Kind=Prg so it wins for disk images. -->
+                                    <DataTrigger Binding="{Binding IsDiskImage}" Value="True">
+                                        <Setter Property="ContextMenu" Value="{StaticResource LocalDiskImageContextMenu}"/>
                                     </DataTrigger>
                                     <!-- "Virtual" entries live only inside a disk image - Cut/Copy/Paste/Rename/
                                          Delete/Reveal above don't apply, so these two triggers, declared last,

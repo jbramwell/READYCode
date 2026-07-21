@@ -5,6 +5,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Windows.Threading;
 using ReadyCode.C64U;
 
 namespace ReadyCode.Models;
@@ -86,6 +87,22 @@ public class FileTreeItem : INotifyPropertyChanged
         IsFolder = isFolder;
         IsNew = isNewPending;
         Kind = isFolder ? C64UFileKind.Folder : C64UFileKind.Other;
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="FileTreeItem"/> class as a pending placeholder
+    /// for an inline "new disk image" entry not yet created on disk.
+    /// </summary>
+    /// <param name="parentDirectory">The directory the new entry will be created in.</param>
+    /// <param name="isNewPending">Whether this is a pending placeholder. Always true for this overload.</param>
+    /// <param name="kind">The disk image kind (<see cref="C64UFileKind.D64"/> or <see cref="C64UFileKind.D81"/>) to create.</param>
+    public FileTreeItem(string parentDirectory, bool isNewPending, C64UFileKind kind)
+    {
+        FullPath = parentDirectory;
+        Name = string.Empty;
+        IsFolder = false;
+        IsNew = isNewPending;
+        Kind = kind;
     }
 
     #endregion
@@ -244,26 +261,44 @@ public class FileTreeItem : INotifyPropertyChanged
     {
         if (_childrenLoaded) return;
         _childrenLoaded = true;
-        Children.Clear();
 
         if (Kind.IsDiskImageKind())
         {
-            try
+            // Deferred rather than mutating Children synchronously here: this runs from
+            // IsExpanded's setter, in the same call stack as the property-changed notification
+            // that just told WPF's TreeView to start expanding - clearing/repopulating Children
+            // immediately races that in-flight container generation. This was never exercised by
+            // Stage 1's testing (always a real, non-empty disk); an empty one - going from the
+            // placeholder's 1 item straight to 0 - is what actually triggers it. Posting at
+            // Background priority lets that pass finish first.
+            Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.Background, () =>
             {
-                var diskBytes = File.ReadAllBytes(FullPath);
-                var entries = DiskImage.ForKind(Kind).ReadDirectory(diskBytes);
-                foreach (var entry in entries)
-                    Children.Add(new FileTreeItem(entry.Name, entry.Content, entry.Kind, FullPath));
-            }
-            catch
-            {
-                // Read/parse failed (not a standard image, locked file, etc.).
-                _childrenLoaded = false;
                 Children.Clear();
-            }
+                try
+                {
+                    var diskBytes = File.ReadAllBytes(FullPath);
+                    var entries = DiskImage.ForKind(Kind).ReadDirectory(diskBytes);
+                    foreach (var entry in entries)
+                        Children.Add(new FileTreeItem(entry.Name, entry.Content, entry.Kind, FullPath));
+
+                    // Never leave Children empty after a successful load - an empty disk is a
+                    // real, valid case (freshly created, or emptied out via Delete), and the
+                    // expand-to-zero-items transition is exactly what's suspected to wedge the
+                    // TreeView above.
+                    if (Children.Count == 0)
+                        Children.Add(new FileTreeItem("(empty disk)", [], C64UFileKind.Other, FullPath));
+                }
+                catch
+                {
+                    // Read/parse failed (not a standard image, locked file, etc.).
+                    _childrenLoaded = false;
+                    Children.Clear();
+                }
+            });
             return;
         }
 
+        Children.Clear();
         try
         {
             foreach (string dir in Directory.GetDirectories(FullPath)

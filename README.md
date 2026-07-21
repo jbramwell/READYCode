@@ -44,6 +44,12 @@ the real machine would show.
   cut/copy/paste/delete/reveal-in-Explorer, right-click-to-select, and a color-coded file-type badge and
   icon (folder, floppy disk, or document) for BASIC/machine-language/disk-image files. Both trees can
   expand a `.d64`/`.d81` disk image in place to browse - and open - the programs stored inside it.
+- **Disk image authoring** - both Explorers can create a new, blank `.d64`/`.d81` right from the tree,
+  and add, replace, rename, or delete individual programs inside an existing one - maintaining a valid
+  BAM and directory chain so the result loads correctly in VICE or on real hardware. Saving a program
+  that was opened from inside a mounted disk image writes the edit straight back into it. The C64U
+  Explorer's version works the same way over FTP (download, modify, re-upload) as the local Explorer
+  does directly on disk.
 - **Minify / Prettify** - reformat BASIC source for either compactness (token packing, optional line
   renumbering) or readability.
 - **Printing** - Print and Print Preview render the active tab through the same PETSCII-accurate

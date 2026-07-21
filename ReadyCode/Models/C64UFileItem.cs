@@ -95,6 +95,21 @@ public class C64UFileItem : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Initializes a new instance of the <see cref="C64UFileItem"/> class as a pending
+    /// placeholder for an inline "new disk image" entry not yet created on the server.
+    /// </summary>
+    /// <param name="parentDirectory">The remote directory the new disk image will be created in.</param>
+    /// <param name="kind">The disk image kind (<see cref="C64UFileKind.D64"/> or <see cref="C64UFileKind.D81"/>) to create.</param>
+    public C64UFileItem(string parentDirectory, C64UFileKind kind)
+    {
+        FullPath = parentDirectory;
+        Name = string.Empty;
+        IsFolder = false;
+        Kind = kind;
+        IsNew = true;
+    }
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="C64UFileItem"/> class for a "virtual" file
     /// that exists only inside a disk image (e.g. a .d64), backed by already-extracted bytes
     /// rather than a real remote FTP path.
@@ -304,6 +319,11 @@ public class C64UFileItem : INotifyPropertyChanged
                 Children.Clear();
                 foreach (var entry in entries)
                     Children.Add(new C64UFileItem(entry.Name, entry.Content, entry.Kind, FullPath));
+
+                // Never leave Children empty after a successful load - see FileTreeItem's
+                // equivalent comment for why an empty disk needs this.
+                if (Children.Count == 0)
+                    Children.Add(new C64UFileItem("(empty disk)", [], C64UFileKind.Other, FullPath));
             }
             else
             {

@@ -20,6 +20,7 @@ using ICSharpCode.AvalonEdit.Folding;
 using ICSharpCode.AvalonEdit.Rendering;
 using Microsoft.Win32;
 using ReadyCode.Assembler;
+using ReadyCode.C64U;
 using ReadyCode.Diagnostics;
 using ReadyCode.Editor;
 using ReadyCode.Minify;
@@ -565,6 +566,16 @@ public partial class MainWindow : Window
 
     private void OpenFileByPath(string path)
     {
+        // A disk image isn't text - it's ~175KB-800KB of binary bytes. Reading it as UTF-8 and
+        // running it through AvalonEdit's colorizers/diagnostics would be pathologically slow
+        // (looks like a hang) rather than throw, since decoding arbitrary binary as text usually
+        // "succeeds" with garbage. Expand it in the Explorer tree to see its contents instead.
+        if (FileClassifier.Classify(path, isFolder: false).IsDiskImageKind())
+        {
+            ViewModel.SetStatus("Disk images can't be opened as text - expand it in the Explorer tree to see the programs inside.", StatusType.Warning);
+            return;
+        }
+
         // If already open, activate that tab instead of opening a duplicate
         var existing = ViewModel.OpenTabs.FirstOrDefault(t =>
             string.Equals(t.FilePath, path, StringComparison.OrdinalIgnoreCase));
@@ -656,15 +667,164 @@ public partial class MainWindow : Window
         if (item != null) _ = OpenLocalVirtualFileInEditor(item);
     }
 
+    // Reuses the same inline-rename UI as real files/folders (BeginInlineRename/CommitRename) -
+    // the virtual entry still renders in the tree with the same RenameBox template, just routes
+    // through CommitVirtualEntryRename instead of File.Move since it has no real FullPath.
+    private void LocalDiskEntryContextRename_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item != null) BeginInlineRename(item);
+    }
+
+    private void LocalDiskEntryContextDelete_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item?.SourcePath == null) return;
+
+        if (MessageBox.Show($"Permanently delete \"{item.Name}\" from this disk image?",
+                "Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            byte[] diskBytes = File.ReadAllBytes(item.SourcePath);
+            var kind = FileClassifier.Classify(item.SourcePath, isFolder: false);
+            byte[] updated = DiskImage.ForKind(kind).DeleteEntry(diskBytes, item.Name);
+            File.WriteAllBytes(item.SourcePath, updated);
+
+            string sourceId = $"{item.SourcePath}!{item.Name}";
+            var openTab = ViewModel.OpenTabs.FirstOrDefault(t => t.VirtualSourceId == sourceId);
+            if (openTab != null)
+            {
+                openTab.IsModified = false; // its source entry is gone; no need to save
+                CloseTab(openTab);
+            }
+
+            RefreshDiskImageNode(item.SourcePath);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not delete \"{item.Name}\":\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    // "Add File..." on a .d64/.d81 node itself - lets the user pick a local .prg (embedded as-is,
+    // since a .prg file's bytes already are the on-disk PRG format, load address included) or
+    // .bas (tokenized first via the same converter SaveFile uses) to add into the image.
+    private void LocalDiskImageContextAddFile_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item == null) return;
+
+        var dialog = new OpenFileDialog
+        {
+            Filter = "Commodore 64 Programs (*.prg)|*.prg|BASIC Source (*.bas)|*.bas|All Files (*.*)|*.*",
+            Title = "Add File to Disk Image"
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            byte[] prgData = dialog.FileName.EndsWith(".bas", StringComparison.OrdinalIgnoreCase)
+                ? new PrgConverter().ConvertToPrg(File.ReadAllText(dialog.FileName, Encoding.UTF8))
+                : File.ReadAllBytes(dialog.FileName);
+            string entryName = Path.GetFileNameWithoutExtension(dialog.FileName);
+
+            byte[] diskBytes = File.ReadAllBytes(item.FullPath);
+            var kind = FileClassifier.Classify(item.FullPath, isFolder: false);
+            byte[] updated = DiskImage.ForKind(kind).AddEntry(diskBytes, entryName, C64UFileKind.Prg, prgData);
+            File.WriteAllBytes(item.FullPath, updated);
+
+            RefreshDiskImageNode(item.FullPath);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not add file to disk image:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    // Reloads a disk image node's virtual children after its bytes were rewritten (add/delete/
+    // rename/replace), so the tree reflects the change without a full explorer reload.
+    private void RefreshDiskImageNode(string diskImagePath) => FindItemByPath(diskImagePath)?.RefreshChildren();
+
     private void FileSave_Click(object sender, RoutedEventArgs e)
     {
         if (ViewModel.ActiveTab == null) return;
+        if (ViewModel.ActiveTab.VirtualSourceId != null)
+        {
+            _ = SaveVirtualTabAsync(ViewModel.ActiveTab);
+            return;
+        }
         if (string.IsNullOrEmpty(ViewModel.ActiveTab.FilePath))
         {
             FileSaveAs_Click(sender, e);
             return;
         }
         SaveFile(ViewModel.ActiveTab.FilePath);
+    }
+
+    // Writes a virtual tab's (a program opened from inside a mounted .d64/.d81) edits back into
+    // its source disk image, re-tokenizing BASIC or writing Asm source as plain text - mirrors
+    // SaveFile's language check. Routes to a local file write or an FTP download/modify/re-upload
+    // round trip depending on whether SourcePath is a local file or a C64 Ultimate remote path.
+    private async Task SaveVirtualTabAsync(EditorTab tab)
+    {
+        var parts = tab.VirtualSourceId!.Split('!', 2);
+        if (parts.Length != 2) return;
+        string sourcePath = parts[0];
+        string entryName = parts[1];
+
+        byte[] newContent = tab.Language == EditorLanguage.Asm
+            ? Encoding.UTF8.GetBytes(tab.Document.Text)
+            : new PrgConverter().ConvertToPrg(tab.Document.Text);
+
+        if (File.Exists(sourcePath))
+        {
+            try
+            {
+                byte[] diskBytes = File.ReadAllBytes(sourcePath);
+                var kind = FileClassifier.Classify(sourcePath, isFolder: false);
+                byte[] updated = DiskImage.ForKind(kind).ReplaceEntry(diskBytes, entryName, newContent);
+                File.WriteAllBytes(sourcePath, updated);
+
+                tab.IsModified = false;
+                ViewModel.SetStatus("File saved.");
+                RefreshDiskImageNode(sourcePath);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error saving to disk image: {ex.Message}", "Save File Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            return;
+        }
+
+        if (ViewModel.C64UFtp == null)
+        {
+            MessageBox.Show(
+                "Not connected to the C64 Ultimate, so this disk image can't be saved to. Connect in the C64U Explorer panel, then try again.",
+                "Save Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            byte[] diskBytes = await ViewModel.C64UFtp.DownloadBytesAsync(sourcePath);
+            var kind = FileClassifier.Classify(sourcePath, isFolder: false);
+            byte[] updated = DiskImage.ForKind(kind).ReplaceEntry(diskBytes, entryName, newContent);
+            await ViewModel.C64UFtp.UploadBytesAsync(sourcePath, updated);
+
+            tab.IsModified = false;
+            ViewModel.SetStatus("File saved.");
+            await RefreshC64UNode(sourcePath);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error saving to disk image: {ex.Message}", "Save File Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private void FileSaveAs_Click(object sender, RoutedEventArgs e)
@@ -1983,6 +2143,18 @@ public partial class MainWindow : Window
         if (item != null) await CreateC64UNewFolderInlineAsync(item);
     }
 
+    private async void C64UFolderContextNewD64_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetC64UContextItem(sender);
+        if (item != null) await CreateC64UNewDiskImageInlineAsync(item, C64UFileKind.D64);
+    }
+
+    private async void C64UFolderContextNewD81_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetC64UContextItem(sender);
+        if (item != null) await CreateC64UNewDiskImageInlineAsync(item, C64UFileKind.D81);
+    }
+
     private async void C64UFolderContextRefresh_Click(object sender, RoutedEventArgs e)
     {
         var item = GetC64UContextItem(sender);
@@ -2062,6 +2234,84 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             MessageBox.Show($"Could not download file:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    // "Add File..." on a .d64/.d81 node itself - lets the user pick a local .prg (embedded as-is,
+    // since a .prg file's bytes already are the on-disk PRG format) or .bas (tokenized first via
+    // the same converter SaveFile uses) to add into the image mounted over FTP.
+    private async void C64UDiskImageContextAddFile_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetC64UContextItem(sender);
+        if (item == null || ViewModel.C64UFtp == null) return;
+
+        var dialog = new OpenFileDialog
+        {
+            Filter = "Commodore 64 Programs (*.prg)|*.prg|BASIC Source (*.bas)|*.bas|All Files (*.*)|*.*",
+            Title = "Add File to Disk Image"
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            byte[] prgData = dialog.FileName.EndsWith(".bas", StringComparison.OrdinalIgnoreCase)
+                ? new PrgConverter().ConvertToPrg(File.ReadAllText(dialog.FileName, Encoding.UTF8))
+                : File.ReadAllBytes(dialog.FileName);
+            string entryName = Path.GetFileNameWithoutExtension(dialog.FileName);
+
+            byte[] diskBytes = await ViewModel.C64UFtp.DownloadBytesAsync(item.FullPath);
+            var kind = FileClassifier.Classify(item.FullPath, isFolder: false);
+            byte[] updated = DiskImage.ForKind(kind).AddEntry(diskBytes, entryName, C64UFileKind.Prg, prgData);
+            await ViewModel.C64UFtp.UploadBytesAsync(item.FullPath, updated);
+
+            await RefreshC64UNode(item.FullPath);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not add file to disk image:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    // Reuses the same inline-rename UI as real files/folders (BeginC64UInlineRename/
+    // CommitC64URename) - routes through CommitC64UVirtualEntryRenameAsync since a virtual entry
+    // has no real FullPath to FTP-rename.
+    private void C64UDiskEntryContextRename_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetC64UContextItem(sender);
+        if (item != null) BeginC64UInlineRename(item);
+    }
+
+    private async void C64UDiskEntryContextDelete_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetC64UContextItem(sender);
+        if (item?.SourcePath == null || ViewModel.C64UFtp == null) return;
+
+        if (MessageBox.Show($"Permanently delete \"{item.Name}\" from this disk image?",
+                "Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            byte[] diskBytes = await ViewModel.C64UFtp.DownloadBytesAsync(item.SourcePath);
+            var kind = FileClassifier.Classify(item.SourcePath, isFolder: false);
+            byte[] updated = DiskImage.ForKind(kind).DeleteEntry(diskBytes, item.Name);
+            await ViewModel.C64UFtp.UploadBytesAsync(item.SourcePath, updated);
+
+            string sourceId = $"{item.SourcePath}!{item.Name}";
+            var openTab = ViewModel.OpenTabs.FirstOrDefault(t => t.VirtualSourceId == sourceId);
+            if (openTab != null)
+            {
+                openTab.IsModified = false; // its source entry is gone; no need to save
+                CloseTab(openTab);
+            }
+
+            await RefreshC64UNode(item.SourcePath);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not delete \"{item.Name}\":\n{ex.Message}", "Error",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -2186,7 +2436,14 @@ public partial class MainWindow : Window
 
         if (item.IsNew)
         {
-            await CommitC64UNewFolder(item, box.Text.Trim());
+            if (item.Kind.IsDiskImageKind()) await CommitC64UNewDiskImage(item, box.Text.Trim(), item.Kind);
+            else await CommitC64UNewFolder(item, box.Text.Trim());
+            return;
+        }
+
+        if (item.IsVirtual)
+        {
+            await CommitC64UVirtualEntryRenameAsync(item, box.Text.Trim());
             return;
         }
 
@@ -2204,6 +2461,29 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             MessageBox.Show($"Could not rename:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    // Renames a "virtual" entry (living only inside a disk image mounted over FTP) via
+    // CommitC64URename's shared inline-rename flow - unlike a real remote file, there's no path
+    // to FTP-rename, so this downloads the disk image, rewrites its directory-slot name field,
+    // and re-uploads it.
+    private async Task CommitC64UVirtualEntryRenameAsync(C64UFileItem item, string newName)
+    {
+        if (string.IsNullOrWhiteSpace(newName) || newName == item.Name || item.SourcePath == null) return;
+
+        try
+        {
+            byte[] diskBytes = await ViewModel.C64UFtp!.DownloadBytesAsync(item.SourcePath);
+            var kind = FileClassifier.Classify(item.SourcePath, isFolder: false);
+            byte[] updated = DiskImage.ForKind(kind).RenameEntry(diskBytes, item.Name, newName);
+            await ViewModel.C64UFtp.UploadBytesAsync(item.SourcePath, updated);
+            await RefreshC64UNode(item.SourcePath);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not rename \"{item.Name}\":\n{ex.Message}", "Error",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -2279,6 +2559,57 @@ public partial class MainWindow : Window
         var parent = FindC64UParentFolder(item);
         if (parent != null) parent.Children.Remove(item);
         else ViewModel.C64UFileItems.Remove(item);
+    }
+
+    // Mirrors CreateC64UNewFolderInlineAsync for a blank disk image; the placeholder's Kind
+    // (D64/D81) is threaded through so CommitC64URename knows to route it to CommitC64UNewDiskImage.
+    private async Task CreateC64UNewDiskImageInlineAsync(C64UFileItem? parentFolder, C64UFileKind kind)
+    {
+        string parentPath;
+        ObservableCollection<C64UFileItem> targetCollection;
+
+        if (parentFolder != null)
+        {
+            if (!parentFolder.IsExpanded)
+            {
+                await parentFolder.LoadChildrenAsync();
+                parentFolder.IsExpanded = true;
+            }
+            parentPath = parentFolder.FullPath;
+            targetCollection = parentFolder.Children;
+        }
+        else
+        {
+            parentPath = "/";
+            targetCollection = ViewModel.C64UFileItems;
+        }
+
+        var pendingItem = new C64UFileItem(parentPath, kind);
+        targetCollection.Insert(0, pendingItem);
+        BeginC64UInlineRename(pendingItem);
+    }
+
+    private async Task CommitC64UNewDiskImage(C64UFileItem item, string diskName, C64UFileKind kind)
+    {
+        string parentPath = item.FullPath; // FullPath holds the parent directory while pending
+        RemoveC64UPendingItem(item);
+        if (string.IsNullOrWhiteSpace(diskName)) return; // no name provided - create nothing
+
+        string extension = kind == C64UFileKind.D64 ? ".d64" : ".d81";
+        string fileName = diskName.EndsWith(extension, StringComparison.OrdinalIgnoreCase) ? diskName : diskName + extension;
+        string path = CombineC64UPath(parentPath, fileName);
+
+        try
+        {
+            byte[] blankImage = DiskImage.ForKind(kind).CreateBlankImage(Path.GetFileNameWithoutExtension(fileName));
+            await ViewModel.C64UFtp!.UploadBytesAsync(path, blankImage);
+            await RefreshC64UNode(parentPath);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not create disk image:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     #endregion
@@ -2799,7 +3130,9 @@ public partial class MainWindow : Window
     private void FileTree_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         var item = (e.OriginalSource as FrameworkElement)?.DataContext as FileTreeItem;
-        if (item == null || item.IsFolder) return;
+        // Disk images aren't openable as text (see OpenFileByPath) - leave the event unhandled,
+        // same as a folder, so WPF's default double-click-to-toggle-expansion behavior runs instead.
+        if (item == null || item.IsFolder || item.IsDiskImage) return;
 
         if (item.IsVirtual)
         {
@@ -3125,6 +3458,18 @@ public partial class MainWindow : Window
         if (item != null) CreateNewFolderInline(item);
     }
 
+    private void FolderContextNewD64_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item != null) CreateNewDiskImageInline(item, C64UFileKind.D64);
+    }
+
+    private void FolderContextNewD81_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item != null) CreateNewDiskImageInline(item, C64UFileKind.D81);
+    }
+
     private void FolderContextReveal_Click(object sender, RoutedEventArgs e)
     {
         var item = GetContextItem(sender);
@@ -3333,7 +3678,14 @@ public partial class MainWindow : Window
         if (item.IsNew)
         {
             if (item.IsFolder) CommitNewFolder(item, box.Text.Trim());
+            else if (item.Kind.IsDiskImageKind()) CommitNewDiskImage(item, box.Text.Trim(), item.Kind);
             else CommitNewFile(item, box.Text.Trim());
+            return;
+        }
+
+        if (item.IsVirtual)
+        {
+            CommitVirtualEntryRename(item, box.Text.Trim());
             return;
         }
 
@@ -3364,6 +3716,28 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             MessageBox.Show($"Could not rename:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    // Renames a "virtual" entry (living only inside a disk image) via CommitRename's shared
+    // inline-rename flow - unlike a real file/folder, there's no path to File.Move, so this
+    // rewrites the entry's directory-slot name field in the source disk image bytes instead.
+    private void CommitVirtualEntryRename(FileTreeItem item, string newName)
+    {
+        if (string.IsNullOrWhiteSpace(newName) || newName == item.Name || item.SourcePath == null) return;
+
+        try
+        {
+            byte[] diskBytes = File.ReadAllBytes(item.SourcePath);
+            var kind = FileClassifier.Classify(item.SourcePath, isFolder: false);
+            byte[] updated = DiskImage.ForKind(kind).RenameEntry(diskBytes, item.Name, newName);
+            File.WriteAllBytes(item.SourcePath, updated);
+            RefreshDiskImageNode(item.SourcePath);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not rename \"{item.Name}\":\n{ex.Message}", "Error",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -3430,6 +3804,58 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             MessageBox.Show($"Could not create file:\n{ex.Message}", "Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    // Mirrors CreateNewFileInline for a blank disk image; the placeholder's Kind (D64/D81) is
+    // threaded through so CommitRename knows to route it to CommitNewDiskImage.
+    private void CreateNewDiskImageInline(FileTreeItem? parentFolder, C64UFileKind kind)
+    {
+        string parentDirectory;
+        ObservableCollection<FileTreeItem> targetCollection;
+
+        if (parentFolder != null)
+        {
+            parentDirectory = parentFolder.FullPath;
+            parentFolder.IsExpanded = true;
+            targetCollection = parentFolder.Children;
+        }
+        else
+        {
+            parentDirectory = ViewModel.Project.RootPath;
+            if (string.IsNullOrEmpty(parentDirectory)) return;
+            targetCollection = ViewModel.FolderItems;
+        }
+
+        int insertIndex = 0;
+        while (insertIndex < targetCollection.Count && targetCollection[insertIndex].IsFolder)
+            insertIndex++;
+
+        var pendingItem = new FileTreeItem(parentDirectory, isNewPending: true, kind);
+        targetCollection.Insert(insertIndex, pendingItem);
+        BeginInlineRename(pendingItem);
+    }
+
+    private void CommitNewDiskImage(FileTreeItem item, string diskName, C64UFileKind kind)
+    {
+        string parentPath = item.FullPath; // FullPath holds the parent directory while pending
+        RemovePendingItem(item);
+        if (string.IsNullOrWhiteSpace(diskName)) return; // no name provided - create nothing
+
+        string extension = kind == C64UFileKind.D64 ? ".d64" : ".d81";
+        string fileName = diskName.EndsWith(extension, StringComparison.OrdinalIgnoreCase) ? diskName : diskName + extension;
+        string path = Path.Combine(parentPath, fileName);
+
+        try
+        {
+            byte[] blankImage = DiskImage.ForKind(kind).CreateBlankImage(Path.GetFileNameWithoutExtension(fileName));
+            File.WriteAllBytes(path, blankImage);
+            RefreshAfterCreate(parentPath, path);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not create disk image:\n{ex.Message}", "Error",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }

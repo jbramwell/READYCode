@@ -6,6 +6,20 @@ using ReadyCode.Models;
 namespace ReadyCode.C64U;
 
 /// <summary>
+/// Which CBM DOS disk format a <see cref="DiskGeometry"/> describes. Selects the BAM byte layout
+/// (free-sector bitmap size, disk header location) used when writing, since that differs between
+/// formats even though the directory entry format itself is identical.
+/// </summary>
+public enum DiskFormat
+{
+    /// <summary>A 1541 disk image (.d64): single-sided, BAM in one sector.</summary>
+    D64,
+
+    /// <summary>A 1581 disk image (.d81): double-sided, BAM spans two sectors.</summary>
+    D81,
+}
+
+/// <summary>
 /// The track/sector layout of a CBM DOS disk image format, letting <see cref="DiskImage"/> read
 /// (and, eventually, write) both .d64 and .d81 images with one shared implementation.
 /// </summary>
@@ -19,12 +33,14 @@ namespace ReadyCode.C64U;
 /// A generous upper bound on sector-chain length, comfortably above the sector count of the
 /// whole disk, used to guard against an infinite loop from a corrupt/malicious chain.
 /// </param>
+/// <param name="Format">Which CBM DOS format this geometry describes, selecting BAM byte layout for writing.</param>
 public sealed record DiskGeometry(
     int[] SectorsPerTrack,
     int DirectoryTrack,
     int DirectorySector,
     int StandardImageSize,
-    int MaxChainSteps)
+    int MaxChainSteps,
+    DiskFormat Format)
 {
     /// <summary>
     /// The geometry of a standard 35-track 1541 disk image (.d64): 21 sectors/track for tracks
@@ -42,7 +58,8 @@ public sealed record DiskGeometry(
         DirectoryTrack: 18,
         DirectorySector: 1,
         StandardImageSize: 174_848,
-        MaxChainSteps: 700);
+        MaxChainSteps: 700,
+        Format: DiskFormat.D64);
 
     /// <summary>
     /// The geometry of a standard 1581 disk image (.d81): 80 tracks, a uniform 40 sectors/track,
@@ -54,7 +71,8 @@ public sealed record DiskGeometry(
         DirectoryTrack: 40,
         DirectorySector: 3,
         StandardImageSize: 819_200,
-        MaxChainSteps: 3300);
+        MaxChainSteps: 3300,
+        Format: DiskFormat.D81);
 
     /// <summary>
     /// Gets the geometry for the given file kind.
