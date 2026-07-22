@@ -77,6 +77,10 @@
     <SolidColorBrush x:Key="ThemeEditorCurrentLineBorder" Color="#3C3C3C"/>
     <SolidColorBrush x:Key="ThemeEditorErrorSquiggle"     Color="#F14C4C"/>
 
+    <!-- Hex Editor: selected-byte text, drawn on top of ThemeSettingsAccent rather than
+         ThemeEditorBg (its background there while unselected). -->
+    <SolidColorBrush x:Key="ThemeHexSelectedFg" Color="#FFFFFF"/>
+
     <!-- Find / Replace Highlighting -->
     <SolidColorBrush x:Key="ThemeFindMatchBg"   Color="#e5ba7d"/>
     <SolidColorBrush x:Key="ThemeFindMatchFg"   Color="#000000"/>

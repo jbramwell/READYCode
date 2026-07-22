@@ -153,6 +153,13 @@ public class FileTreeItem : INotifyPropertyChanged
     public bool IsRunnable => Kind == C64UFileKind.Bas || Kind == C64UFileKind.Prg;
 
     /// <summary>
+    /// Gets whether this file can be opened for viewing/editing (as text, tokenized BASIC, or
+    /// a hex byte grid) - a broader check than <see cref="IsRunnable"/>, which additionally
+    /// means "confirmed BASIC or source", not just "openable".
+    /// </summary>
+    public bool IsOpenable => Kind.IsOpenableKind();
+
+    /// <summary>
     /// Gets whether this file is a disk image that can be browsed in place or authored.
     /// </summary>
     public bool IsDiskImage => Kind.IsDiskImageKind();

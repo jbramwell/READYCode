@@ -116,6 +116,13 @@ public class AppSettings
     public List<string> OpenTabPaths { get; set; } = new();
 
     /// <summary>
+    /// The subset of <see cref="OpenTabPaths"/> that were showing as a hex byte grid rather than
+    /// text when the app last closed, so they're reopened the same way rather than defaulting
+    /// back to their auto-detected mode.
+    /// </summary>
+    public List<string> OpenTabHexModePaths { get; set; } = new();
+
+    /// <summary>
     /// UI color theme: "Light", "Dark", or "C64".
     /// </summary>
     public string Theme { get; set; } = "Light";

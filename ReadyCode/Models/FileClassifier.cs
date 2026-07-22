@@ -55,4 +55,14 @@ public static class FileClassifier
     /// place, mounted to a drive, or authored.
     /// </summary>
     public static bool IsDiskImageKind(this C64UFileKind kind) => kind is C64UFileKind.D64 or C64UFileKind.D81;
+
+    /// <summary>
+    /// Gets whether this kind can be opened for viewing/editing in some form - as text
+    /// (Bas/Asm), detokenized BASIC (Prg), or a raw hex byte grid (Ml, and any other
+    /// unrecognized file, since hex viewing works for arbitrary bytes). Distinct from a file
+    /// item's <c>IsRunnable</c>, which additionally means "can be sent to run/load on a
+    /// C64/C64U" - Ml is openable but not runnable.
+    /// </summary>
+    public static bool IsOpenableKind(this C64UFileKind kind) =>
+        kind is C64UFileKind.Bas or C64UFileKind.Prg or C64UFileKind.Ml or C64UFileKind.Asm or C64UFileKind.Other;
 }

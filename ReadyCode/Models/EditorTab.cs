@@ -58,6 +58,25 @@ public class EditorTab : INotifyPropertyChanged
     public string? VirtualSourceId { get; set; }
 
     /// <summary>
+    /// Gets or sets the raw bytes backing this tab when it's shown as a hex byte grid instead
+    /// of text (e.g. a machine-language .prg, which has no meaningful text representation).
+    /// Null for an ordinary text tab - mirrors the <see cref="VirtualSourceId"/> convention of
+    /// a nullable field doubling as the tab's mode discriminator.
+    /// </summary>
+    public byte[]? RawBytes { get; set; }
+
+    /// <summary>
+    /// Gets whether this tab is displayed as a hex byte grid rather than as text in the editor.
+    /// </summary>
+    public bool IsHexMode => RawBytes != null;
+
+    /// <summary>
+    /// Gets the undo/redo history for edits made to <see cref="RawBytes"/> - the hex-mode
+    /// analog of <see cref="Document"/>'s own built-in undo stack.
+    /// </summary>
+    public HexUndoStack UndoStack { get; } = new();
+
+    /// <summary>
     /// Gets or sets this tab's file kind, as classified by <see cref="FileClassifier"/> when the
     /// tab was opened. Defaults to <see cref="C64UFileKind.Bas"/> for tabs with no backing file
     /// (a blank new tab, or an imported text file).

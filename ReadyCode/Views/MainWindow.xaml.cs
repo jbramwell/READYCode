@@ -162,12 +162,12 @@ public partial class MainWindow : Window
         FileSaveAsCommand = new RelayCommand(_ => FileSaveAs_Click(this, new RoutedEventArgs()));
         FileExportCommand = new RelayCommand(_ => FileExport_Click(this, new RoutedEventArgs()));
         FileImportCommand = new RelayCommand(_ => FileImport_Click(this, new RoutedEventArgs()));
-        EditUndoCommand = new RelayCommand(_ => EditUndo_Click(this, new RoutedEventArgs()), _ => Editor.CanUndo);
-        EditRedoCommand = new RelayCommand(_ => EditRedo_Click(this, new RoutedEventArgs()), _ => Editor.CanRedo);
+        EditUndoCommand = new RelayCommand(_ => EditUndo_Click(this, new RoutedEventArgs()), _ => ViewModel.ActiveTab?.IsHexMode == true ? HexEditor.CanUndo : Editor.CanUndo);
+        EditRedoCommand = new RelayCommand(_ => EditRedo_Click(this, new RoutedEventArgs()), _ => ViewModel.ActiveTab?.IsHexMode == true ? HexEditor.CanRedo : Editor.CanRedo);
         EditCutCommand = new RelayCommand(_ => EditCut_Click(this, new RoutedEventArgs()), _ => HasSelection());
         EditCopyCommand = new RelayCommand(_ => EditCopy_Click(this, new RoutedEventArgs()), _ => HasSelection());
         EditPasteCommand = new RelayCommand(_ => EditPaste_Click(this, new RoutedEventArgs()), _ => HasActiveTab());
-        EditDeleteCommand = new RelayCommand(_ => EditDelete_Click(this, new RoutedEventArgs()), _ => HasNonEmptyActiveTab());
+        EditDeleteCommand = new RelayCommand(_ => EditDelete_Click(this, new RoutedEventArgs()), _ => HasSelection() || HasNonEmptyActiveTab());
         EditSelectAllCommand = new RelayCommand(_ => EditSelectAll_Click(this, new RoutedEventArgs()));
         EditCommentCommand   = new RelayCommand(_ => ExecuteCommentSelection(), _ => HasNonEmptyBasicActiveTab());
         EditUncommentCommand = new RelayCommand(_ => ExecuteUncommentSelection(), _ => HasNonEmptyBasicActiveTab());
@@ -214,6 +214,8 @@ public partial class MainWindow : Window
         FindBar.FindPreviousRequested += (_, _) => FindPrev();
         FindBar.ReplaceRequested    += (_, _) => ExecuteReplace();
         FindBar.ReplaceAllRequested += (_, _) => ExecuteReplaceAll();
+
+        HexEditor.ByteEdited += (_, _) => { if (ViewModel.ActiveTab != null) ViewModel.ActiveTab.IsModified = true; };
 
         // Force pasted text to upper case, just like typed text
         DataObject.AddPastingHandler(Editor, Editor_Pasting);
@@ -324,11 +326,20 @@ public partial class MainWindow : Window
         {
             // Skip missing files quietly - OpenFileByPath's own error dialog would otherwise
             // pop up once per moved/deleted file on every launch.
+            EditorTab? firstRestoredTab = null;
             foreach (string path in ViewModel.Settings.OpenTabPaths)
             {
-                if (File.Exists(path))
-                    OpenFileByPath(path);
+                if (!File.Exists(path)) continue;
+
+                OpenFileByPath(path, forceHex: ViewModel.Settings.OpenTabHexModePaths.Contains(path, StringComparer.OrdinalIgnoreCase));
+                firstRestoredTab ??= ViewModel.OpenTabs.FirstOrDefault(t => string.Equals(t.FilePath, path, StringComparison.OrdinalIgnoreCase));
             }
+
+            // OpenFileByPath activates whatever it just opened, so after the loop the LAST
+            // restored tab ends up active rather than the first - reactivate the first one to
+            // match the order the tabs were saved in.
+            if (firstRestoredTab != null)
+                ActivateTab(firstRestoredTab);
         }
     }
 
@@ -471,6 +482,9 @@ public partial class MainWindow : Window
         ViewModel.Settings.OpenTabPaths = ViewModel.Settings.RestoreOpenTabsOnStartup
             ? ViewModel.OpenTabs.Where(t => t.FilePath != null).Select(t => t.FilePath!).ToList()
             : new List<string>();
+        ViewModel.Settings.OpenTabHexModePaths = ViewModel.Settings.RestoreOpenTabsOnStartup
+            ? ViewModel.OpenTabs.Where(t => t.FilePath != null && t.IsHexMode).Select(t => t.FilePath!).ToList()
+            : new List<string>();
 
         ViewModel.Settings.Save();
         base.OnClosed(e);
@@ -564,50 +578,114 @@ public partial class MainWindow : Window
         return paths.Length > 0 && paths.All(p => p.EndsWith(".prg", StringComparison.OrdinalIgnoreCase));
     }
 
-    private void OpenFileByPath(string path)
+    // Shows the Windows "busy" cursor for the scope of the returned IDisposable - used around
+    // file-open operations that can take a second or two (large disk reads, PRG detokenization,
+    // FTP downloads) so there's visual feedback while the UI is otherwise unresponsive. Reused by
+    // every "open a file into a tab" entry point rather than each duplicating the
+    // Mouse.OverrideCursor set/reset pair itself.
+    private static IDisposable BeginBusyCursor()
     {
+        Mouse.OverrideCursor = Cursors.Wait;
+        return new BusyCursorScope();
+    }
+
+    private sealed class BusyCursorScope : IDisposable
+    {
+        public void Dispose()
+        {
+            // Deferred rather than reset immediately - the caller's synchronous work finishing
+            // doesn't mean the UI has visually caught up yet. Assigning a virtualized
+            // ItemsControl's ItemsSource (the hex grid) or a new AvalonEdit Document (the text
+            // editor) only QUEUES that content's layout/render pass; it runs later on the
+            // dispatcher, at Render priority. Resetting the cursor synchronously here would hide
+            // it well before the actual (occasionally 1-2 second, for a large hex grid) work is
+            // done. ApplicationIdle is lower priority than Render, Loaded, Background, and Input,
+            // so this only runs once all of that pending work has actually been processed.
+            Application.Current.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () => Mouse.OverrideCursor = null);
+        }
+    }
+
+    // forceHex: when true, always opens the file's raw bytes as a hex tab regardless of its kind
+    // - even a disk image or a confirmed-BASIC .prg, letting the hex editor be used on any file
+    // type READYCode supports, not just the ones it auto-detects as needing it (a
+    // machine-language .prg).
+    private void OpenFileByPath(string path, bool forceHex = false)
+    {
+        using var _ = BeginBusyCursor();
+
         // A disk image isn't text - it's ~175KB-800KB of binary bytes. Reading it as UTF-8 and
         // running it through AvalonEdit's colorizers/diagnostics would be pathologically slow
         // (looks like a hang) rather than throw, since decoding arbitrary binary as text usually
-        // "succeeds" with garbage. Expand it in the Explorer tree to see its contents instead.
-        if (FileClassifier.Classify(path, isFolder: false).IsDiskImageKind())
+        // "succeeds" with garbage. Expand it in the Explorer tree to see its contents instead -
+        // unless the caller explicitly wants the raw bytes via forceHex.
+        if (!forceHex && FileClassifier.Classify(path, isFolder: false).IsDiskImageKind())
         {
             ViewModel.SetStatus("Disk images can't be opened as text - expand it in the Explorer tree to see the programs inside.", StatusType.Warning);
             return;
         }
 
-        // If already open, activate that tab instead of opening a duplicate
+        byte[]? prgData = null;
+        C64UFileKind kind;
+        if (path.EndsWith(".prg", StringComparison.OrdinalIgnoreCase))
+        {
+            prgData = File.ReadAllBytes(path);
+            kind = FileClassifier.Classify(path, isFolder: false, () => prgData);
+        }
+        else
+        {
+            kind = FileClassifier.Classify(path, isFolder: false);
+        }
+        bool wantsHexMode = forceHex || kind == C64UFileKind.Ml;
+
+        // If already open in the requested mode, just activate that tab instead of opening a
+        // duplicate. If it's open in the OTHER mode (e.g. previously opened via "Open as Hex",
+        // now double-clicked for its normal view, or vice versa), reload that same tab's content
+        // into the newly requested mode instead of silently doing nothing.
         var existing = ViewModel.OpenTabs.FirstOrDefault(t =>
             string.Equals(t.FilePath, path, StringComparison.OrdinalIgnoreCase));
         if (existing != null)
         {
-            ActivateTab(existing);
-            return;
+            if (existing.IsHexMode == wantsHexMode)
+            {
+                ActivateTab(existing);
+                return;
+            }
+
+            if (existing.IsModified)
+            {
+                ViewModel.SetStatus($"{Path.GetFileName(path)} has unsaved changes - save or close it before reopening in a different view.", StatusType.Warning);
+                ActivateTab(existing);
+                return;
+            }
         }
 
         try
         {
-            string text;
-            byte[]? prgData = null;
-            if (path.EndsWith(".prg", StringComparison.OrdinalIgnoreCase))
+            var tab = existing ?? new EditorTab
             {
-                prgData = File.ReadAllBytes(path);
-                var converter = new PrgConverter();
-                text = PadLineNumbers(converter.ConvertFromPrg(prgData));
+                FilePath = path,
+                Language = LanguageClassifier.Classify(path),
+            };
+            tab.Kind = kind;
+
+            if (wantsHexMode)
+            {
+                tab.RawBytes = prgData ?? File.ReadAllBytes(path);
+                tab.Document.Text = string.Empty;
+            }
+            else if (prgData != null)
+            {
+                tab.RawBytes = null;
+                tab.Document.Text = PadLineNumbers(new PrgConverter().ConvertFromPrg(prgData));
             }
             else
             {
-                text = File.ReadAllText(path, Encoding.UTF8);
+                tab.RawBytes = null;
+                tab.Document.Text = File.ReadAllText(path, Encoding.UTF8);
             }
 
-            var tab = new EditorTab
-            {
-                FilePath = path,
-                Kind = FileClassifier.Classify(path, isFolder: false, prgData != null ? () => prgData : null),
-                Language = LanguageClassifier.Classify(path),
-            };
-            tab.Document.Text = text;
-            ViewModel.OpenTabs.Add(tab);
+            if (existing == null)
+                ViewModel.OpenTabs.Add(tab);
             ActivateTab(tab);
             tab.IsModified = false; // reset any spurious change event from document setup
             TrackRecentFile(path);
@@ -624,31 +702,57 @@ public partial class MainWindow : Window
 
     // Opens a "virtual" file found inside a mounted .d64 image in the Folder Explorer tree -
     // its content is already in memory, so no disk read is needed beyond what already happened
-    // when the disk image itself was expanded.
-    private Task OpenLocalVirtualFileInEditor(FileTreeItem item)
+    // when the disk image itself was expanded. forceHex: see OpenFileByPath.
+    private Task OpenLocalVirtualFileInEditor(FileTreeItem item, bool forceHex = false)
     {
         if (item.Content == null) return Task.CompletedTask;
 
+        using var _ = BeginBusyCursor();
+
+        bool wantsHexMode = forceHex || item.Kind == C64UFileKind.Ml;
+
         // Virtual entries have no real FilePath to dedupe on, so use the disk image's own path
         // plus the entry's name as a stable identity instead - re-activate an already-open tab
-        // rather than opening a duplicate.
+        // rather than opening a duplicate. If it's open in the OTHER mode, reload it into the
+        // newly requested mode instead of silently doing nothing - see OpenFileByPath.
         string sourceId = $"{item.SourcePath}!{item.Name}";
         var existingTab = ViewModel.OpenTabs.FirstOrDefault(t => t.VirtualSourceId == sourceId);
         if (existingTab != null)
         {
-            ActivateTab(existingTab);
-            return Task.CompletedTask;
+            if (existingTab.IsHexMode == wantsHexMode)
+            {
+                ActivateTab(existingTab);
+                return Task.CompletedTask;
+            }
+
+            if (existingTab.IsModified)
+            {
+                ViewModel.SetStatus($"{item.Name} has unsaved changes - save or close it before reopening in a different view.", StatusType.Warning);
+                ActivateTab(existingTab);
+                return Task.CompletedTask;
+            }
         }
 
         try
         {
-            string text = item.Kind == C64UFileKind.Prg
-                ? PadLineNumbers(new PrgConverter().ConvertFromPrg(item.Content))
-                : Encoding.UTF8.GetString(item.Content);
+            var tab = existingTab ?? new EditorTab { DisplayName = item.Name, VirtualSourceId = sourceId };
+            tab.Kind = item.Kind;
 
-            var tab = new EditorTab { DisplayName = item.Name, VirtualSourceId = sourceId, Kind = item.Kind };
-            tab.Document.Text = text;
-            ViewModel.OpenTabs.Add(tab);
+            if (wantsHexMode)
+            {
+                tab.RawBytes = item.Content;
+                tab.Document.Text = string.Empty;
+            }
+            else
+            {
+                tab.RawBytes = null;
+                tab.Document.Text = item.Kind == C64UFileKind.Prg
+                    ? PadLineNumbers(new PrgConverter().ConvertFromPrg(item.Content))
+                    : Encoding.UTF8.GetString(item.Content);
+            }
+
+            if (existingTab == null)
+                ViewModel.OpenTabs.Add(tab);
             ActivateTab(tab);
             tab.IsModified = false;
         }
@@ -665,6 +769,15 @@ public partial class MainWindow : Window
     {
         var item = GetContextItem(sender);
         if (item != null) _ = OpenLocalVirtualFileInEditor(item);
+    }
+
+    // "Open as Hex" - see FileContextOpenAsHex_Click. Virtual entries have no FullPath, so this
+    // goes through OpenLocalVirtualFileInEditor (already holds the entry's bytes in memory)
+    // rather than OpenFileByPath.
+    private void LocalDiskEntryContextOpenAsHex_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item != null) _ = OpenLocalVirtualFileInEditor(item, forceHex: true);
     }
 
     // Reuses the same inline-rename UI as real files/folders (BeginInlineRename/CommitRename) -
@@ -776,9 +889,11 @@ public partial class MainWindow : Window
         string sourcePath = parts[0];
         string entryName = parts[1];
 
-        byte[] newContent = tab.Language == EditorLanguage.Asm
-            ? Encoding.UTF8.GetBytes(tab.Document.Text)
-            : new PrgConverter().ConvertToPrg(tab.Document.Text);
+        byte[] newContent = tab.IsHexMode
+            ? tab.RawBytes!
+            : tab.Language == EditorLanguage.Asm
+                ? Encoding.UTF8.GetBytes(tab.Document.Text)
+                : new PrgConverter().ConvertToPrg(tab.Document.Text);
 
         if (File.Exists(sourcePath))
         {
@@ -859,7 +974,15 @@ public partial class MainWindow : Window
     {
         try
         {
-            if (ViewModel.ActiveTab?.Language == EditorLanguage.Asm)
+            if (ViewModel.ActiveTab?.IsHexMode == true)
+            {
+                byte[] rawBytes = ViewModel.ActiveTab.RawBytes!;
+                File.WriteAllBytes(filePath, rawBytes);
+                ViewModel.IsModified = false;
+                TrackRecentFile(filePath);
+                ViewModel.SetStatus($"File saved: {rawBytes.Length:N0} bytes.");
+            }
+            else if (ViewModel.ActiveTab?.Language == EditorLanguage.Asm)
             {
                 File.WriteAllText(filePath, Editor.Text, Encoding.UTF8);
                 ViewModel.IsModified = false;
@@ -1028,8 +1151,11 @@ public partial class MainWindow : Window
     private bool HasNonEmptyBasicActiveTab() =>
         HasNonEmptyActiveTab() && ViewModel.ActiveTab?.Language != EditorLanguage.Asm;
 
-    // Gates Cut/Copy, which need an actual text selection rather than just non-empty content.
-    private bool HasSelection() => ViewModel.ActiveTab != null && Editor.SelectionLength > 0;
+    // Gates Cut/Copy, which need an actual selection rather than just non-empty content - routes
+    // to the hex grid's own selection when a hex tab is active, since Editor's SelectionLength
+    // reflects whatever text tab it was last bound to, not the (invisible) hex tab.
+    private bool HasSelection() =>
+        ViewModel.ActiveTab?.IsHexMode == true ? HexEditor.HasSelection : ViewModel.ActiveTab != null && Editor.SelectionLength > 0;
 
     // Gates Close Folder, which only makes sense once a folder has been opened.
     private bool HasFolderOpen() => ViewModel.Project.IsOpen;
@@ -1041,17 +1167,30 @@ public partial class MainWindow : Window
 
     private void ActivateTab(EditorTab? tab)
     {
-        // Persist outgoing tab's caret, scroll position, and collapsed-fold state
+        // Persist outgoing tab's caret, scroll position, and collapsed-fold state. A hex tab was
+        // never bound onto Editor in the first place (see below), so its position must be read
+        // from HexEditor instead - reading Editor's here would just capture whatever unrelated
+        // tab it was last bound to.
         if (ViewModel.ActiveTab != null && !ReferenceEquals(ViewModel.ActiveTab, tab))
         {
-            ViewModel.ActiveTab.CaretOffset = Editor.CaretOffset;
-            ViewModel.ActiveTab.ScrollOffsetY = Editor.VerticalOffset;
-            SaveFoldingState(ViewModel.ActiveTab);
+            if (ViewModel.ActiveTab.IsHexMode)
+            {
+                ViewModel.ActiveTab.CaretOffset = HexEditor.SelectedOffset;
+                ViewModel.ActiveTab.ScrollOffsetY = HexEditor.VerticalScrollOffset;
+            }
+            else
+            {
+                ViewModel.ActiveTab.CaretOffset = Editor.CaretOffset;
+                ViewModel.ActiveTab.ScrollOffsetY = Editor.VerticalOffset;
+                SaveFoldingState(ViewModel.ActiveTab);
+            }
         }
 
         // FoldingManager is bound to whichever document was on the TextArea at Install time and
         // must be uninstalled before the shared Editor control is rebound to a different one -
         // there's no "reinstall"/rebind API, so a fresh manager is created per activation below.
+        // Already null whenever a hex tab is/was active (never installed for one), so this no-ops
+        // correctly without needing its own IsHexMode check.
         if (_foldingManager != null)
         {
             FoldingManager.Uninstall(_foldingManager);
@@ -1061,7 +1200,33 @@ public partial class MainWindow : Window
         _activatingTab = true;
         ViewModel.ActiveTab = tab;
 
-        if (tab != null)
+        // Visibility is set here, before LoadBytes/Focus below, rather than after the mode
+        // branch as it used to be - HexEditor.Focus() (and the layout LoadBytes's freshly
+        // assigned ItemsSource needs) can't do much useful work while HexEditor is still
+        // Visibility.Collapsed, since a collapsed subtree doesn't participate in layout or fire
+        // Loaded events for its elements at all.
+        bool isHexMode = tab?.IsHexMode == true;
+        Editor.Visibility = tab != null && !isHexMode ? Visibility.Visible : Visibility.Collapsed;
+        HexEditor.Visibility = isHexMode ? Visibility.Visible : Visibility.Collapsed;
+        EmptyStateImage.Visibility = tab != null ? Visibility.Collapsed : Visibility.Visible;
+
+        if (tab != null && tab.IsHexMode)
+        {
+            HexEditor.LoadBytes(tab.RawBytes!, tab.CaretOffset, tab.ScrollOffsetY, tab.UndoStack);
+            HexEditor.Focus();
+            HideLanguagePanelsForHexMode();
+
+            // A hex tab has no BASIC variables or ASM symbols of its own - clear out whatever
+            // the previously active tab left behind rather than leaving stale entries on screen.
+            // Also stop the debounce timer: RunVariableIndex/RunAsmSymbolIndex already guard
+            // against a hex-mode ActiveTab, but a tick already in flight from the previous tab's
+            // activation would otherwise still fire ~300ms from now and redo the same work.
+            _diagnosticsTimer.Stop();
+            ViewModel.Variables.Clear();
+            ViewModel.Symbols.Clear();
+            _lastAsmResult = null;
+        }
+        else if (tab != null)
         {
             // Assigning Editor.Document raises AvalonEdit's TextChanged event (a new document
             // counts as the visible text changing), so the guard must still be up here -
@@ -1092,10 +1257,6 @@ public partial class MainWindow : Window
 
         _activatingTab = false;
 
-        // No open tabs -> show the empty-state image instead of the (now contentless) editor.
-        Editor.Visibility = tab != null ? Visibility.Visible : Visibility.Collapsed;
-        EmptyStateImage.Visibility = tab != null ? Visibility.Collapsed : Visibility.Visible;
-
         _tabSwitching = true;
         TabBar.SelectedItem = tab;
         _tabSwitching = false;
@@ -1105,6 +1266,18 @@ public partial class MainWindow : Window
         // the overflow menu, keyboard shortcuts, etc., not just clicking a visible tab.
         if (tab != null)
             TabBar.ScrollIntoView(tab);
+    }
+
+    // Hides the language-specific right-panel toggles (BASIC Keywords / ASM Mnemonics) and closes
+    // whichever is open - a hex-mode tab is neither BASIC nor Asm, so neither panel applies.
+    // Mirrors ApplyLineTransformersForLanguage's own panel-toggle logic for the same two panels.
+    private void HideLanguagePanelsForHexMode()
+    {
+        BasicKeywordsToggle.Visibility = Visibility.Collapsed;
+        AsmKeywordsToggle.Visibility = Visibility.Collapsed;
+        if (BasicKeywordsToggle.IsChecked == true) { BasicKeywordsToggle.IsChecked = false; CloseRightPanel(BasicKeywordsPanel); }
+        if (AsmKeywordsToggle.IsChecked == true) { AsmKeywordsToggle.IsChecked = false; CloseRightPanel(AsmKeywordsPanel); }
+        ViewModel.IsRightPanelOpen = RightPanelToggles.Any(t => t.Toggle.IsChecked == true);
     }
 
     // Swaps which set of syntax colorizers is attached to the editor, and which font it displays,
@@ -1351,6 +1524,11 @@ public partial class MainWindow : Window
 
     private void EditUndo_Click(object sender, RoutedEventArgs e)
     {
+        if (ViewModel.ActiveTab?.IsHexMode == true)
+        {
+            HexEditor.Undo();
+            return;
+        }
         if (Editor.CanUndo)
         {
             Editor.Undo();
@@ -1359,6 +1537,11 @@ public partial class MainWindow : Window
 
     private void EditRedo_Click(object sender, RoutedEventArgs e)
     {
+        if (ViewModel.ActiveTab?.IsHexMode == true)
+        {
+            HexEditor.Redo();
+            return;
+        }
         if (Editor.CanRedo)
         {
             Editor.Redo();
@@ -1367,21 +1550,41 @@ public partial class MainWindow : Window
 
     private void EditCut_Click(object sender, RoutedEventArgs e)
     {
+        if (ViewModel.ActiveTab?.IsHexMode == true)
+        {
+            HexEditor.Cut();
+            return;
+        }
         Editor.Cut();
     }
 
     private void EditCopy_Click(object sender, RoutedEventArgs e)
     {
+        if (ViewModel.ActiveTab?.IsHexMode == true)
+        {
+            HexEditor.Copy();
+            return;
+        }
         Editor.Copy();
     }
 
     private void EditPaste_Click(object sender, RoutedEventArgs e)
     {
+        if (ViewModel.ActiveTab?.IsHexMode == true)
+        {
+            HexEditor.Paste();
+            return;
+        }
         Editor.Paste();
     }
 
     private void EditDelete_Click(object sender, RoutedEventArgs e)
     {
+        if (ViewModel.ActiveTab?.IsHexMode == true)
+        {
+            HexEditor.Delete();
+            return;
+        }
         if (Editor.SelectionLength > 0)
         {
             Editor.SelectedText = string.Empty;
@@ -2114,7 +2317,7 @@ public partial class MainWindow : Window
     private void C64UFileTree_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         var item = (e.OriginalSource as FrameworkElement)?.DataContext as C64UFileItem;
-        if (item == null || item.IsFolder || !item.IsRunnable) return;
+        if (item == null || item.IsFolder || !item.IsOpenable) return;
         _ = OpenC64UFileInEditorAsync(item);
         e.Handled = true;
     }
@@ -2167,6 +2370,15 @@ public partial class MainWindow : Window
     {
         var item = GetC64UContextItem(sender);
         if (item != null) await OpenC64UFileInEditorAsync(item);
+    }
+
+    // "Open as Hex" - see FileContextOpenAsHex_Click. OpenC64UFileInEditorAsync already handles
+    // both a real remote file (including a disk image itself) and a virtual entry inside one
+    // uniformly, so this single handler covers every C64U context menu that offers it.
+    private async void C64UFileContextOpenAsHex_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetC64UContextItem(sender);
+        if (item != null) await OpenC64UFileInEditorAsync(item, forceHex: true);
     }
 
     private async void C64UFileContextRun_Click(object sender, RoutedEventArgs e)
@@ -2332,32 +2544,61 @@ public partial class MainWindow : Window
 
     // ── Shared logic ──────────────────────────────────────────────────────────
 
-    private async Task OpenC64UFileInEditorAsync(C64UFileItem item)
+    // forceHex: see OpenFileByPath - works uniformly here for a real remote file (including a
+    // disk image itself, downloaded whole) or a virtual entry inside one.
+    private async Task OpenC64UFileInEditorAsync(C64UFileItem item, bool forceHex = false)
     {
         if (item.Content == null && ViewModel.C64UFtp == null) return;
+
+        using var _ = BeginBusyCursor();
+
+        bool wantsHexMode = forceHex || item.Kind == C64UFileKind.Ml;
 
         // Neither a real C64U FTP file nor a virtual disk-image entry has a local FilePath to
         // dedupe on, so use the FTP path (or, for a virtual entry, the disk image's own path
         // plus the entry's name) as a stable identity instead - re-activate an already-open tab
-        // rather than opening a duplicate.
+        // rather than opening a duplicate. If it's open in the OTHER mode, reload it into the
+        // newly requested mode instead of silently doing nothing - see OpenFileByPath.
         string sourceId = item.IsVirtual ? $"{item.SourcePath}!{item.Name}" : item.FullPath;
         var existingTab = ViewModel.OpenTabs.FirstOrDefault(t => t.VirtualSourceId == sourceId);
         if (existingTab != null)
         {
-            ActivateTab(existingTab);
-            return;
+            if (existingTab.IsHexMode == wantsHexMode)
+            {
+                ActivateTab(existingTab);
+                return;
+            }
+
+            if (existingTab.IsModified)
+            {
+                ViewModel.SetStatus($"{item.Name} has unsaved changes - save or close it before reopening in a different view.", StatusType.Warning);
+                ActivateTab(existingTab);
+                return;
+            }
         }
 
         try
         {
             var bytes = item.Content ?? await ViewModel.C64UFtp!.DownloadBytesAsync(item.FullPath);
-            string text = item.Kind == C64UFileKind.Prg
-                ? PadLineNumbers(new PrgConverter().ConvertFromPrg(bytes))
-                : Encoding.UTF8.GetString(bytes);
 
-            var tab = new EditorTab { DisplayName = item.Name, VirtualSourceId = sourceId, Kind = item.Kind };
-            tab.Document.Text = text;
-            ViewModel.OpenTabs.Add(tab);
+            var tab = existingTab ?? new EditorTab { DisplayName = item.Name, VirtualSourceId = sourceId };
+            tab.Kind = item.Kind;
+
+            if (wantsHexMode)
+            {
+                tab.RawBytes = bytes;
+                tab.Document.Text = string.Empty;
+            }
+            else
+            {
+                tab.RawBytes = null;
+                tab.Document.Text = item.Kind == C64UFileKind.Prg
+                    ? PadLineNumbers(new PrgConverter().ConvertFromPrg(bytes))
+                    : Encoding.UTF8.GetString(bytes);
+            }
+
+            if (existingTab == null)
+                ViewModel.OpenTabs.Add(tab);
             ActivateTab(tab);
             tab.IsModified = false;
         }
@@ -3136,7 +3377,7 @@ public partial class MainWindow : Window
 
         if (item.IsVirtual)
         {
-            if (item.IsRunnable) _ = OpenLocalVirtualFileInEditor(item);
+            if (item.IsOpenable) _ = OpenLocalVirtualFileInEditor(item);
         }
         else
         {
@@ -3540,6 +3781,14 @@ public partial class MainWindow : Window
     {
         var item = GetContextItem(sender);
         if (item != null) OpenFileByPath(item.FullPath);
+    }
+
+    // "Open as Hex" - forces the hex editor for any file type READYCode supports (not just the
+    // ones it auto-detects as needing it), including a confirmed-BASIC .prg or a disk image.
+    private void FileContextOpenAsHex_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item != null) OpenFileByPath(item.FullPath, forceHex: true);
     }
 
     private void FileContextCut_Click(object sender, RoutedEventArgs e)
@@ -3983,7 +4232,7 @@ public partial class MainWindow : Window
         // the file-management shortcuts below apply to them.
         if (item.IsVirtual)
         {
-            if (e.Key == Key.Return && item.IsRunnable)
+            if (e.Key == Key.Return && item.IsOpenable)
             {
                 _ = OpenLocalVirtualFileInEditor(item);
                 e.Handled = true;
@@ -4811,7 +5060,11 @@ public partial class MainWindow : Window
     {
         var variables = ViewModel.Variables;
         var document = Editor.Document;
-        if (document == null || ViewModel.ActiveTab?.Language == EditorLanguage.Asm) { variables.Clear(); return; }
+        if (document == null || ViewModel.ActiveTab?.IsHexMode == true || ViewModel.ActiveTab?.Language == EditorLanguage.Asm)
+        {
+            variables.Clear();
+            return;
+        }
 
         var byName = VariableCrossReference.Analyze(document.Text)
             .GroupBy(r => r.Name, StringComparer.Ordinal);
@@ -4855,7 +5108,7 @@ public partial class MainWindow : Window
     {
         var symbols = ViewModel.Symbols;
         var document = Editor.Document;
-        if (document == null || ViewModel.ActiveTab?.Language != EditorLanguage.Asm)
+        if (document == null || ViewModel.ActiveTab?.IsHexMode == true || ViewModel.ActiveTab?.Language != EditorLanguage.Asm)
         {
             symbols.Clear();
             _lastAsmResult = null;

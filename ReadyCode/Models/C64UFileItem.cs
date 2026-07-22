@@ -207,6 +207,13 @@ public class C64UFileItem : INotifyPropertyChanged
     public bool IsRunnable => Kind == C64UFileKind.Bas || Kind == C64UFileKind.Prg;
 
     /// <summary>
+    /// Gets whether this file can be opened for viewing/editing (as text, tokenized BASIC, or
+    /// a hex byte grid) - a broader check than <see cref="IsRunnable"/>, which additionally
+    /// means "can be sent to run/load on a C64/C64U", not just "openable".
+    /// </summary>
+    public bool IsOpenable => Kind.IsOpenableKind();
+
+    /// <summary>
     /// Gets whether this file is a disk image that can be mounted to a drive.
     /// </summary>
     public bool IsDiskImage => Kind.IsDiskImageKind();

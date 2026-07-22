@@ -1,0 +1,82 @@
+<UserControl x:Class="ReadyCode.Views.HexEditorControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:ReadyCode.Views"
+             Background="{DynamicResource ThemeEditorBg}"
+             Visibility="Collapsed">
+
+    <UserControl.Resources>
+        <Style x:Key="HexHeaderCellStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemePanelHeaderFg}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <DockPanel>
+            <!-- Fixed column-index header (00-0F), aligned with the hex cell columns below - stays
+                 visible while the rows beneath it scroll vertically. -->
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,4"
+                        Background="{DynamicResource ThemePanelHeaderBg}">
+                <TextBlock Text="Offset" Width="64" Style="{StaticResource HexHeaderCellStyle}"/>
+                <Rectangle Width="1" Margin="6,2" Fill="{DynamicResource ThemeSettingsDivider}"/>
+                <StackPanel Orientation="Horizontal" Margin="8,0">
+                    <TextBlock Text="00" Width="22" Margin="1,0" TextAlignment="Center" Style="{StaticResource HexHeaderCellStyle}"/>
+                    <TextBlock Text="01" Width="22" Margin="1,0" TextAlignment="Center" Style="{StaticResource HexHeaderCellStyle}"/>
+                    <TextBlock Text="02" Width="22" Margin="1,0" TextAlignment="Center" Style="{StaticResource HexHeaderCellStyle}"/>
+                    <TextBlock Text="03" Width="22" Margin="1,0" TextAlignment="Center" Style="{StaticResource HexHeaderCellStyle}"/>
+                    <TextBlock Text="04" Width="22" Margin="1,0" TextAlignment="Center" Style="{StaticResource HexHeaderCellStyle}"/>
+                    <TextBlock Text="05" Width="22" Margin="1,0" TextAlignment="Center" Style="{StaticResource HexHeaderCellStyle}"/>
+                    <TextBlock Text="06" Width="22" Margin="1,0" TextAlignment="Center" Style="{StaticResource HexHeaderCellStyle}"/>
+                    <TextBlock Text="07" Width="22" Margin="1,0" TextAlignment="Center" Style="{StaticResource HexHeaderCellStyle}"/>
+                    <TextBlock Text="08" Width="22" Margin="1,0" TextAlignment="Center" Style="{StaticResource HexHeaderCellStyle}"/>
+                    <TextBlock Text="09" Width="22" Margin="1,0" TextAlignment="Center" Style="{StaticResource HexHeaderCellStyle}"/>
+                    <TextBlock Text="0A" Width="22" Margin="1,0" TextAlignment="Center" Style="{StaticResource HexHeaderCellStyle}"/>
+                    <TextBlock Text="0B" Width="22" Margin="1,0" TextAlignment="Center" Style="{StaticResource HexHeaderCellStyle}"/>
+                    <TextBlock Text="0C" Width="22" Margin="1,0" TextAlignment="Center" Style="{StaticResource HexHeaderCellStyle}"/>
+                    <TextBlock Text="0D" Width="22" Margin="1,0" TextAlignment="Center" Style="{StaticResource HexHeaderCellStyle}"/>
+                    <TextBlock Text="0E" Width="22" Margin="1,0" TextAlignment="Center" Style="{StaticResource HexHeaderCellStyle}"/>
+                    <TextBlock Text="0F" Width="22" Margin="1,0" TextAlignment="Center" Style="{StaticResource HexHeaderCellStyle}"/>
+                </StackPanel>
+                <Rectangle Width="1" Margin="6,2" Fill="{DynamicResource ThemeSettingsDivider}"/>
+                <TextBlock Text="ASCII" Margin="8,0,0,0" Style="{StaticResource HexHeaderCellStyle}"/>
+            </StackPanel>
+            <Rectangle DockPanel.Dock="Top" Height="1" Margin="0,0,0,2" Fill="{DynamicResource ThemeSettingsDivider}"/>
+
+            <!-- Plain, pixel-based scrolling (not the old VirtualizingPanel/ItemsControl setup) -
+                 HexGridCanvas renders the whole grid itself via OnRender, limiting draw calls to
+                 the currently visible rows, rather than realizing one WPF element per byte. -->
+            <ScrollViewer x:Name="RowsScrollViewer"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          CanContentScroll="False">
+                <local:HexGridCanvas x:Name="HexGrid"/>
+            </ScrollViewer>
+        </DockPanel>
+
+        <!-- Single shared editable overlay for whichever byte is currently being edited (see
+             HexGridCanvas.EditRequested) - positioned via PlacementTarget/HorizontalOffset/
+             VerticalOffset rather than giving every cell its own TextBox, so editing a hex tab
+             never needs more than one real TextBox to exist at a time. -->
+        <Popup x:Name="EditPopup" AllowsTransparency="True" Placement="Relative" Focusable="False">
+            <TextBox x:Name="EditBox"
+                     Width="22" Height="20"
+                     FontFamily="Consolas" FontSize="13"
+                     TextAlignment="Center"
+                     VerticalContentAlignment="Center"
+                     MaxLength="2"
+                     BorderThickness="1"
+                     Background="{DynamicResource ThemeSettingsInputBg}"
+                     BorderBrush="{DynamicResource ThemeSettingsAccent}"
+                     Foreground="{DynamicResource ThemeFileFg}"
+                     CaretBrush="{DynamicResource ThemeFileFg}"
+                     InputMethod.IsInputMethodEnabled="False"
+                     PreviewTextInput="EditBox_PreviewTextInput"
+                     PreviewKeyDown="EditBox_PreviewKeyDown"
+                     LostKeyboardFocus="EditBox_LostKeyboardFocus"/>
+        </Popup>
+    </Grid>
+</UserControl>

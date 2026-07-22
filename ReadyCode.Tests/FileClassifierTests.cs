@@ -89,5 +89,21 @@ public class FileClassifierTests
         Assert.Equal(expected, kind.IsDiskImageKind());
     }
 
+    // ── IsOpenableKind ─────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(C64UFileKind.Bas, true)]
+    [InlineData(C64UFileKind.Prg, true)]
+    [InlineData(C64UFileKind.Ml, true)]
+    [InlineData(C64UFileKind.Asm, true)]
+    [InlineData(C64UFileKind.Other, true)]
+    [InlineData(C64UFileKind.Folder, false)]
+    [InlineData(C64UFileKind.D64, false)]
+    [InlineData(C64UFileKind.D81, false)]
+    public void IsOpenableKind_ReturnsExpected(C64UFileKind kind, bool expected)
+    {
+        Assert.Equal(expected, kind.IsOpenableKind());
+    }
+
     #endregion
 }

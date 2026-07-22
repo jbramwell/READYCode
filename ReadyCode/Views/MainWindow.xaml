@@ -112,6 +112,16 @@
             <MenuItem Header="Renumber Code" InputGestureText="Ctrl+R" Click="EditorContextRenumber_Click"/>
         </ContextMenu>
 
+        <!-- Context menu for the Hex Editor - shares the same Cut/Copy/Paste/Delete handlers as
+             EditorContextMenu above, which already branch on ActiveTab.IsHexMode. -->
+        <ContextMenu x:Key="HexEditorContextMenu">
+            <MenuItem Header="Cut"   InputGestureText="Ctrl+X" Click="EditCut_Click"/>
+            <MenuItem Header="Copy"  InputGestureText="Ctrl+C" Click="EditCopy_Click"/>
+            <MenuItem Header="Paste" InputGestureText="Ctrl+V" Click="EditPaste_Click"/>
+            <Separator/>
+            <MenuItem Header="Delete" InputGestureText="Delete" Click="EditDelete_Click"/>
+        </ContextMenu>
+
         <!-- Context menu for the root Explorer header -->
         <ContextMenu x:Key="RootFolderContextMenu" Opened="PasteContextMenu_Opened">
             <MenuItem Header="Paste" InputGestureText="Ctrl+V" Click="RootContextPaste_Click"/>
@@ -136,6 +146,8 @@
 
         <!-- Context menu for file items in the Explorer tree -->
         <ContextMenu x:Key="FileContextMenu" Opened="PasteContextMenu_Opened">
+            <MenuItem Header="Open as Hex" Click="FileContextOpenAsHex_Click"/>
+            <Separator/>
             <MenuItem Header="Reveal in File Explorer" Click="FileContextReveal_Click"/>
             <Separator/>
             <MenuItem Header="Cut"   InputGestureText="Ctrl+X" Click="FileContextCut_Click"/>
@@ -155,6 +167,7 @@
             <MenuItem Header="Reveal in File Explorer" Click="FileContextReveal_Click"/>
             <Separator/>
             <MenuItem Header="Open in editor" Click="FileContextOpen_Click"/>
+            <MenuItem Header="Open as Hex"    Click="FileContextOpenAsHex_Click"/>
             <Separator/>
             <MenuItem Header="Cut"   InputGestureText="Ctrl+X" Click="FileContextCut_Click"/>
             <MenuItem Header="Copy"  InputGestureText="Ctrl+C" Click="FileContextCopy_Click"/>
@@ -171,6 +184,7 @@
              the Folder Explorer tree -->
         <ContextMenu x:Key="LocalDiskEntryContextMenu">
             <MenuItem Header="Open in editor" Click="LocalDiskEntryContextOpen_Click"/>
+            <MenuItem Header="Open as Hex"    Click="LocalDiskEntryContextOpenAsHex_Click"/>
             <Separator/>
             <MenuItem Header="Rename..." Click="LocalDiskEntryContextRename_Click"/>
             <MenuItem Header="Delete"    Click="LocalDiskEntryContextDelete_Click"/>
@@ -179,6 +193,7 @@
         <!-- Context menu for a .d64/.d81 disk image node itself in the Folder Explorer tree -->
         <ContextMenu x:Key="LocalDiskImageContextMenu" Opened="PasteContextMenu_Opened">
             <MenuItem Header="Add File..." Click="LocalDiskImageContextAddFile_Click"/>
+            <MenuItem Header="Open as Hex" Click="FileContextOpenAsHex_Click"/>
             <Separator/>
             <MenuItem Header="Reveal in File Explorer" Click="FileContextReveal_Click"/>
             <Separator/>
@@ -207,6 +222,7 @@
         <!-- Context menu for .bas/.prg items in the C64U tree -->
         <ContextMenu x:Key="C64URunnableFileContextMenu">
             <MenuItem Header="Open in editor" Click="C64UFileContextOpen_Click"/>
+            <MenuItem Header="Open as Hex"    Click="C64UFileContextOpenAsHex_Click"/>
             <Separator/>
             <MenuItem Header="Run on C64U"    Click="C64UFileContextRun_Click"/>
             <MenuItem Header="Load (no run)"  Click="C64UFileContextLoad_Click"/>
@@ -217,8 +233,14 @@
             <MenuItem Header="Delete"     InputGestureText="Delete" Click="C64UContextDelete_Click"/>
         </ContextMenu>
 
-        <!-- Context menu for non-runnable, non-disk-image items in the C64U tree -->
+        <!-- Context menu for non-runnable, non-disk-image items in the C64U tree - this is the
+             menu machine-language (Ml) files fall into, alongside genuinely unrecognized (Other)
+             ones; "Open in editor" reaches the hex-mode path for Ml, or a plain hex view of
+             whatever bytes an Other file happens to hold. -->
         <ContextMenu x:Key="C64UOtherFileContextMenu">
+            <MenuItem Header="Open in editor" Click="C64UFileContextOpen_Click"/>
+            <MenuItem Header="Open as Hex"    Click="C64UFileContextOpenAsHex_Click"/>
+            <Separator/>
             <MenuItem Header="Download to PC" Click="C64UFileContextDownload_Click"/>
             <Separator/>
             <MenuItem Header="Rename..."  InputGestureText="F2"     Click="C64UContextRename_Click"/>
@@ -228,6 +250,7 @@
         <!-- Context menu for .d64/.d81 disk image items in the C64U tree -->
         <ContextMenu x:Key="C64UDiskImageContextMenu">
             <MenuItem Header="Add File..." Click="C64UDiskImageContextAddFile_Click"/>
+            <MenuItem Header="Open as Hex" Click="C64UFileContextOpenAsHex_Click"/>
             <Separator/>
             <MenuItem Header="Mount to Drive A" Click="C64UFileContextMountA_Click"/>
             <MenuItem Header="Mount to Drive B" Click="C64UFileContextMountB_Click"/>
@@ -241,6 +264,7 @@
         <!-- Context menu for "virtual" runnable entries found inside a mounted .d64/.d81 image -->
         <ContextMenu x:Key="C64UDiskEntryContextMenu">
             <MenuItem Header="Open in editor" Click="C64UFileContextOpen_Click"/>
+            <MenuItem Header="Open as Hex"    Click="C64UFileContextOpenAsHex_Click"/>
             <Separator/>
             <MenuItem Header="Rename..." Click="C64UDiskEntryContextRename_Click"/>
             <MenuItem Header="Delete"    Click="C64UDiskEntryContextDelete_Click"/>
@@ -1145,6 +1169,11 @@
                                     <DataTrigger Binding="{Binding Kind}" Value="Prg">
                                         <Setter Property="ContextMenu" Value="{StaticResource FilePrgContextMenu}"/>
                                     </DataTrigger>
+                                    <!-- Machine-language .prg files get the same "Open in editor" item, which
+                                         opens them in the hex grid instead of as (garbage) BASIC text. -->
+                                    <DataTrigger Binding="{Binding Kind}" Value="Ml">
+                                        <Setter Property="ContextMenu" Value="{StaticResource FilePrgContextMenu}"/>
+                                    </DataTrigger>
                                     <!-- A .d64/.d81 disk image node itself gets "Add File..." alongside the usual
                                          file actions; declared after Kind=Prg so it wins for disk images. -->
                                     <DataTrigger Binding="{Binding IsDiskImage}" Value="True">
@@ -1153,14 +1182,14 @@
                                     <!-- "Virtual" entries live only inside a disk image - Cut/Copy/Paste/Rename/
                                          Delete/Reveal above don't apply, so these two triggers, declared last,
                                          win: no context menu by default, or just "Open in editor" for the
-                                         runnable (confirmed-BASIC) ones. -->
+                                         openable (BASIC/ML) ones. -->
                                     <DataTrigger Binding="{Binding IsVirtual}" Value="True">
                                         <Setter Property="ContextMenu" Value="{x:Null}"/>
                                     </DataTrigger>
                                     <MultiDataTrigger>
                                         <MultiDataTrigger.Conditions>
                                             <Condition Binding="{Binding IsVirtual}" Value="True"/>
-                                            <Condition Binding="{Binding IsRunnable}" Value="True"/>
+                                            <Condition Binding="{Binding IsOpenable}" Value="True"/>
                                         </MultiDataTrigger.Conditions>
                                         <Setter Property="ContextMenu" Value="{StaticResource LocalDiskEntryContextMenu}"/>
                                     </MultiDataTrigger>
@@ -1588,14 +1617,14 @@
                                         <!-- "Virtual" entries live only inside a disk image - none of the actions
                                              above (mount/run/download/rename/delete) apply, so these two triggers,
                                              declared last, win: no context menu by default, or just "Open in
-                                             editor" for the runnable (PRG) ones. -->
+                                             editor" for the openable (BASIC/ML) ones. -->
                                         <DataTrigger Binding="{Binding IsVirtual}" Value="True">
                                             <Setter Property="ContextMenu" Value="{x:Null}"/>
                                         </DataTrigger>
                                         <MultiDataTrigger>
                                             <MultiDataTrigger.Conditions>
                                                 <Condition Binding="{Binding IsVirtual}" Value="True"/>
-                                                <Condition Binding="{Binding IsRunnable}" Value="True"/>
+                                                <Condition Binding="{Binding IsOpenable}" Value="True"/>
                                             </MultiDataTrigger.Conditions>
                                             <Setter Property="ContextMenu" Value="{StaticResource C64UDiskEntryContextMenu}"/>
                                         </MultiDataTrigger>
@@ -1940,6 +1969,7 @@
                              MouseHoverStopped="Editor_MouseHoverStopped"
                              PreviewMouseRightButtonDown="Editor_PreviewMouseRightButtonDown"
                              Visibility="Collapsed"/>
+                    <local:HexEditorControl x:Name="HexEditor" ContextMenu="{StaticResource HexEditorContextMenu}"/>
                     <local:FindBarControl x:Name="FindBar"
                                          HorizontalAlignment="Right"
                                          VerticalAlignment="Top"
