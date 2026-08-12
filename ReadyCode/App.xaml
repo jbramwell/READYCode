@@ -9,6 +9,39 @@
                 <ResourceDictionary Source="Resources/Themes/LightTheme.xaml"/>
             </ResourceDictionary.MergedDictionaries>
 
+            <!-- Shared dialog action-button style (OK/Cancel/Licenses/etc.) — every dialog uses
+                 the theme's neutral button background, never an accent color, and a consistent
+                 30px height, so pull from here instead of redefining a local style per window. -->
+            <Style x:Key="DialogButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="{DynamicResource ThemeSettingsBtnBg}"/>
+                <Setter Property="Foreground" Value="{DynamicResource ThemeSettingsLabelFg}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource ThemeSettingsBtnBorder}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="Height" Value="30"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="4">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="{DynamicResource ThemeSettingsBtnHoverBg}"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter Property="Opacity" Value="0.7"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <!-- Global menu separator style — must live here (not Window.Resources) so that
                  shared ContextMenu resources can find it via the Application resource chain. -->
             <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator">

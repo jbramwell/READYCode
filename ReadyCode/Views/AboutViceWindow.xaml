@@ -25,30 +25,6 @@
             <Setter Property="HorizontalAlignment" Value="Right"/>
         </Style>
 
-        <Style x:Key="OkButton" TargetType="Button">
-            <Setter Property="Background" Value="{DynamicResource ThemeSettingsAccent}"/>
-            <Setter Property="Foreground" Value="#FFFFFF"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" CornerRadius="3">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Opacity" Value="0.85"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter Property="Opacity" Value="0.7"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
     </Window.Resources>
 
     <Border Background="{DynamicResource ThemeSettingsContentBg}"
@@ -78,10 +54,11 @@
                     <TextBlock Grid.Row="1" Grid.Column="1" Margin="10,0,0,0" Style="{StaticResource InfoValue}" Text="{Binding EmulatorPath}"/>
                 </Grid>
 
-                <Button Style="{StaticResource OkButton}"
-                        Content="OK" Width="90" Height="30"
+                <Button Style="{StaticResource DialogButtonStyle}"
+                        Content="OK" Width="90"
                         HorizontalAlignment="Center"
                         IsDefault="True"
+                        IsCancel="True"
                         Click="CloseButton_Click"/>
 
             </StackPanel>

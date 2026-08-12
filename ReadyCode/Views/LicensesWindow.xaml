@@ -10,33 +10,6 @@
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
 
-    <Window.Resources>
-        <Style x:Key="CloseDialogButton" TargetType="Button">
-            <Setter Property="Background" Value="{DynamicResource ThemeSettingsAccent}"/>
-            <Setter Property="Foreground" Value="#FFFFFF"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" CornerRadius="4">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Opacity" Value="0.85"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter Property="Opacity" Value="0.7"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </Window.Resources>
-
     <Grid Margin="20,18,20,20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -66,8 +39,8 @@
         </Border>
 
         <Button Grid.Row="2"
-                Style="{StaticResource CloseDialogButton}"
-                Content="OK" Width="90" Height="30"
+                Style="{StaticResource DialogButtonStyle}"
+                Content="OK" Width="90"
                 HorizontalAlignment="Right"
                 Margin="0,16,0,0"
                 IsDefault="True"
