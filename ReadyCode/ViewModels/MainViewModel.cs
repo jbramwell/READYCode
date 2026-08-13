@@ -46,6 +46,7 @@ public class MainViewModel : INotifyPropertyChanged
     private C64UDriveStatus? _c64uDriveA;
     private C64UDriveStatus? _c64uDriveB;
     private EditorTab? _activeTab;
+    private ComparableFileRef? _pendingCompareFile;
     private readonly SourcePrinter _printer = new();
 
     // How long to wait after loading a standalone (no BASIC loader stub) program - on either
@@ -524,6 +525,22 @@ public class MainViewModel : INotifyPropertyChanged
                 _activeTab.PropertyChanged += OnActiveTabPropertyChanged;
             OnPropertyChanged();
             NotifyFileStateChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the file currently pending as the "left" side of a File Compare, picked via
+    /// "Select file for comparison" in either the Folder Explorer or C64U Explorer context menu.
+    /// Null when nothing is pending. Cleared once a comparison is successfully opened.
+    /// </summary>
+    public ComparableFileRef? PendingCompareFile
+    {
+        get => _pendingCompareFile;
+        set
+        {
+            if (Equals(_pendingCompareFile, value)) return;
+            _pendingCompareFile = value;
+            OnPropertyChanged();
         }
     }
 

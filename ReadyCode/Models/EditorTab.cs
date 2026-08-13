@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
 using ICSharpCode.AvalonEdit.Document;
+using ReadyCode.Diff;
 
 namespace ReadyCode.Models;
 
@@ -116,6 +117,33 @@ public class EditorTab : INotifyPropertyChanged
     /// disassembly mode is cleared (see <c>MainWindow.FileSaveAs_Click</c>).
     /// </summary>
     public IReadOnlyDictionary<int, ushort>? DisassemblyLineAddresses { get; set; }
+
+    /// <summary>
+    /// Gets whether this tab shows the read-only File Compare view instead of the ordinary
+    /// text/hex editor. Mirrors <see cref="IsHexMode"/>/<see cref="IsDisassemblyMode"/>'s
+    /// "nullable field doubles as the mode discriminator" convention: true exactly when
+    /// <see cref="CompareResult"/> is set.
+    /// </summary>
+    public bool IsCompareMode => CompareResult != null;
+
+    /// <summary>
+    /// Gets or sets the computed diff result backing this tab's File Compare view, or null for
+    /// an ordinary tab.
+    /// </summary>
+    public FileCompareResult? CompareResult { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether this tab's File Compare view is showing the unified (single-pane)
+    /// layout rather than the default split (two-pane) layout. Meaningless unless
+    /// <see cref="IsCompareMode"/> is true.
+    /// </summary>
+    public bool CompareIsUnified { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether this tab's File Compare view is ignoring whitespace-only
+    /// differences. Meaningless unless <see cref="IsCompareMode"/> is true.
+    /// </summary>
+    public bool CompareIgnoreWhitespace { get; set; }
 
     /// <summary>
     /// Gets the display file name, falling back to <see cref="DisplayName"/> or "Untitled"

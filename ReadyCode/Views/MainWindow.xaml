@@ -21,6 +21,7 @@
         <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
         <converters:C64UMountedPathConverter x:Key="C64UMountedPathConverter"/>
         <converters:IntSumConverter x:Key="IntSumConverter"/>
+        <converters:PendingCompareHighlightConverter x:Key="PendingCompareHighlightConverter"/>
 
         <!-- Activity bar icon toggle button (left bar — active indicator on left edge) -->
         <Style x:Key="ActivityBarButton" TargetType="ToggleButton">
@@ -171,6 +172,9 @@
             <MenuItem Header="Open in BASIC editor" Click="FileContextOpen_Click"/>
             <MenuItem Header="Open in Hex editor"   Click="FileContextOpenAsHex_Click"/>
             <Separator/>
+            <MenuItem Header="Select file for comparison" Click="CompareSelectFile_Click"/>
+            <MenuItem Header="Compare file" Click="CompareWithSelectedFile_Click"/>
+            <Separator/>
             <MenuItem Header="Reveal in File Explorer" Click="FileContextReveal_Click"/>
             <Separator/>
             <MenuItem Header="Cut"   InputGestureText="Ctrl+X" Click="FileContextCut_Click"/>
@@ -190,6 +194,9 @@
         <ContextMenu x:Key="FilePrgContextMenu" Opened="PasteContextMenu_Opened">
             <MenuItem Header="Open in BASIC editor" Click="FileContextOpen_Click"/>
             <MenuItem Header="Open in Hex editor"   Click="FileContextOpenAsHex_Click"/>
+            <Separator/>
+            <MenuItem Header="Select file for comparison" Click="CompareSelectFile_Click"/>
+            <MenuItem Header="Compare file" Click="CompareWithSelectedFile_Click"/>
             <Separator/>
             <MenuItem Header="Load">
                 <MenuItem Header="C64U" InputGestureText="Ctrl+F5"     Click="FileContextLoadC64U_Click"/>
@@ -218,6 +225,9 @@
         <ContextMenu x:Key="FileMlContextMenu" Opened="PasteContextMenu_Opened">
             <MenuItem Header="Disassemble file"   Click="FileContextDisassemble_Click"/>
             <MenuItem Header="Open in Hex editor" Click="FileContextOpenAsHex_Click"/>
+            <Separator/>
+            <MenuItem Header="Select file for comparison" Click="CompareSelectFile_Click"/>
+            <MenuItem Header="Compare file" Click="CompareWithSelectedFile_Click"/>
             <Separator/>
             <MenuItem Header="Load">
                 <MenuItem Header="C64U" InputGestureText="Ctrl+F5"     Click="FileContextLoadC64U_Click"/>
@@ -248,6 +258,9 @@
             <MenuItem Header="Open in Assembly editor" Click="FileContextOpen_Click"/>
             <MenuItem Header="Open in Hex editor"      Click="FileContextOpenAsHex_Click"/>
             <Separator/>
+            <MenuItem Header="Select file for comparison" Click="CompareSelectFile_Click"/>
+            <MenuItem Header="Compare file" Click="CompareWithSelectedFile_Click"/>
+            <Separator/>
             <MenuItem Header="Load">
                 <MenuItem Header="C64U" InputGestureText="Ctrl+F5"     Click="FileContextLoadC64U_Click"/>
                 <MenuItem Header="VICE" InputGestureText="Ctrl+Alt+F5" Click="FileContextLoadVice_Click"/>
@@ -273,9 +286,12 @@
         <!-- Context menu for "virtual" BASIC entries found inside a mounted .d64/.d81 image in the
              Folder Explorer tree - other kinds use their own dedicated menu below (Prg, Ml, Asm, or
              hex-only for anything unrecognized). Untokenized ASCII source, so no Load/Run items. -->
-        <ContextMenu x:Key="LocalDiskEntryContextMenu">
+        <ContextMenu x:Key="LocalDiskEntryContextMenu" Opened="CompareContextMenu_Opened">
             <MenuItem Header="Open in BASIC editor" Click="LocalDiskEntryContextOpen_Click"/>
             <MenuItem Header="Open in Hex editor"   Click="LocalDiskEntryContextOpenAsHex_Click"/>
+            <Separator/>
+            <MenuItem Header="Select file for comparison" Click="CompareSelectFile_Click"/>
+            <MenuItem Header="Compare file" Click="CompareWithSelectedFile_Click"/>
             <Separator/>
             <MenuItem Header="Rename..." Click="LocalDiskEntryContextRename_Click"/>
             <MenuItem Header="Delete"    Click="LocalDiskEntryContextDelete_Click"/>
@@ -283,9 +299,12 @@
 
         <!-- Context menu for "virtual" Prg entries found inside a mounted .d64/.d81 image in the
              Folder Explorer tree. -->
-        <ContextMenu x:Key="LocalDiskEntryPrgContextMenu">
+        <ContextMenu x:Key="LocalDiskEntryPrgContextMenu" Opened="CompareContextMenu_Opened">
             <MenuItem Header="Open in BASIC editor" Click="LocalDiskEntryContextOpen_Click"/>
             <MenuItem Header="Open in Hex editor"   Click="LocalDiskEntryContextOpenAsHex_Click"/>
+            <Separator/>
+            <MenuItem Header="Select file for comparison" Click="CompareSelectFile_Click"/>
+            <MenuItem Header="Compare file" Click="CompareWithSelectedFile_Click"/>
             <Separator/>
             <MenuItem Header="Load">
                 <MenuItem Header="C64U" InputGestureText="Ctrl+F5"     Click="LocalDiskEntryContextLoadC64U_Click"/>
@@ -302,9 +321,12 @@
 
         <!-- Context menu for "virtual" machine-language entries found inside a mounted .d64/.d81
              image in the Folder Explorer tree. -->
-        <ContextMenu x:Key="LocalDiskEntryMlContextMenu">
+        <ContextMenu x:Key="LocalDiskEntryMlContextMenu" Opened="CompareContextMenu_Opened">
             <MenuItem Header="Disassemble file"   Click="LocalDiskEntryContextDisassemble_Click"/>
             <MenuItem Header="Open in Hex editor" Click="LocalDiskEntryContextOpenAsHex_Click"/>
+            <Separator/>
+            <MenuItem Header="Select file for comparison" Click="CompareSelectFile_Click"/>
+            <MenuItem Header="Compare file" Click="CompareWithSelectedFile_Click"/>
             <Separator/>
             <MenuItem Header="Load">
                 <MenuItem Header="C64U" InputGestureText="Ctrl+F5"     Click="LocalDiskEntryContextLoadC64U_Click"/>
@@ -321,9 +343,12 @@
 
         <!-- Context menu for "virtual" assembly-source entries found inside a mounted .d64/.d81
              image in the Folder Explorer tree. -->
-        <ContextMenu x:Key="LocalDiskEntryAsmContextMenu">
+        <ContextMenu x:Key="LocalDiskEntryAsmContextMenu" Opened="CompareContextMenu_Opened">
             <MenuItem Header="Open in Assembly editor" Click="LocalDiskEntryContextOpen_Click"/>
             <MenuItem Header="Open in Hex editor"      Click="LocalDiskEntryContextOpenAsHex_Click"/>
+            <Separator/>
+            <MenuItem Header="Select file for comparison" Click="CompareSelectFile_Click"/>
+            <MenuItem Header="Compare file" Click="CompareWithSelectedFile_Click"/>
             <Separator/>
             <MenuItem Header="Load">
                 <MenuItem Header="C64U" InputGestureText="Ctrl+F5"     Click="LocalDiskEntryContextLoadC64U_Click"/>
@@ -380,9 +405,12 @@
 
         <!-- Context menu for .bas items in the C64U tree. Untokenized ASCII source, not a
              ready-to-transfer program, so unlike .prg it has no Load/Run items. -->
-        <ContextMenu x:Key="C64UBasicFileContextMenu">
+        <ContextMenu x:Key="C64UBasicFileContextMenu" Opened="CompareContextMenu_Opened">
             <MenuItem Header="Open in BASIC editor" Click="C64UFileContextOpen_Click"/>
             <MenuItem Header="Open in Hex editor"   Click="C64UFileContextOpenAsHex_Click"/>
+            <Separator/>
+            <MenuItem Header="Select file for comparison" Click="CompareSelectFile_Click"/>
+            <MenuItem Header="Compare file" Click="CompareWithSelectedFile_Click"/>
             <Separator/>
             <MenuItem Header="Download to PC..." Click="C64UFileContextDownload_Click"/>
             <Separator/>
@@ -391,9 +419,12 @@
         </ContextMenu>
 
         <!-- Context menu for .prg items confirmed to be BASIC in the C64U tree. -->
-        <ContextMenu x:Key="C64UPrgFileContextMenu">
+        <ContextMenu x:Key="C64UPrgFileContextMenu" Opened="CompareContextMenu_Opened">
             <MenuItem Header="Open in BASIC editor" Click="C64UFileContextOpen_Click"/>
             <MenuItem Header="Open in Hex editor"   Click="C64UFileContextOpenAsHex_Click"/>
+            <Separator/>
+            <MenuItem Header="Select file for comparison" Click="CompareSelectFile_Click"/>
+            <MenuItem Header="Compare file" Click="CompareWithSelectedFile_Click"/>
             <Separator/>
             <MenuItem Header="Load">
                 <MenuItem Header="C64U" InputGestureText="Ctrl+F5"     Click="C64UFileContextLoadC64U_Click"/>
@@ -423,9 +454,12 @@
         </ContextMenu>
 
         <!-- Context menu for machine-language (Ml) items in the C64U tree. -->
-        <ContextMenu x:Key="C64UMlFileContextMenu">
+        <ContextMenu x:Key="C64UMlFileContextMenu" Opened="CompareContextMenu_Opened">
             <MenuItem Header="Disassemble file"   Click="C64UFileContextDisassemble_Click"/>
             <MenuItem Header="Open in Hex editor" Click="C64UFileContextOpenAsHex_Click"/>
+            <Separator/>
+            <MenuItem Header="Select file for comparison" Click="CompareSelectFile_Click"/>
+            <MenuItem Header="Compare file" Click="CompareWithSelectedFile_Click"/>
             <Separator/>
             <MenuItem Header="Load">
                 <MenuItem Header="C64U" InputGestureText="Ctrl+F5"     Click="C64UFileContextLoadC64U_Click"/>
@@ -443,9 +477,12 @@
         </ContextMenu>
 
         <!-- Context menu for assembly-source (Asm) items in the C64U tree. -->
-        <ContextMenu x:Key="C64UAsmFileContextMenu">
+        <ContextMenu x:Key="C64UAsmFileContextMenu" Opened="CompareContextMenu_Opened">
             <MenuItem Header="Open in Assembly editor" Click="C64UFileContextOpen_Click"/>
             <MenuItem Header="Open in Hex editor"      Click="C64UFileContextOpenAsHex_Click"/>
+            <Separator/>
+            <MenuItem Header="Select file for comparison" Click="CompareSelectFile_Click"/>
+            <MenuItem Header="Compare file" Click="CompareWithSelectedFile_Click"/>
             <Separator/>
             <MenuItem Header="Load">
                 <MenuItem Header="C64U" InputGestureText="Ctrl+F5"     Click="C64UFileContextLoadC64U_Click"/>
@@ -480,9 +517,12 @@
         <!-- Context menu for "virtual" BASIC entries found inside a mounted .d64/.d81 image - other
              kinds use their own dedicated menu below (Prg, Ml, Asm, or hex-only for anything
              unrecognized). Untokenized ASCII source, so no Load/Run items. -->
-        <ContextMenu x:Key="C64UDiskEntryContextMenu">
+        <ContextMenu x:Key="C64UDiskEntryContextMenu" Opened="CompareContextMenu_Opened">
             <MenuItem Header="Open in BASIC editor" Click="C64UFileContextOpen_Click"/>
             <MenuItem Header="Open in Hex editor"   Click="C64UFileContextOpenAsHex_Click"/>
+            <Separator/>
+            <MenuItem Header="Select file for comparison" Click="CompareSelectFile_Click"/>
+            <MenuItem Header="Compare file" Click="CompareWithSelectedFile_Click"/>
             <Separator/>
             <MenuItem Header="Rename..." Click="C64UDiskEntryContextRename_Click"/>
             <MenuItem Header="Delete"    Click="C64UDiskEntryContextDelete_Click"/>
@@ -490,9 +530,12 @@
 
         <!-- Context menu for "virtual" Prg entries found inside a mounted .d64/.d81 image in the
              C64U tree. -->
-        <ContextMenu x:Key="C64UDiskEntryPrgContextMenu">
+        <ContextMenu x:Key="C64UDiskEntryPrgContextMenu" Opened="CompareContextMenu_Opened">
             <MenuItem Header="Open in BASIC editor" Click="C64UFileContextOpen_Click"/>
             <MenuItem Header="Open in Hex editor"   Click="C64UFileContextOpenAsHex_Click"/>
+            <Separator/>
+            <MenuItem Header="Select file for comparison" Click="CompareSelectFile_Click"/>
+            <MenuItem Header="Compare file" Click="CompareWithSelectedFile_Click"/>
             <Separator/>
             <MenuItem Header="Load">
                 <MenuItem Header="C64U" InputGestureText="Ctrl+F5"     Click="C64UFileContextLoadC64U_Click"/>
@@ -509,9 +552,12 @@
 
         <!-- Context menu for "virtual" machine-language entries found inside a mounted .d64/.d81
              image in the C64U tree. -->
-        <ContextMenu x:Key="C64UDiskEntryMlContextMenu">
+        <ContextMenu x:Key="C64UDiskEntryMlContextMenu" Opened="CompareContextMenu_Opened">
             <MenuItem Header="Disassemble file"   Click="C64UFileContextDisassemble_Click"/>
             <MenuItem Header="Open in Hex editor" Click="C64UFileContextOpenAsHex_Click"/>
+            <Separator/>
+            <MenuItem Header="Select file for comparison" Click="CompareSelectFile_Click"/>
+            <MenuItem Header="Compare file" Click="CompareWithSelectedFile_Click"/>
             <Separator/>
             <MenuItem Header="Load">
                 <MenuItem Header="C64U" InputGestureText="Ctrl+F5"     Click="C64UFileContextLoadC64U_Click"/>
@@ -528,9 +574,12 @@
 
         <!-- Context menu for "virtual" assembly-source entries found inside a mounted .d64/.d81
              image in the C64U tree. -->
-        <ContextMenu x:Key="C64UDiskEntryAsmContextMenu">
+        <ContextMenu x:Key="C64UDiskEntryAsmContextMenu" Opened="CompareContextMenu_Opened">
             <MenuItem Header="Open in Assembly editor" Click="C64UFileContextOpen_Click"/>
             <MenuItem Header="Open in Hex editor"      Click="C64UFileContextOpenAsHex_Click"/>
+            <Separator/>
+            <MenuItem Header="Select file for comparison" Click="CompareSelectFile_Click"/>
+            <MenuItem Header="Compare file" Click="CompareWithSelectedFile_Click"/>
             <Separator/>
             <MenuItem Header="Load">
                 <MenuItem Header="C64U" InputGestureText="Ctrl+F5"     Click="C64UFileContextLoadC64U_Click"/>
@@ -1450,6 +1499,19 @@
                                         <Setter TargetName="badgeBorder" Property="Background" Value="{DynamicResource ThemeBadgeBasBg}"/>
                                         <Setter TargetName="badgeText"   Property="Foreground" Value="{DynamicResource ThemeBadgeBasFg}"/>
                                     </DataTrigger>
+                                    <!-- Highlights the file currently pending as the "left" side of a File
+                                         Compare (see MainViewModel.PendingCompareFile). -->
+                                    <DataTrigger Value="True">
+                                        <DataTrigger.Binding>
+                                            <MultiBinding Converter="{StaticResource PendingCompareHighlightConverter}">
+                                                <Binding Path="."/>
+                                                <Binding Path="DataContext.ViewModel.PendingCompareFile" RelativeSource="{RelativeSource AncestorType=Window}"/>
+                                            </MultiBinding>
+                                        </DataTrigger.Binding>
+                                        <Setter TargetName="itemText" Property="Foreground" Value="{DynamicResource ThemeSettingsAccent}"/>
+                                        <Setter TargetName="itemText" Property="FontWeight" Value="Bold"/>
+                                        <Setter TargetName="itemIcon" Property="Foreground" Value="{DynamicResource ThemeSettingsAccent}"/>
+                                    </DataTrigger>
                                 </HierarchicalDataTemplate.Triggers>
                             </HierarchicalDataTemplate>
                         </TreeView.ItemTemplate>
@@ -1961,6 +2023,19 @@
                                             <Setter TargetName="itemText" Property="FontWeight" Value="Bold"/>
                                             <Setter TargetName="itemIcon" Property="Foreground" Value="{DynamicResource ThemeSettingsAccent}"/>
                                         </DataTrigger>
+                                        <!-- Highlights the file currently pending as the "left" side of a
+                                             File Compare (see MainViewModel.PendingCompareFile). -->
+                                        <DataTrigger Value="True">
+                                            <DataTrigger.Binding>
+                                                <MultiBinding Converter="{StaticResource PendingCompareHighlightConverter}">
+                                                    <Binding Path="."/>
+                                                    <Binding Path="DataContext.ViewModel.PendingCompareFile" RelativeSource="{RelativeSource AncestorType=Window}"/>
+                                                </MultiBinding>
+                                            </DataTrigger.Binding>
+                                            <Setter TargetName="itemText" Property="Foreground" Value="{DynamicResource ThemeSettingsAccent}"/>
+                                            <Setter TargetName="itemText" Property="FontWeight" Value="Bold"/>
+                                            <Setter TargetName="itemIcon" Property="Foreground" Value="{DynamicResource ThemeSettingsAccent}"/>
+                                        </DataTrigger>
                                     </HierarchicalDataTemplate.Triggers>
                                 </HierarchicalDataTemplate>
                             </TreeView.ItemTemplate>
@@ -2404,6 +2479,7 @@
                                  PreviewMouseRightButtonDown="Editor_PreviewMouseRightButtonDown"/>
                     </Grid>
                     <local:HexEditorControl x:Name="HexEditor" ContextMenu="{StaticResource HexEditorContextMenu}"/>
+                    <local:FileCompareControl x:Name="CompareControl"/>
                     <local:FindBarControl x:Name="FindBar"
                                          HorizontalAlignment="Right"
                                          VerticalAlignment="Top"

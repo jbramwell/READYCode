@@ -22,6 +22,7 @@ using Microsoft.Win32;
 using ReadyCode.Assembler;
 using ReadyCode.C64U;
 using ReadyCode.Diagnostics;
+using ReadyCode.Diff;
 using ReadyCode.Editor;
 using ReadyCode.Formatting;
 using ReadyCode.Minify;
@@ -223,6 +224,15 @@ public partial class MainWindow : Window
         FindBar.ReplaceAllRequested += (_, _) => ExecuteReplaceAll();
 
         HexEditor.ByteEdited += (_, _) => { if (ViewModel.ActiveTab != null) ViewModel.ActiveTab.IsModified = true; };
+
+        CompareControl.ViewStateChanged += (isUnified, ignoreWhitespace) =>
+        {
+            if (ViewModel.ActiveTab is { IsCompareMode: true } tab)
+            {
+                tab.CompareIsUnified = isUnified;
+                tab.CompareIgnoreWhitespace = ignoreWhitespace;
+            }
+        };
 
         // Force pasted text to upper case, just like typed text
         DataObject.AddPastingHandler(Editor, Editor_Pasting);
@@ -701,21 +711,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        ushort origin = (ushort)(prgBytes[0] | (prgBytes[1] << 8));
-        byte[] codeBytes = prgBytes[2..];
-
-        // A BASIC loader stub (e.g. "10 SYS 2064") tokenizes to bytes that are nonsense as 6502
-        // opcodes - detect it and skip straight to the real machine code's own origin instead.
-        List<string>? stubCommentLines = null;
-        if (new PrgConverter().TryDetectBasicStub(prgBytes, out IReadOnlyList<string> stubLines, out int codeOffset))
-        {
-            origin = (ushort)(origin + (codeOffset - 2));
-            codeBytes = prgBytes[codeOffset..];
-            stubCommentLines = ["; --- BASIC loader stub ---", .. stubLines.Select(line => $"; {line}")];
-        }
-
-        var result = new Asm6502Disassembler().Disassemble(
-            codeBytes, origin, ViewModel.Settings.AsmMnemonicIndentColumn, ViewModel.Settings.AsmCommentAlignColumn);
+        var result = PrgFileDisassembler.Disassemble(
+            prgBytes, ViewModel.Settings.AsmMnemonicIndentColumn, ViewModel.Settings.AsmCommentAlignColumn);
 
         var tab = new EditorTab
         {
@@ -727,11 +724,11 @@ public partial class MainWindow : Window
         // The gutter shows the real memory address of each disassembled line, same as the
         // live-memory "Disassemble at..." flow - shifted past the stub comment's own lines, which
         // have no address of their own, when one was prepended above.
-        if (stubCommentLines != null)
+        if (result.StubCommentLines != null)
         {
-            tab.Document.Text = string.Join(Environment.NewLine, stubCommentLines) + Environment.NewLine + result.Source;
+            tab.Document.Text = string.Join(Environment.NewLine, result.StubCommentLines) + Environment.NewLine + result.Source;
             tab.DisassemblyLineAddresses = result.LineAddresses.ToDictionary(
-                kvp => kvp.Key + stubCommentLines.Count, kvp => kvp.Value);
+                kvp => kvp.Key + result.StubCommentLines.Count, kvp => kvp.Value);
         }
         else
         {
@@ -1896,8 +1893,10 @@ public partial class MainWindow : Window
         // Visibility.Collapsed, since a collapsed subtree doesn't participate in layout or fire
         // Loaded events for its elements at all.
         bool isHexMode = tab?.IsHexMode == true;
-        EditorContainer.Visibility = tab != null && !isHexMode ? Visibility.Visible : Visibility.Collapsed;
+        bool isCompareMode = tab?.IsCompareMode == true;
+        EditorContainer.Visibility = tab != null && !isHexMode && !isCompareMode ? Visibility.Visible : Visibility.Collapsed;
         HexEditor.Visibility = isHexMode ? Visibility.Visible : Visibility.Collapsed;
+        CompareControl.Visibility = isCompareMode ? Visibility.Visible : Visibility.Collapsed;
         EmptyStateImage.Visibility = tab != null ? Visibility.Collapsed : Visibility.Visible;
 
         bool isDisassembly = tab?.IsDisassemblyMode == true;
@@ -1918,6 +1917,19 @@ public partial class MainWindow : Window
             // Also stop the debounce timer: RunVariableIndex/RunAsmSymbolIndex already guard
             // against a hex-mode ActiveTab, but a tick already in flight from the previous tab's
             // activation would otherwise still fire ~300ms from now and redo the same work.
+            _diagnosticsTimer.Stop();
+            ViewModel.Variables.Clear();
+            ViewModel.ConstantSymbols.Symbols.Clear();
+            ViewModel.LabelSymbols.Symbols.Clear();
+            _lastAsmResult = null;
+        }
+        else if (tab != null && tab.IsCompareMode)
+        {
+            CompareControl.LoadResult(tab.CompareResult!, tab.CompareIsUnified, tab.CompareIgnoreWhitespace);
+            HideLanguagePanelsForHexMode();
+
+            // A compare tab has no BASIC variables or ASM symbols of its own - same reasoning as
+            // the hex-mode branch above.
             _diagnosticsTimer.Stop();
             ViewModel.Variables.Clear();
             ViewModel.ConstantSymbols.Symbols.Clear();
@@ -3690,10 +3702,25 @@ public partial class MainWindow : Window
 
     #region View Commands
 
+    // Toggles the whole primary side bar open/closed - unlike ExplorerToggle_Click, this must act
+    // on whichever left-panel tab (Explorer/C64U/Search) is actually active, not hardcode
+    // Explorer: hiding while C64U or Search is open needs to hide that panel, not switch to
+    // Explorer and leave the bar open (which previously took a second Ctrl+B press to fix).
     private void TogglePrimarySideBar()
     {
-        ExplorerToggle.IsChecked = ExplorerToggle.IsChecked != true;
-        ExplorerToggle_Click(this, new RoutedEventArgs());
+        var openToggle = LeftPanelToggles.FirstOrDefault(t => t.Toggle.IsChecked == true);
+        if (openToggle.Toggle != null)
+        {
+            openToggle.Toggle.IsChecked = false;
+            ActivateLeftPanel(openToggle.Toggle, openToggle.Panel, openToggle.SettingsKey);
+            return;
+        }
+
+        // Nothing open - reopen whichever tab was active before the bar was last hidden.
+        var toOpen = LeftPanelToggles.FirstOrDefault(t => t.SettingsKey == ViewModel.Settings.ActiveLeftPanel);
+        if (toOpen.Toggle == null) toOpen = LeftPanelToggles.First();
+        toOpen.Toggle.IsChecked = true;
+        ActivateLeftPanel(toOpen.Toggle, toOpen.Panel, toOpen.SettingsKey);
     }
 
     private void ToggleSecondarySideBar()
@@ -4784,6 +4811,134 @@ public partial class MainWindow : Window
         var pasteItem = menu.Items.OfType<MenuItem>().FirstOrDefault(m => Equals(m.Header, "Paste"));
         if (pasteItem != null)
             pasteItem.IsEnabled = Clipboard.ContainsFileDropList();
+
+        UpdateCompareMenuItems(menu, (menu.PlacementTarget as TreeViewItem)?.DataContext);
+    }
+
+    // Wired to every comparable-kind context menu that doesn't already have an Opened handler
+    // for something else (PasteContextMenu_Opened covers the local top-level file menus, which
+    // also need the Paste-enablement check above).
+    private void CompareContextMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        var menu = (ContextMenu)sender;
+        UpdateCompareMenuItems(menu, (menu.PlacementTarget as TreeViewItem)?.DataContext);
+    }
+
+    // Shows/hides and enables/disables "Compare file" based on whether a file is pending
+    // ("Select file for comparison") and, if so, whether the clicked item is the same
+    // C64UFileKind - "Select file for comparison" itself needs no gating, it's always available.
+    private void UpdateCompareMenuItems(ContextMenu menu, object? clickedItem)
+    {
+        var compareItem = menu.Items.OfType<MenuItem>().FirstOrDefault(m => Equals(m.Header, "Compare file"));
+        if (compareItem == null) return;
+
+        var pending = ViewModel.PendingCompareFile;
+        if (pending == null)
+        {
+            compareItem.Visibility = Visibility.Collapsed;
+            compareItem.ToolTip = null;
+            return;
+        }
+
+        ComparableFileRef? clicked = clickedItem switch
+        {
+            FileTreeItem local => ComparableFileRef.FromLocal(local),
+            C64UFileItem remote => ComparableFileRef.FromC64U(remote),
+            _ => null,
+        };
+
+        compareItem.Visibility = Visibility.Visible;
+        bool canCompare = clicked != null && CompareFileResolver.CanCompare(pending, clicked);
+        compareItem.IsEnabled = canCompare;
+        compareItem.ToolTip = canCompare
+            ? null
+            : $"Can't compare '{pending.Name}' with this file - both files must be the same kind.";
+    }
+
+    // "Select file for comparison" - shared by every comparable-kind context menu in both
+    // explorers. Stores the clicked file as the pending "left" side of a File Compare; clicking
+    // it again on the same file that's already pending clears the selection instead, which is
+    // the only way to cancel a pending comparison.
+    private void CompareSelectFile_Click(object sender, RoutedEventArgs e)
+    {
+        var picked = GetClickedComparableFile(sender);
+        if (picked == null) return;
+
+        ViewModel.PendingCompareFile = picked.IsSameFile(ViewModel.PendingCompareFile) ? null : picked;
+    }
+
+    // "Compare file" - shared by every comparable-kind context menu in both explorers. Compares
+    // the pending "left" file (see CompareSelectFile_Click) against the clicked file.
+    private async void CompareWithSelectedFile_Click(object sender, RoutedEventArgs e)
+    {
+        var pending = ViewModel.PendingCompareFile;
+        var second = GetClickedComparableFile(sender);
+        if (pending == null || second == null) return;
+
+        await OpenCompareTabAsync(pending, second);
+    }
+
+    private static ComparableFileRef? GetClickedComparableFile(object sender) =>
+        GetContextItem(sender) is { } local ? ComparableFileRef.FromLocal(local)
+        : GetC64UContextItem(sender) is { } remote ? ComparableFileRef.FromC64U(remote)
+        : null;
+
+    // Resolves both files to text, computes their diff, and opens the result in a new read-only
+    // File Compare tab - mirrors OpenC64UFileInEditorAsync's own in-memory-only fetch pattern
+    // (no temp files) for whichever side is a real remote file.
+    private async Task OpenCompareTabAsync(ComparableFileRef left, ComparableFileRef right)
+    {
+        if (!CompareFileResolver.CanCompare(left, right))
+        {
+            MessageBox.Show("These two files can't be compared - they must be the same kind.",
+                "Compare Files", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        using var _ = BeginBusyCursor();
+        try
+        {
+            byte[] leftBytes = await ReadComparableFileBytesAsync(left);
+            byte[] rightBytes = await ReadComparableFileBytesAsync(right);
+
+            var leftResolved = CompareFileResolver.Resolve(left.Name, leftBytes, left.Kind);
+            var rightResolved = CompareFileResolver.Resolve(right.Name, rightBytes, right.Kind);
+
+            if (leftResolved.Warning != null && rightResolved.Warning != null)
+            {
+                MessageBox.Show($"Could not compare these files:{Environment.NewLine}{leftResolved.Warning}{Environment.NewLine}{rightResolved.Warning}",
+                    "Compare Files", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var result = FileCompareEngine.Compute(
+                leftResolved.DisplayName, leftResolved.Text, leftResolved.IsAsciiStyled, leftResolved.Warning,
+                rightResolved.DisplayName, rightResolved.Text, rightResolved.IsAsciiStyled, rightResolved.Warning,
+                ignoreWhitespace: false);
+
+            var tab = new EditorTab
+            {
+                DisplayName = $"{left.Name} ↔ {right.Name}",
+                CompareResult = result,
+            };
+
+            ViewModel.OpenTabs.Add(tab);
+            ActivateTab(tab);
+            ViewModel.PendingCompareFile = null;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error comparing files: {ex.Message}", "Compare Files",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private async Task<byte[]> ReadComparableFileBytesAsync(ComparableFileRef fileRef)
+    {
+        if (fileRef.VirtualContent != null) return fileRef.VirtualContent;
+        if (fileRef.Source == ComparableFileSource.Local) return File.ReadAllBytes(fileRef.FullPath);
+        if (ViewModel.C64UFtp == null) throw new InvalidOperationException("Not connected to a C64 Ultimate.");
+        return await ViewModel.C64UFtp.DownloadBytesAsync(fileRef.FullPath);
     }
 
     #region Inline Rename

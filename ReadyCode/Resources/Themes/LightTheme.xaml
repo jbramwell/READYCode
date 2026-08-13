@@ -134,4 +134,8 @@
     <SolidColorBrush x:Key="ThemePanelHeaderBg"     Color="#1A1A1A"/>
     <SolidColorBrush x:Key="ThemePanelHeaderFg"     Color="#FFFFFF"/>
 
+    <!-- File Compare: the location pane behind the change-overview map columns and their
+         draggable viewport thumb, replacing the editor panes' own hidden scrollbars. -->
+    <SolidColorBrush x:Key="ThemeCompareLocationPaneBg" Color="#E7E7F3"/>
+
 </ResourceDictionary>

@@ -1,0 +1,207 @@
+<UserControl x:Class="ReadyCode.Views.FileCompareControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
+             xmlns:editor="clr-namespace:ReadyCode.Editor"
+             Background="{DynamicResource ThemeEditorBg}"
+             Visibility="Collapsed">
+
+    <UserControl.Resources>
+        <!-- Matches DisassemblyToolbarControl's toolbar button style, generalized to ButtonBase
+             so the same look applies to the Split/Unified/Ignore-Whitespace ToggleButtons too.
+             IsChecked isn't a ButtonBase property, so its trigger lives in the ToggleButton-only
+             style below rather than here. -->
+        <Style x:Key="CompareToolbarButtonBase" TargetType="ButtonBase">
+            <Setter Property="Background"       Value="{DynamicResource ThemeSettingsBtnBg}"/>
+            <Setter Property="Foreground"       Value="{DynamicResource ThemeSettingsLabelFg}"/>
+            <Setter Property="BorderBrush"      Value="{DynamicResource ThemeSettingsBtnBorder}"/>
+            <Setter Property="BorderThickness"  Value="1"/>
+            <Setter Property="Padding"          Value="10,4"/>
+            <Setter Property="Cursor"           Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ButtonBase">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}"
+                                CornerRadius="2">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background"  Value="{DynamicResource ThemeSettingsBtnHoverBg}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ThemeSettingsTreeSelectedBg}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ThemeSettingsTreeSelectedBg}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="Button" BasedOn="{StaticResource CompareToolbarButtonBase}"/>
+
+        <Style TargetType="ToggleButton" BasedOn="{StaticResource CompareToolbarButtonBase}">
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Background"  Value="{DynamicResource ThemeSettingsTreeSelectedBg}"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource ThemeSettingsAccent}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Toolbar -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource ThemeMenuItemBg}"
+                BorderBrush="{DynamicResource ThemeMenuItemBorder}"
+                BorderThickness="0,0,0,1"
+                Padding="10,6">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <ToggleButton x:Name="SplitViewToggle" Content="Split" IsChecked="True"
+                              Margin="0,0,2,0" Click="SplitViewToggle_Click"/>
+                <ToggleButton x:Name="UnifiedViewToggle" Content="Unified"
+                              Margin="0,0,16,0" Click="UnifiedViewToggle_Click"/>
+
+                <Button x:Name="PrevHunkButton" ToolTip="Previous change" Padding="6,4"
+                        Margin="0,0,2,0" Click="PrevHunk_Click">
+                    <TextBlock Text="&#xE70E;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                </Button>
+                <Button x:Name="NextHunkButton" ToolTip="Next change" Padding="6,4"
+                        Margin="0,0,16,0" Click="NextHunk_Click">
+                    <TextBlock Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                </Button>
+
+                <ToggleButton x:Name="IgnoreWhitespaceToggle" Content="Ignore Whitespace"
+                              Margin="0,0,8,0" Click="IgnoreWhitespaceToggle_Click"/>
+                <Button x:Name="ExpandAllButton" Content="Expand All"
+                        Margin="0,0,16,0" Click="ExpandAll_Click"/>
+
+                <TextBlock x:Name="HunkCountText" VerticalAlignment="Center"
+                           Foreground="{DynamicResource ThemeMenuItemFg}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Warnings, shown only when one side couldn't be fully resolved to text -->
+        <StackPanel Grid.Row="1" x:Name="WarningsPanel" Visibility="Collapsed"
+                    Background="{DynamicResource ThemeMenuItemBg}">
+            <TextBlock x:Name="LeftWarningText" Margin="10,4,10,0" TextWrapping="Wrap"
+                       Foreground="#FFB300" Visibility="Collapsed"/>
+            <TextBlock x:Name="RightWarningText" Margin="10,0,10,4" TextWrapping="Wrap"
+                       Foreground="#FFB300" Visibility="Collapsed"/>
+        </StackPanel>
+
+        <Grid Grid.Row="2">
+            <!-- Split (side-by-side) view -->
+            <Grid x:Name="SplitViewGrid">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" Grid.Column="1" Background="{DynamicResource ThemePanelHeaderBg}" Padding="8,4">
+                    <TextBlock x:Name="LeftHeaderText" FontWeight="Bold" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource ThemePanelHeaderFg}"/>
+                </Border>
+                <Border Grid.Row="0" Grid.Column="3" Background="{DynamicResource ThemePanelHeaderBg}" Padding="8,4">
+                    <TextBlock x:Name="RightHeaderText" FontWeight="Bold" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource ThemePanelHeaderFg}"/>
+                </Border>
+
+                <!-- Fills the header row directly above the location pane with the same background,
+                     so the pane reads as one continuous panel from top to bottom instead of showing
+                     a mismatched gap above it. -->
+                <Border Grid.Row="0" Grid.Column="0" Background="{DynamicResource ThemeCompareLocationPaneBg}"/>
+
+                <!-- Combined "location pane" for both panes' native vertical scrollbars (hidden
+                     below - see VerticalScrollBarVisibility="Hidden" on LeftEditor/RightEditor):
+                     two 25px change-overview map columns with a 21px gap (71px total), and a wider
+                     109px draggable viewport thumb centered over both via the 19px spacer columns
+                     flanking them - both driven by, and driving, the same synced scroll position.
+                     The whole pane is reserved at a fixed 109px (matching the thumb) rather than
+                     letting the thumb overflow an Auto-sized column, so it can never render on top
+                     of LeftEditor - the exact class of bug that broke its scrollbar the first time
+                     an overlay (then an Adorner) extended past its own reserved layout space.
+                     No up/down arrows; drag the thumb or use the mouse wheel over either pane. -->
+                <Grid Grid.Row="1" Grid.Column="0" Width="109" Background="{DynamicResource ThemeCompareLocationPaneBg}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="19"/>
+                        <ColumnDefinition Width="25"/>
+                        <ColumnDefinition Width="21"/>
+                        <ColumnDefinition Width="25"/>
+                        <ColumnDefinition Width="19"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="1" Background="{DynamicResource ThemeEditorBg}"/>
+                    <Border Grid.Column="3" Background="{DynamicResource ThemeEditorBg}"/>
+                    <editor:DiffChangeIndicatorStrip x:Name="LeftMapStrip" Grid.Column="1"/>
+                    <editor:DiffChangeIndicatorStrip x:Name="RightMapStrip" Grid.Column="3"/>
+                    <editor:DiffViewportThumb x:Name="SplitViewportThumb" Grid.Column="0" Grid.ColumnSpan="5"/>
+                </Grid>
+
+                <avalonEdit:TextEditor x:Name="LeftEditor" Grid.Row="1" Grid.Column="1"
+                         IsReadOnly="True" WordWrap="False" ShowLineNumbers="True"
+                         FontFamily="Consolas" FontSize="14" Padding="6"
+                         Background="{DynamicResource ThemeEditorBg}"
+                         Foreground="{DynamicResource ThemeSettingsLabelFg}"
+                         HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Hidden"/>
+
+                <GridSplitter Grid.Row="1" Grid.Column="2" Width="4"
+                              HorizontalAlignment="Stretch" Background="{DynamicResource ThemeSplitter}"/>
+
+                <avalonEdit:TextEditor x:Name="RightEditor" Grid.Row="1" Grid.Column="3"
+                         IsReadOnly="True" WordWrap="False" ShowLineNumbers="True"
+                         FontFamily="Consolas" FontSize="14" Padding="6"
+                         Background="{DynamicResource ThemeEditorBg}"
+                         Foreground="{DynamicResource ThemeSettingsLabelFg}"
+                         HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Hidden"/>
+            </Grid>
+
+            <!-- Unified (single-pane, inline) view -->
+            <Grid x:Name="UnifiedViewGrid" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" Background="{DynamicResource ThemePanelHeaderBg}" Padding="8,4">
+                    <TextBlock x:Name="UnifiedHeaderText" FontWeight="Bold" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource ThemePanelHeaderFg}"/>
+                </Border>
+
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="24"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="1" Background="{DynamicResource ThemeEditorBg}"/>
+                    <avalonEdit:TextEditor x:Name="UnifiedEditor" Grid.Column="0"
+                             IsReadOnly="True" WordWrap="False" ShowLineNumbers="False"
+                             FontFamily="Consolas" FontSize="14" Padding="6"
+                             Background="{DynamicResource ThemeEditorBg}"
+                             Foreground="{DynamicResource ThemeSettingsLabelFg}"
+                             HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Hidden"/>
+                    <editor:DiffChangeIndicatorStrip x:Name="UnifiedMapStrip" Grid.Column="1"/>
+                    <editor:DiffViewportThumb x:Name="UnifiedViewportThumb" Grid.Column="1"/>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>
