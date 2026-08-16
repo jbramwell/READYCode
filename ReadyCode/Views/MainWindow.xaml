@@ -22,6 +22,7 @@
         <converters:C64UMountedPathConverter x:Key="C64UMountedPathConverter"/>
         <converters:IntSumConverter x:Key="IntSumConverter"/>
         <converters:PendingCompareHighlightConverter x:Key="PendingCompareHighlightConverter"/>
+        <converters:DebugVariableValueConverter x:Key="DebugVariableValueConverter"/>
 
         <!-- Activity bar icon toggle button (left bar — active indicator on left edge) -->
         <Style x:Key="ActivityBarButton" TargetType="ToggleButton">
@@ -74,6 +75,36 @@
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Debug panel tab strip toggle button (horizontal — active indicator on bottom edge) -->
+        <Style x:Key="DebugPanelTabToggle" TargetType="ToggleButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTabInactiveFg}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="border" Background="{TemplateBinding Background}"
+                                BorderThickness="0,0,0,2" BorderBrush="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource ThemeActivityBarIndicator}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeTabActiveFg}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeTabActiveFg}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -1085,11 +1116,27 @@
         <KeyBinding Key="F6" Modifiers="Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="139"/>
         <KeyBinding Key="F7" Modifiers="Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="136"/>
         <KeyBinding Key="F8" Modifiers="Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="140"/>
+
+        <!-- Debug (BASIC/VICE). Alt+Shift+F5/Ctrl+Shift+F5 rather than the plain F5 family used
+             by Run/Transfer above, and rather than the spec's original F5/Shift+F5 - every plain
+             F5 combination up through Ctrl+Alt+F5 is already taken by Run/Transfer, and Shift+F5
+             is already the special-character binding right above. F6/F10 are unused, so those
+             keep the spec's original keys. Alt+Shift+F5 only starts a session now (disables
+             itself once one exists) - Continue (Debug menu) has no dedicated key, since the F5
+             family has no combination left unclaimed for it. -->
+        <!-- Ctrl+Shift+F5 (Stop Debugging) and Debug menu's Continue require the session to be
+             halted, not merely active - see the Debug Menu Reorganization behavior notes. -->
+        <KeyBinding Key="F5" Modifiers="Alt+Shift" Command="{Binding ViewModel.DebugStartOnViceCommand}"/>
+        <KeyBinding Key="F5" Modifiers="Ctrl+Shift" Command="{Binding ViewModel.DebugStopCommand}"/>
+        <KeyBinding Key="F6" Command="{Binding ViewModel.DebugPauseCommand}"/>
+        <KeyBinding Key="F10" Command="{Binding ViewModel.DebugStepLineCommand}"/>
+        <KeyBinding Key="F11" Modifiers="Shift" Command="{Binding ViewModel.DebugStepOutCommand}"/>
+        <KeyBinding Key="F9" Command="{Binding DebugToggleBreakpointCommand}"/>
     </Window.InputBindings>
 
     <DockPanel>
         <!-- Menu Bar -->
-        <Menu DockPanel.Dock="Top" Background="{DynamicResource ThemeMenuBg}" Foreground="{DynamicResource ThemeMenuFg}" Height="25">
+        <Menu DockPanel.Dock="Top" Background="{DynamicResource ThemeMenuBg}" Foreground="{DynamicResource ThemeMenuFg}" Height="28">
 
             <MenuItem Header="_File">
                 <MenuItem Header="_New">
@@ -1211,11 +1258,12 @@
                 <MenuItem Header="_Run"      Command="{Binding ViewModel.C64URunCommand}" InputGestureText="F5">
                     <MenuItem.Icon><TextBlock Text="&#xE768;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
                 </MenuItem>
+                <!-- Always disabled - C64U debugging isn't implemented yet (see DebugStartOnC64UCommand). -->
+                <MenuItem Header="_Debug" Command="{Binding ViewModel.DebugStartOnC64UCommand}"
+                          ToolTip="C64U debugging isn't available yet."/>
                 <Separator/>
                 <MenuItem Header="R_eset"     Command="{Binding ViewModel.C64UResetCommand}"/>
                 <MenuItem Header="Re_boot"    Command="{Binding ViewModel.C64URebootCommand}"/>
-                <MenuItem Header="_Pause"     Command="{Binding ViewModel.C64UPauseCommand}"/>
-                <MenuItem Header="Res_ume"    Command="{Binding ViewModel.C64UResumeCommand}"/>
                 <MenuItem Header="Power _Off" Command="{Binding ViewModel.C64UPowerOffCommand}"/>
                 <Separator/>
                 <MenuItem Header="_Disassemble at..." Click="C64UDisassemble_Click"/>
@@ -1228,16 +1276,34 @@
                 <MenuItem Header="_Run"      Command="{Binding ViewModel.ViceRunCommand}" InputGestureText="Alt+F5">
                     <MenuItem.Icon><TextBlock Text="&#xE768;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
                 </MenuItem>
+                <MenuItem Header="_Debug"    Command="{Binding ViewModel.DebugStartOnViceCommand}" InputGestureText="Alt+Shift+F5"/>
                 <Separator/>
                 <MenuItem Header="R_eset"     Command="{Binding ViewModel.ViceResetCommand}"/>
                 <MenuItem Header="Re_boot"    Command="{Binding ViewModel.ViceRebootCommand}"/>
-                <MenuItem Header="_Pause"     Command="{Binding ViewModel.VicePauseCommand}"/>
-                <MenuItem Header="Res_ume"    Command="{Binding ViewModel.ViceResumeCommand}"/>
                 <MenuItem Header="Power _Off" Command="{Binding ViewModel.VicePowerOffCommand}"/>
                 <Separator/>
                 <MenuItem Header="_Disassemble at..." Click="ViceDisassemble_Click"/>
                 <Separator/>
                 <MenuItem Header="_About VICE" Command="{Binding ViewModel.ViceSystemInfoCommand}"/>
+            </MenuItem>
+
+            <MenuItem Header="_Debug">
+                <!-- Starting a session lives in the C64U/VICE menus' own "Debug" items now (the
+                     active target is whichever one was clicked) - this menu only ever acts on a
+                     session already in progress. -->
+                <MenuItem Header="_Continue" Command="{Binding ViewModel.DebugContinueCommand}">
+                    <MenuItem.Icon><TextBlock Text="&#xE768;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="_Pause"     Command="{Binding ViewModel.DebugPauseCommand}"    InputGestureText="F6"/>
+                <MenuItem Header="Step _Line" Command="{Binding ViewModel.DebugStepLineCommand}" InputGestureText="F10"/>
+                <MenuItem Header="Step _Out"  Command="{Binding ViewModel.DebugStepOutCommand}"  InputGestureText="Shift+F11"/>
+                <MenuItem Header="S_top Debugging" Command="{Binding ViewModel.DebugStopCommand}" InputGestureText="Ctrl+Shift+F5"/>
+                <Separator/>
+                <MenuItem Header="Toggle _Breakpoint" Command="{Binding DebugToggleBreakpointCommand}" InputGestureText="F9"/>
+                <Separator/>
+                <MenuItem Header="Show Debu_g Panel"
+                          IsCheckable="True"
+                          IsChecked="{Binding ViewModel.IsDebugPanelOpen, Mode=TwoWay}"/>
             </MenuItem>
 
             <MenuItem Header="_Preferences">
@@ -2350,8 +2416,10 @@
             <!-- Main editor area: tab bar + editor -->
             <Grid Grid.Column="3">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/><!-- Tab bar -->
+                    <RowDefinition Height="*"/><!-- Editor -->
+                    <RowDefinition x:Name="DebugPanelSplitterRow" Height="0"/><!-- Debug panel splitter -->
+                    <RowDefinition x:Name="DebugPanelRow" Height="0" MinHeight="0"/><!-- Debug panel -->
                 </Grid.RowDefinitions>
 
                 <!-- Tab bar -->
@@ -2487,6 +2555,114 @@
                                          Panel.ZIndex="10"
                                          Width="440"/>
                 </Grid>
+
+                <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                              Background="{DynamicResource ThemeFolderExplorerHeaderBorder}"
+                              ResizeBehavior="PreviousAndNext" ResizeDirection="Rows"/>
+
+                <!-- Bottom debug panel: Variables / Breakpoints / Call Stack, shown only while
+                     ViewModel.IsDebugPanelOpen (see ApplyDebugPanelOpenState in code-behind, which
+                     sets DebugPanelRow/DebugPanelSplitterRow's heights to match, mirroring how the
+                     left/right panel columns are toggled). Scoped to this same Grid.Column="3" as
+                     the tab bar/editor above, rather than the whole window, so it lines up with -
+                     and is exactly as wide as - the editor rather than running under the side panels. -->
+                <Border x:Name="DebugPanel" Grid.Row="3"
+                        Background="{DynamicResource ThemeFolderExplorerBg}"
+                        BorderBrush="{DynamicResource ThemeFolderExplorerHeaderBorder}" BorderThickness="0,1,0,0">
+                    <DockPanel>
+                        <Border DockPanel.Dock="Top" Background="{DynamicResource ThemeFolderExplorerHeaderBg}"
+                                BorderBrush="{DynamicResource ThemeFolderExplorerHeaderBorder}" BorderThickness="0,0,0,1">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal">
+                                    <ToggleButton x:Name="DebugVariablesTabToggle" Content="VARIABLES" IsChecked="True"
+                                                  Style="{StaticResource DebugPanelTabToggle}" Click="DebugPanelTab_Click" Tag="Variables"/>
+                                    <ToggleButton x:Name="DebugBreakpointsTabToggle" Content="BREAKPOINTS"
+                                                  Style="{StaticResource DebugPanelTabToggle}" Click="DebugPanelTab_Click" Tag="Breakpoints"/>
+                                    <ToggleButton x:Name="DebugCallStackTabToggle" Content="CALL STACK"
+                                                  Style="{StaticResource DebugPanelTabToggle}" Click="DebugPanelTab_Click" Tag="CallStack"/>
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="11"
+                                        Padding="10,0" Background="Transparent" BorderThickness="0"
+                                        Foreground="{DynamicResource ThemeTabInactiveFg}"
+                                        Click="CloseDebugPanel_Click" ToolTip="Close Debug Panel"/>
+                            </Grid>
+                        </Border>
+
+                        <Grid>
+                            <!-- Value is the only editable column - editing commits via
+                                 DebugVariablesGrid_CellEditEnding (in code-behind, using
+                                 VariableWriteBack), not the column's own OneWay binding, since
+                                 applying an edit means writing to the live machine and re-reading
+                                 the true resulting value rather than trusting whatever was typed. -->
+                            <DataGrid x:Name="DebugVariablesGrid" AutoGenerateColumns="False"
+                                      Background="{DynamicResource ThemeFolderExplorerBg}" Foreground="{DynamicResource ThemeFileFg}"
+                                      RowBackground="{DynamicResource ThemeFolderExplorerBg}"
+                                      BorderThickness="0" GridLinesVisibility="All"
+                                      HorizontalGridLinesBrush="{DynamicResource ThemeDataGridLineBrush}"
+                                      VerticalGridLinesBrush="{DynamicResource ThemeDataGridLineBrush}"
+                                      HeadersVisibility="Column"
+                                      CanUserAddRows="False" CanUserDeleteRows="False"
+                                      ItemsSource="{Binding ViewModel.DebugVariables}"
+                                      CellEditEnding="DebugVariablesGrid_CellEditEnding">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="120" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="80" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="Value" Width="*" IsReadOnly="False"
+                                                         Binding="{Binding Converter={StaticResource DebugVariableValueConverter}, Mode=OneWay}"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+
+                            <DataGrid x:Name="DebugBreakpointsGrid" AutoGenerateColumns="False" Visibility="Collapsed"
+                                      Background="{DynamicResource ThemeFolderExplorerBg}" Foreground="{DynamicResource ThemeFileFg}"
+                                      RowBackground="{DynamicResource ThemeFolderExplorerBg}"
+                                      BorderThickness="0" GridLinesVisibility="All"
+                                      HorizontalGridLinesBrush="{DynamicResource ThemeDataGridLineBrush}"
+                                      VerticalGridLinesBrush="{DynamicResource ThemeDataGridLineBrush}"
+                                      HeadersVisibility="Column"
+                                      CanUserAddRows="False" CanUserDeleteRows="False"
+                                      ItemsSource="{Binding ViewModel.BreakpointStore.Breakpoints}"
+                                      MouseDoubleClick="DebugBreakpointsGrid_MouseDoubleClick">
+                                <DataGrid.Columns>
+                                    <!-- A plain CheckBox in a template column, not
+                                         DataGridCheckBoxColumn - the latter only pushes its value
+                                         back to the source once the DataGrid's own cell-edit
+                                         lifecycle ends (the row losing focus), so the gutter dot
+                                         and live VICE session - both driven off Breakpoint's
+                                         PropertyChanged - didn't update until then either. A bare
+                                         CheckBox isn't tied to that lifecycle at all: with
+                                         UpdateSourceTrigger=PropertyChanged, clicking it commits
+                                         immediately. -->
+                                    <DataGridTemplateColumn Header="On" Width="40">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding IsEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="File" Binding="{Binding FilePath}" Width="*" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="Line" Binding="{Binding LineNumber}" Width="60" IsReadOnly="True"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+
+                            <ListView x:Name="DebugCallStackList" Visibility="Collapsed"
+                                      Background="{DynamicResource ThemeFolderExplorerBg}" Foreground="{DynamicResource ThemeFileFg}"
+                                      BorderThickness="0"
+                                      ItemsSource="{Binding ViewModel.DebugCallStack}"
+                                      MouseDoubleClick="DebugCallStackList_MouseDoubleClick">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding ReturnLineNumber, StringFormat=Returns to line {0}}" Margin="4,2"/>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </Grid>
+                    </DockPanel>
+                </Border>
             </Grid>
 
             <!-- Right GridSplitter -->

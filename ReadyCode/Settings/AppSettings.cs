@@ -183,6 +183,21 @@ public class AppSettings
     public bool ShowVariableExplorer { get; set; } = true;
 
     /// <summary>
+    /// Whether the bottom debug panel (Variables/Breakpoints/Call Stack) is open.
+    /// </summary>
+    public bool IsDebugPanelOpen { get; set; } = false;
+
+    /// <summary>
+    /// Remembers the height of the bottom debug panel.
+    /// </summary>
+    public double DebugPanelHeight { get; set; } = 200;
+
+    /// <summary>
+    /// Remembers which debug-panel tab was last active: "Variables", "Breakpoints", or "CallStack".
+    /// </summary>
+    public string ActiveDebugPanelTab { get; set; } = "Variables";
+
+    /// <summary>
     /// Whether the editor flags duplicate line numbers, unterminated strings, invalid GOTO/GOSUB
     /// targets, and unmatched NEXT variables as squiggle diagnostics.
     /// </summary>

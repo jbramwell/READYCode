@@ -3,6 +3,7 @@
 
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -10,6 +11,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -21,6 +23,7 @@ using ICSharpCode.AvalonEdit.Rendering;
 using Microsoft.Win32;
 using ReadyCode.Assembler;
 using ReadyCode.C64U;
+using ReadyCode.Debugger;
 using ReadyCode.Diagnostics;
 using ReadyCode.Diff;
 using ReadyCode.Editor;
@@ -80,6 +83,13 @@ public partial class MainWindow : Window
     private int _findMatchIndex = -1;
     private CurrentLineBorderRenderer _currentLineBorderRenderer = null!;
     private readonly ErrorSquiggleRenderer _errorSquiggleRenderer;
+    private readonly BreakpointMargin _breakpointMargin = new();
+    private readonly DebugCurrentLineRenderer _debugCurrentLineRenderer = new();
+
+    // The active BASIC tab's line address table, rebuilt whenever RunDocumentAnalysis runs -
+    // used to resolve breakpoint-gutter clicks (document line -> BASIC line number) without
+    // rebuilding it on every single click.
+    private BasicLineAddressTable? _activeTabLineAddressTable;
 
     // Debounces BasicDiagnostics.Analyze so a full re-analysis doesn't run on every keystroke.
     private readonly DispatcherTimer _diagnosticsTimer;
@@ -208,13 +218,39 @@ public partial class MainWindow : Window
         ViewCodeStatisticsCommand   = new RelayCommand(_ => ShowCodeStatistics(), _ => HasNonEmptyActiveTab());
         ViewVariablesCommand        = new RelayCommand(_ => { ViewModel.ShowVariableExplorer = !ViewModel.ShowVariableExplorer; });
 
+        DebugToggleBreakpointCommand = new RelayCommand(_ => ToggleBreakpointAtCaret(),
+            _ => ViewModel.ActiveTab is { Language: EditorLanguage.Basic });
+
         ViewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(MainViewModel.ShowColumnGuide) or nameof(MainViewModel.WordWrap))
                 ApplyEditorAppearance();
             if (e.PropertyName == nameof(MainViewModel.ShowVariableExplorer))
                 ApplyVariableExplorerVisibility();
+            if (e.PropertyName == nameof(MainViewModel.DebugCurrentDocumentLine))
+                ApplyDebugCurrentLine();
+            if (e.PropertyName == nameof(MainViewModel.IsDebugPanelOpen))
+                ApplyDebugPanelOpenState();
         };
+
+        _breakpointMargin.BreakpointToggleRequested += (_, documentLine) => ToggleBreakpointAtDocumentLine(documentLine);
+
+        // Reacts to a breakpoint's IsEnabled changing by any means - in practice, right now,
+        // only the Breakpoints grid's "On" checkbox - rather than relying on the grid's own
+        // CellEditEnding event, which turned out not to reliably fire (or fire late enough for
+        // the binding to have committed) for every row when multiple checkboxes were toggled in
+        // quick succession, silently leaving the gutter dot and the live VICE session out of
+        // sync with what the checkbox actually showed.
+        ViewModel.BreakpointStore.Breakpoints.CollectionChanged += BreakpointStore_CollectionChanged;
+        foreach (var breakpoint in ViewModel.BreakpointStore.Breakpoints)
+            breakpoint.PropertyChanged += Breakpoint_PropertyChanged;
+
+        // Keeps the Breakpoints grid sorted by file then line, regardless of add/remove order -
+        // the default CollectionView WPF creates for any ItemsSource re-sorts automatically as
+        // the underlying ObservableCollection changes, so this only needs to be set up once.
+        var breakpointsView = CollectionViewSource.GetDefaultView(ViewModel.BreakpointStore.Breakpoints);
+        breakpointsView.SortDescriptions.Add(new SortDescription(nameof(Breakpoint.FilePath), ListSortDirection.Ascending));
+        breakpointsView.SortDescriptions.Add(new SortDescription(nameof(Breakpoint.LineNumber), ListSortDirection.Ascending));
 
         FindBar.CloseRequested      += (_, _) => { _findHighlightColorizer.Clear(); Editor.TextArea.TextView.Redraw(); Editor.Focus(); };
         FindBar.SearchChanged       += (_, _) => UpdateFindMatches();
@@ -246,6 +282,7 @@ public partial class MainWindow : Window
         Editor.TextArea.TextView.BackgroundRenderers.Add(_currentLineBorderRenderer);
         _errorSquiggleRenderer = new ErrorSquiggleRenderer(Editor);
         Editor.TextArea.TextView.BackgroundRenderers.Add(_errorSquiggleRenderer);
+        Editor.TextArea.TextView.BackgroundRenderers.Add(_debugCurrentLineRenderer);
         _diagnosticsTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _diagnosticsTimer.Tick += (_, _) => { _diagnosticsTimer.Stop(); RunDocumentAnalysis(); };
         Editor.TextArea.Caret.PositionChanged += (_, _) =>
@@ -333,6 +370,10 @@ public partial class MainWindow : Window
             }
         }
         ApplyVariableExplorerVisibility();
+
+        ActivateDebugPanelTab(ViewModel.Settings.ActiveDebugPanelTab);
+        if (ViewModel.IsDebugPanelOpen)
+            ApplyDebugPanelOpenState();
 
         if (ViewModel.Project.IsOpen && Directory.Exists(ViewModel.Project.RootPath))
         {
@@ -454,6 +495,11 @@ public partial class MainWindow : Window
     public ICommand ViewCodeStatisticsCommand   { get; }
     /// <summary>Gets the command that toggles the Variable Explorer section.</summary>
     public ICommand ViewVariablesCommand        { get; }
+
+    // Debug (MainWindow-owned since it needs the caret's current line, unlike the session
+    // lifecycle commands on MainViewModel)
+    /// <summary>Gets the command that sets or clears a breakpoint on the caret's current BASIC line.</summary>
+    public ICommand DebugToggleBreakpointCommand { get; }
 
     #endregion
 
@@ -2017,6 +2063,8 @@ public partial class MainWindow : Window
 
             if (!Editor.TextArea.LeftMargins.Contains(_asmLineNumberMargin))
                 Editor.TextArea.LeftMargins.Insert(0, _asmLineNumberMargin);
+
+            Editor.TextArea.LeftMargins.Remove(_breakpointMargin);
         }
         else
         {
@@ -2026,6 +2074,11 @@ public partial class MainWindow : Window
             transformers.Add(_stringLiteralColorizer);
             transformers.Add(_dataLiteralColorizer);
             transformers.Add(_remCommentColorizer);
+
+            if (language == EditorLanguage.Basic && !Editor.TextArea.LeftMargins.Contains(_breakpointMargin))
+                Editor.TextArea.LeftMargins.Insert(0, _breakpointMargin);
+            else if (language != EditorLanguage.Basic)
+                Editor.TextArea.LeftMargins.Remove(_breakpointMargin);
 
             Editor.TextArea.LeftMargins.Remove(_asmLineNumberMargin);
         }
@@ -6073,6 +6126,254 @@ public partial class MainWindow : Window
         RunFolding();
         RunVariableIndex();
         RunAsmSymbolIndex(asmResult);
+        RefreshBreakpointMargin();
+    }
+
+    // Rebuilds the active tab's line address table and recomputes which document lines the
+    // breakpoint gutter should mark, from BreakpointStore's BASIC-line-number-keyed entries. A
+    // no-op margin (nothing shown) for anything that isn't an ordinary BASIC text tab.
+    private void RefreshBreakpointMargin()
+    {
+        var tab = ViewModel.ActiveTab;
+        if (tab is not { Language: EditorLanguage.Basic, IsHexMode: false, IsCompareMode: false, IsDisassemblyMode: false })
+        {
+            _activeTabLineAddressTable = null;
+            _breakpointMargin.EnabledBreakpointLines = new HashSet<int>();
+            _breakpointMargin.DisabledBreakpointLines = new HashSet<int>();
+            _breakpointMargin.InvalidateVisual();
+            return;
+        }
+
+        var lineTable = BasicLineAddressTable.Build(tab.Document.Text);
+        _activeTabLineAddressTable = lineTable;
+
+        string fileKey = tab.FilePath ?? tab.FileName;
+        var enabledLines = new HashSet<int>();
+        foreach (ushort basicLine in ViewModel.BreakpointStore.EnabledLinesFor(fileKey))
+            if (lineTable.BasicLineToDocumentLine.TryGetValue(basicLine, out int documentLine))
+                enabledLines.Add(documentLine);
+
+        var disabledLines = new HashSet<int>();
+        foreach (ushort basicLine in ViewModel.BreakpointStore.DisabledLinesFor(fileKey))
+            if (lineTable.BasicLineToDocumentLine.TryGetValue(basicLine, out int documentLine))
+                disabledLines.Add(documentLine);
+
+        _breakpointMargin.EnabledBreakpointLines = enabledLines;
+        _breakpointMargin.DisabledBreakpointLines = disabledLines;
+        _breakpointMargin.InvalidateVisual();
+    }
+
+    // F9 / "Toggle Breakpoint": same effect as clicking the gutter, but at the caret's line.
+    private void ToggleBreakpointAtCaret() => ToggleBreakpointAtDocumentLine(Editor.TextArea.Caret.Line);
+
+    // Handles a breakpoint-gutter click: resolves the document line to a BASIC line number via
+    // the active tab's line address table, toggles it in the store, refreshes the gutter, and -
+    // if a debug session is currently attached to this same tab - updates VICE's live checkpoint
+    // immediately rather than waiting for the next debug session to pick it up.
+    private async void ToggleBreakpointAtDocumentLine(int documentLine)
+    {
+        var tab = ViewModel.ActiveTab;
+        if (tab is not { Language: EditorLanguage.Basic }) return;
+
+        var lineTable = _activeTabLineAddressTable ?? BasicLineAddressTable.Build(tab.Document.Text);
+        if (!lineTable.DocumentLineToBasicLine.TryGetValue(documentLine, out ushort basicLine))
+            return; // blank/no-code line - not a valid breakpoint location
+
+        string fileKey = tab.FilePath ?? tab.FileName;
+        var addedBreakpoint = ViewModel.BreakpointStore.Toggle(fileKey, basicLine);
+        RefreshBreakpointMargin();
+        ViewModel.PersistBreakpoints();
+
+        if (ViewModel.DebugSession is { } session && ReferenceEquals(ViewModel.DebugTab, tab))
+        {
+            try
+            {
+                if (addedBreakpoint != null)
+                    await session.SetLineBreakpointAsync(basicLine);
+                else
+                    await session.RemoveBreakpointAsync(basicLine);
+            }
+            catch (Exception ex)
+            {
+                ViewModel.SetStatus($"Failed to update breakpoint on VICE: {ex.Message}", StatusType.Error);
+            }
+        }
+    }
+
+    // Pushes the halted line (if any) into the current-execution-line renderer, activating the
+    // debug session's own tab first if the user was looking at a different one, and scrolling/
+    // placing the caret there - mirrors MoveCaretToDocumentLine's scroll behavior without
+    // stealing focus away from wherever the user was (e.g. the debug panel).
+    private void ApplyDebugCurrentLine()
+    {
+        int? line = ViewModel.DebugCurrentDocumentLine;
+        _debugCurrentLineRenderer.CurrentLine = line;
+
+        if (line is { } documentLine)
+        {
+            if (!ReferenceEquals(ViewModel.ActiveTab, ViewModel.DebugTab) && ViewModel.DebugTab != null)
+                ActivateTab(ViewModel.DebugTab);
+
+            if (Editor.Document != null && documentLine <= Editor.Document.LineCount)
+                Editor.ScrollToLine(documentLine);
+        }
+
+        Editor.TextArea.TextView.InvalidateLayer(KnownLayer.Background);
+        Editor.TextArea.TextView.Redraw();
+    }
+
+    // Toggles the bottom debug panel's row height open/closed, mirroring how the left/right
+    // panel columns are toggled (see e.g. ActivateRightPanel/CloseRightPanel).
+    private void ApplyDebugPanelOpenState()
+    {
+        if (ViewModel.IsDebugPanelOpen)
+        {
+            DebugPanelRow.Height = new GridLength(ViewModel.Settings.DebugPanelHeight);
+            DebugPanelSplitterRow.Height = new GridLength(4);
+        }
+        else
+        {
+            if (DebugPanelRow.Height.Value > 0)
+                ViewModel.Settings.DebugPanelHeight = DebugPanelRow.Height.Value;
+            DebugPanelRow.Height = new GridLength(0);
+            DebugPanelSplitterRow.Height = new GridLength(0);
+        }
+    }
+
+    // The debug panel's three tabs (Variables/Breakpoints/Call Stack), paired with the content
+    // element each one shows - mirrors RightPanelToggles' shape for the same reasons.
+    private IEnumerable<(ToggleButton Toggle, UIElement Content, string Key)> DebugPanelTabs => new (ToggleButton, UIElement, string)[]
+    {
+        (DebugVariablesTabToggle,   DebugVariablesGrid,   "Variables"),
+        (DebugBreakpointsTabToggle, DebugBreakpointsGrid, "Breakpoints"),
+        (DebugCallStackTabToggle,   DebugCallStackList,   "CallStack"),
+    };
+
+    private void ActivateDebugPanelTab(string key)
+    {
+        var target = DebugPanelTabs.FirstOrDefault(t => t.Key == key);
+        if (target.Toggle == null) target = DebugPanelTabs.First();
+
+        foreach (var (toggle, content, _) in DebugPanelTabs)
+        {
+            bool isTarget = ReferenceEquals(toggle, target.Toggle);
+            toggle.IsChecked = isTarget;
+            content.Visibility = isTarget ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        ViewModel.Settings.ActiveDebugPanelTab = target.Key;
+    }
+
+    private void DebugPanelTab_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is ToggleButton { Tag: string key })
+            ActivateDebugPanelTab(key);
+    }
+
+    private void CloseDebugPanel_Click(object sender, RoutedEventArgs e) => ViewModel.IsDebugPanelOpen = false;
+
+    // Jumps to a breakpoint's line in its file, if that file is already open in a tab - doesn't
+    // open it from disk if it isn't, keeping this a pure navigation shortcut rather than a
+    // second file-opening code path to keep in sync with the real one.
+    private void DebugBreakpointsGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (DebugBreakpointsGrid.SelectedItem is not Breakpoint breakpoint) return;
+
+        var tab = ViewModel.OpenTabs.FirstOrDefault(t =>
+            string.Equals(t.FilePath, breakpoint.FilePath, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(t.FileName, breakpoint.FilePath, StringComparison.OrdinalIgnoreCase));
+        if (tab == null) return;
+
+        ActivateTab(tab);
+        var lineTable = BasicLineAddressTable.Build(tab.Document.Text);
+        if (lineTable.BasicLineToDocumentLine.TryGetValue(breakpoint.LineNumber, out int documentLine))
+            MoveCaretToDocumentLine(documentLine);
+    }
+
+    // Commits a Variables-grid edit: encodes the typed text via VariableWriteBack (float/integer/
+    // string, per the variable's type), writes it to the live machine, then re-reads the whole
+    // variable table so the grid shows the true resulting value rather than trusting the typed
+    // text verbatim - matters most for a string, which silently space-pads to its original
+    // length. Always cancels the grid's own edit (rather than letting its OneWay binding no-op)
+    // so this is the one path that ever applies a Variables-grid edit.
+    private async void DebugVariablesGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
+    {
+        if (e.EditAction != DataGridEditAction.Commit) return;
+        if (e.Row.Item is not BasicVariable variable) return;
+        if (e.EditingElement is not TextBox textBox) return;
+        if (ViewModel.DebugSession is not { } session) return;
+
+        e.Cancel = true;
+        string enteredText = textBox.Text;
+
+        try
+        {
+            var (address, bytes) = VariableWriteBack.Encode(variable, enteredText);
+            await session.WriteMemoryAsync(address, bytes);
+            ViewModel.SetStatus($"{variable.Name} updated.", StatusType.Info);
+        }
+        catch (Exception ex)
+        {
+            ViewModel.SetStatus($"Failed to update {variable.Name}: {ex.Message}", StatusType.Error);
+        }
+
+        await ViewModel.RefreshDebugVariablesAndCallStackAsync();
+    }
+
+    // Keeps each breakpoint's PropertyChanged subscription in sync as the store's contents
+    // change (gutter clicks add/remove; ReplaceAll on project load swaps the whole set).
+    private void BreakpointStore_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems != null)
+            foreach (Breakpoint breakpoint in e.OldItems)
+                breakpoint.PropertyChanged -= Breakpoint_PropertyChanged;
+
+        if (e.NewItems != null)
+            foreach (Breakpoint breakpoint in e.NewItems)
+                breakpoint.PropertyChanged += Breakpoint_PropertyChanged;
+    }
+
+    // Reacts to a breakpoint's IsEnabled changing (the Breakpoints grid's "On" checkbox, or any
+    // future path that flips it) - persists the change, refreshes the gutter dot, and - if a
+    // debug session is attached to this same file - updates VICE's live checkpoint too, since a
+    // debug session tracks its own independent set of active breakpoint lines (see
+    // ViceDebugSession) that a plain IsEnabled flip on the model doesn't touch by itself.
+    private async void Breakpoint_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(Breakpoint.IsEnabled)) return;
+        if (sender is not Breakpoint breakpoint) return;
+
+        ViewModel.PersistBreakpoints();
+        RefreshBreakpointMargin();
+
+        if (ViewModel.DebugSession is not { } session || ViewModel.DebugTab == null) return;
+        string debugTabFileKey = ViewModel.DebugTab.FilePath ?? ViewModel.DebugTab.FileName;
+        if (!string.Equals(breakpoint.FilePath, debugTabFileKey, StringComparison.OrdinalIgnoreCase)) return;
+
+        try
+        {
+            if (breakpoint.IsEnabled)
+                await session.SetLineBreakpointAsync(breakpoint.LineNumber);
+            else
+                await session.RemoveBreakpointAsync(breakpoint.LineNumber);
+        }
+        catch (Exception ex)
+        {
+            ViewModel.SetStatus($"Failed to update breakpoint on VICE: {ex.Message}", StatusType.Error);
+        }
+    }
+
+    // Jumps to a GOSUB frame's return line in the debug session's own tab (a call stack is only
+    // ever shown for the file currently being debugged).
+    private void DebugCallStackList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (DebugCallStackList.SelectedItem is not GosubFrame frame || frame.DocumentLine is not int documentLine) return;
+        if (ViewModel.DebugTab == null) return;
+
+        if (!ReferenceEquals(ViewModel.ActiveTab, ViewModel.DebugTab))
+            ActivateTab(ViewModel.DebugTab);
+
+        MoveCaretToDocumentLine(documentLine);
     }
 
     // Re-analyzes the active document and refreshes the squiggle underlines: for BASIC, undefined

@@ -380,18 +380,34 @@ public class ViceClient
         }
     }
 
-    private static byte[] BuildRequest(byte commandId, byte[] body)
+    private static byte[] BuildRequest(byte commandId, byte[] body) => BuildRequest(_requestId, commandId, body);
+
+    // Promoted to internal (rather than kept private) so ViceDebugSession can build binary
+    // monitor requests with its own incrementing request IDs, reusing the exact same wire
+    // framing instead of duplicating it - a debug session has multiple commands in flight at
+    // once, unlike every other ViceClient method, which is why it needs a real request ID here
+    // rather than the fixed value every one-shot call uses.
+    internal static byte[] BuildRequest(uint requestId, byte commandId, byte[] body)
     {
         byte[] request = new byte[11 + body.Length];
         request[0] = 0x02;         // STX
         request[1] = _apiVersion;
         BitConverter.GetBytes((uint)body.Length).CopyTo(request, 2);
-        BitConverter.GetBytes(_requestId).CopyTo(request, 6);
+        BitConverter.GetBytes(requestId).CopyTo(request, 6);
         request[10] = commandId;
         body.CopyTo(request, 11);
 
         return request;
     }
+
+    // How long a one-shot command waits for VICE's reply before giving up. Without this, a
+    // reply that never arrives - VICE stuck processing an unsupported/malformed command, or
+    // stuck at a breakpoint another connection armed, flooding this connection with unsolicited
+    // events it never finds a matching request ID among - hangs the calling method (and
+    // everything awaiting it) forever, with no way to recover short of killing the process. Every
+    // one-shot command is a fresh connection anyway, so a slow-but-legitimate reply just means a
+    // retry has to reconnect - cheap, unlike leaving the caller stuck indefinitely.
+    private static readonly TimeSpan _responseTimeout = TimeSpan.FromSeconds(10);
 
     // Reads binary monitor response messages until the direct reply to our request arrives,
     // skipping any unsolicited async events (JAM/STOPPED/RESUMED, sent with request ID 0xffffffff).
@@ -404,6 +420,21 @@ public class ViceClient
     // Same as ReadResponseErrorCodeAsync, but also returns the response body (needed by
     // commands like VICE info that return data beyond a plain success/failure code).
     private static async Task<(byte ErrorCode, byte[] Body)> ReadResponseAsync(NetworkStream stream)
+    {
+        try
+        {
+            return await ReadResponseCoreAsync(stream).WaitAsync(_responseTimeout);
+        }
+        catch (TimeoutException)
+        {
+            throw new TimeoutException(
+                $"VICE did not respond within {_responseTimeout.TotalSeconds:0}s. It may be stuck (e.g. halted " +
+                "at a breakpoint another connection armed) or the binary monitor may have rejected the request " +
+                "without an error reply.");
+        }
+    }
+
+    private static async Task<(byte ErrorCode, byte[] Body)> ReadResponseCoreAsync(NetworkStream stream)
     {
         for (int i = 0; i < 20; i++)
         {
@@ -434,7 +465,9 @@ public class ViceClient
         };
     }
 
-    private static async Task<byte[]> ReadExactlyAsync(NetworkStream stream, int count)
+    // Promoted to internal so ViceDebugSession's own response-dispatch loop can reuse this
+    // rather than duplicating raw socket-read framing.
+    internal static async Task<byte[]> ReadExactlyAsync(NetworkStream stream, int count)
     {
         byte[] buffer = new byte[count];
         int offset = 0;

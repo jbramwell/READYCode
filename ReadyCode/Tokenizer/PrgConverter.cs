@@ -377,9 +377,11 @@ public class PrgConverter
     }
 
     /// <summary>
-    /// Parses the line number and code from a BASIC line.
+    /// Parses the line number and code from a BASIC line. Internal (rather than private) so
+    /// <see cref="ReadyCode.Debugger.BasicLineAddressTable"/> can parse lines identically to
+    /// <see cref="ConvertToPrg"/> without duplicating this logic or letting the two drift apart.
     /// </summary>
-    private (ushort lineNumber, string code)? ParseLineNumberAndCode(string line)
+    internal static (ushort lineNumber, string code)? ParseLineNumberAndCode(string line)
     {
         int i = 0;
         while (i < line.Length && char.IsDigit(line[i])) i++;

@@ -10,6 +10,7 @@ using System.Windows;
 using System.Windows.Input;
 using ReadyCode.Assembler;
 using ReadyCode.C64U;
+using ReadyCode.Debugger;
 using ReadyCode.Minify;
 using ReadyCode.Models;
 using ReadyCode.Printing;
@@ -48,6 +49,12 @@ public class MainViewModel : INotifyPropertyChanged
     private EditorTab? _activeTab;
     private ComparableFileRef? _pendingCompareFile;
     private readonly SourcePrinter _printer = new();
+
+    private ViceDebugSession? _debugSession;
+    private bool _isDebugStopped;
+    private EditorTab? _debugTab;
+    private BasicLineAddressTable? _debugLineAddressTable;
+    private int? _debugCurrentDocumentLine;
 
     // How long to wait after loading a standalone (no BASIC loader stub) program - on either
     // the C64U (load_prg) or VICE (autostart with RL=0) - before typing a "SYS <origin>"
@@ -97,6 +104,22 @@ public class MainViewModel : INotifyPropertyChanged
         ViceResumeCommand   = new RelayCommand(async _ => await ViceMachineActionAsync(c => c.ResumeAsync(),                            "VICE machine resumed."));
         VicePowerOffCommand = new RelayCommand(async _ => await ViceMachineActionAsync(c => c.PowerOffAsync(Settings.ViceEmulatorPath), "VICE emulator closed."));
         ViceSystemInfoCommand = new RelayCommand(async _ => await ShowViceSystemInfoAsync());
+
+        // Starting a session now happens from the C64U/VICE menus' own "Debug" items (one per
+        // target, since the active debug target is determined solely by which one was clicked);
+        // the Debug menu itself only ever acts on a session already in progress.
+        DebugStartOnViceCommand = new RelayCommand(async _ => await DebugStartOnViceAsync(),
+            _ => !IsDebugging && ActiveTab is { Language: EditorLanguage.Basic });
+        // C64U debugging isn't implemented yet (a materially different mechanism - a software
+        // debug stub injected into the running BASIC interpreter - planned as a separate
+        // follow-up), so this is permanently disabled rather than wired to a working start flow.
+        DebugStartOnC64UCommand = new RelayCommand(_ => { }, _ => false);
+
+        DebugContinueCommand = new RelayCommand(async _ => await DebugContinueAsync(), _ => IsDebugging && IsDebugStopped);
+        DebugPauseCommand = new RelayCommand(async _ => await DebugPauseAsync(), _ => IsDebugging && !IsDebugStopped);
+        DebugStepLineCommand = new RelayCommand(async _ => await DebugStepLineAsync(), _ => IsDebugging && IsDebugStopped);
+        DebugStepOutCommand = new RelayCommand(async _ => await DebugStepOutAsync(), _ => IsDebugging && IsDebugStopped);
+        DebugStopCommand = new RelayCommand(async _ => await DebugStopAsync(), _ => IsDebugging && IsDebugStopped);
 
         HelpGitHubCommand = new RelayCommand(_ => OpenGitHubRepo());
         HelpDocsCommand = new RelayCommand(_ => OpenDocs());
@@ -159,6 +182,22 @@ public class MainViewModel : INotifyPropertyChanged
         {
             if (Settings.ShowVariableExplorer == value) return;
             Settings.ShowVariableExplorer = value;
+            OnPropertyChanged();
+            Settings.Save();
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets whether the bottom debug panel (Variables/Breakpoints/Call Stack) is open.
+    /// Changes are persisted to settings immediately.
+    /// </summary>
+    public bool IsDebugPanelOpen
+    {
+        get => Settings.IsDebugPanelOpen;
+        set
+        {
+            if (Settings.IsDebugPanelOpen == value) return;
+            Settings.IsDebugPanelOpen = value;
             OnPropertyChanged();
             Settings.Save();
         }
@@ -642,6 +681,137 @@ public class MainViewModel : INotifyPropertyChanged
     /// </summary>
     public ICommand ViceSystemInfoCommand { get; }
 
+    // Debug
+    /// <summary>
+    /// Gets every breakpoint set in the currently open project, independent of which files
+    /// are open in tabs right now.
+    /// </summary>
+    public BreakpointStore BreakpointStore { get; } = new();
+
+    /// <summary>
+    /// Gets the persisted debugger configuration (breakpoints, watch expressions, default
+    /// target) for every known project - app-level storage only, never written into a project
+    /// folder or disk image.
+    /// </summary>
+    public DebugConfigStore DebugConfig { get; } = DebugConfigStore.Load();
+
+    /// <summary>
+    /// Gets the live VICE debug session, or null when no BASIC debug session is active.
+    /// </summary>
+    public ViceDebugSession? DebugSession
+    {
+        get => _debugSession;
+        private set
+        {
+            if (ReferenceEquals(_debugSession, value)) return;
+            _debugSession = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsDebugging));
+        }
+    }
+
+    /// <summary>
+    /// Gets whether a BASIC debug session is currently active.
+    /// </summary>
+    public bool IsDebugging => DebugSession != null;
+
+    /// <summary>
+    /// Gets whether the active debug session is currently halted (as opposed to running).
+    /// Meaningless while <see cref="IsDebugging"/> is false.
+    /// </summary>
+    public bool IsDebugStopped
+    {
+        get => _isDebugStopped;
+        private set
+        {
+            if (_isDebugStopped == value) return;
+            _isDebugStopped = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets the tab a debug session is attached to, so Continue/Step/Stop stay scoped to that
+    /// file even if the user switches to a different tab while debugging. Null when
+    /// <see cref="IsDebugging"/> is false.
+    /// </summary>
+    public EditorTab? DebugTab
+    {
+        get => _debugTab;
+        private set { _debugTab = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>
+    /// Gets the line address table built for <see cref="DebugTab"/> at the moment debugging
+    /// started, used to resolve a halted BASIC line number back to an editor line to highlight.
+    /// Null when <see cref="IsDebugging"/> is false.
+    /// </summary>
+    public BasicLineAddressTable? DebugLineAddressTable
+    {
+        get => _debugLineAddressTable;
+        private set { _debugLineAddressTable = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>
+    /// Gets the 1-based document line currently highlighted as the halted line, or null while
+    /// running or not debugging.
+    /// </summary>
+    public int? DebugCurrentDocumentLine
+    {
+        get => _debugCurrentDocumentLine;
+        private set { _debugCurrentDocumentLine = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>
+    /// Gets the simple variables read from the machine at the last stop, sorted by name. Empty
+    /// while running or not debugging.
+    /// </summary>
+    public ObservableCollection<BasicVariable> DebugVariables { get; } = new();
+
+    /// <summary>
+    /// Gets the GOSUB call stack read from the machine at the last stop, innermost first. Empty
+    /// while running or not debugging.
+    /// </summary>
+    public ObservableCollection<GosubFrame> DebugCallStack { get; } = new();
+
+    /// <summary>
+    /// Gets the command that starts a new BASIC debug session on VICE for the active tab - the
+    /// VICE menu's "Debug" item.
+    /// </summary>
+    public ICommand DebugStartOnViceCommand { get; }
+
+    /// <summary>
+    /// Gets the command that would start a new BASIC debug session on the C64 Ultimate - the
+    /// C64U menu's "Debug" item. Always disabled: C64U debugging isn't implemented yet.
+    /// </summary>
+    public ICommand DebugStartOnC64UCommand { get; }
+
+    /// <summary>
+    /// Gets the command that resumes a halted debug session - the Debug menu's "Continue".
+    /// </summary>
+    public ICommand DebugContinueCommand { get; }
+
+    /// <summary>
+    /// Gets the command that halts the active debug session at the start of the next BASIC line.
+    /// </summary>
+    public ICommand DebugPauseCommand { get; }
+
+    /// <summary>
+    /// Gets the command that executes one BASIC line and halts again.
+    /// </summary>
+    public ICommand DebugStepLineCommand { get; }
+
+    /// <summary>
+    /// Gets the command that runs until execution returns from the innermost GOSUB or FOR loop
+    /// active at the current stop point.
+    /// </summary>
+    public ICommand DebugStepOutCommand { get; }
+
+    /// <summary>
+    /// Gets the command that ends the active debug session.
+    /// </summary>
+    public ICommand DebugStopCommand { get; }
+
     // Help
     /// <summary>
     /// Gets the command that opens the READYCode GitHub repository in the default browser.
@@ -705,6 +875,44 @@ public class MainViewModel : INotifyPropertyChanged
                 FolderItems.Add(new FileTreeItem(file, false));
         }
         catch { /* Access denied, etc. */ }
+
+        LoadBreakpointsForProject(folderPath);
+    }
+
+    // Replaces BreakpointStore's contents with whatever was persisted for this folder, if
+    // anything - breakpoints are app-level storage only (never written into the project folder
+    // itself), keyed by the folder's own canonical path. A loose file with no open folder simply
+    // keeps breakpoints in-memory for the session, with no cross-restart persistence.
+    private void LoadBreakpointsForProject(string folderPath)
+    {
+        string projectKey = DebugConfigStore.GetFolderProjectKey(folderPath);
+        var records = DebugConfig.GetBreakpoints(projectKey);
+        BreakpointStore.ReplaceAll(records.Select(r => new Breakpoint
+        {
+            FilePath = r.FilePath,
+            LineNumber = r.LineNumber,
+            IsEnabled = r.Enabled,
+        }));
+    }
+
+    /// <summary>
+    /// Saves <see cref="BreakpointStore"/>'s current contents to <see cref="DebugConfig"/> for
+    /// the currently open folder. A no-op when no folder is open (see
+    /// <see cref="LoadBreakpointsForProject"/>).
+    /// </summary>
+    public void PersistBreakpoints()
+    {
+        if (!Project.IsOpen) return;
+
+        string projectKey = DebugConfigStore.GetFolderProjectKey(Project.RootPath);
+        var records = BreakpointStore.Breakpoints.Select(b => new DebugBreakpointRecord
+        {
+            FilePath = b.FilePath,
+            LineNumber = b.LineNumber,
+            Enabled = b.IsEnabled,
+        });
+
+        DebugConfig.SaveBreakpoints(projectKey, records);
     }
 
     /// <summary>
@@ -1229,6 +1437,306 @@ public class MainViewModel : INotifyPropertyChanged
         {
             SetStatus($"VICE action failed: {ex.Message}", StatusType.Error);
         }
+    }
+
+    // Resumes a halted debug session - the Debug menu's "Continue", distinct from starting a new
+    // session (see DebugStartOnViceAsync), which now only ever happens from the C64U/VICE menus'
+    // own "Debug" items.
+    private async Task DebugContinueAsync()
+    {
+        if (DebugSession == null) return;
+
+        try
+        {
+            await DebugSession.ContinueAsync();
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Continue failed: {ex.Message}", StatusType.Error);
+        }
+    }
+
+    // Starts a new BASIC debug session on VICE for the active tab, arming every enabled
+    // breakpoint before the program runs. The debug session always debugs the exact, unmodified
+    // editor text: unlike an ordinary Run, PrepareCodeForTransfer's minify pipeline is
+    // deliberately NOT applied here, since minification (in particular line renumbering) would
+    // desynchronize the source the user set breakpoints against from what's actually running.
+    private async Task DebugStartOnViceAsync()
+    {
+        if (DebugSession != null) return; // already debugging - only Continue (Debug menu) applies now
+
+        if (ActiveTab is not { Language: EditorLanguage.Basic } tab)
+        {
+            SetStatus("Start BASIC Debugging requires an active BASIC (.bas) tab.", StatusType.Error);
+            return;
+        }
+
+        string text = tab.Document.Text;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            SetStatus("There is no code to debug. Please write some code first.", StatusType.Error);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(Settings.ViceEmulatorPath))
+        {
+            SetStatus("Please set the VICE emulator path in Settings - Preferences first.", StatusType.Error);
+            return;
+        }
+
+        ViceDebugSession? session = null;
+        try
+        {
+            SetStatus("Building program…");
+
+            var lineTable = BasicLineAddressTable.Build(text);
+            byte[] prgData = new PrgConverter().ConvertToPrg(text);
+
+            SetStatus("Transferring program to VICE…");
+            var transferClient = new ViceClient(Settings.ViceMonitorHost, Settings.ViceMonitorPort);
+            await transferClient.TransferAsync(Settings.ViceEmulatorPath, prgData, tab.FileName, Settings.ViceBringToForeground);
+
+            SetStatus("Opening debug connection…");
+            session = await ViceDebugSession.StartAsync(Settings.ViceMonitorHost, Settings.ViceMonitorPort);
+
+            string breakpointFileKey = tab.FilePath ?? tab.FileName;
+            var enabledLines = BreakpointStore.EnabledLinesFor(breakpointFileKey)
+                .Where(line => lineTable.LineAddresses.ContainsKey(line))
+                .ToList();
+
+            if (enabledLines.Count > 0)
+            {
+                SetStatus($"Arming {enabledLines.Count} breakpoint(s)…");
+                foreach (ushort line in enabledLines)
+                    await session.SetLineBreakpointAsync(line);
+            }
+
+            session.Stopped += OnDebugSessionStopped;
+            session.Resumed += OnDebugSessionResumed;
+            session.ConnectionLost += OnDebugSessionConnectionLost;
+
+            DebugTab = tab;
+            DebugLineAddressTable = lineTable;
+            DebugSession = session;
+            IsDebugStopped = false;
+
+            SetStatus("Starting program…");
+            // Matches RunOnViceAsync's own SYS-command delay - the autostart transfer above
+            // triggers a machine reset, and typing into the keyboard buffer before the KERNAL's
+            // cold-start sequence finishes and starts polling it again silently drops the
+            // keystrokes rather than erroring, leaving the machine sitting at READY.
+            await Task.Delay(SysCommandDelay);
+            // Typed over the debug session's own connection (not transferClient's separate
+            // one-shot one) - a second connection contending with the session's while the
+            // breakpoint checkpoint is active caused this exact call to stall past its timeout
+            // in practice, and the resulting "failed to start" cleanup deleted the checkpoint
+            // that was, by then, correctly holding the CPU stopped at the very breakpoint it hit
+            // - so the falsely-reported failure was what let execution run right past it.
+            await session.TypeAsync("RUN\r");
+
+            SetStatus("Debugging on VICE. Running…", StatusType.Info);
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Failed to start debugging: {ex.Message}", StatusType.Error);
+            if (session != null)
+                await session.DisposeAsync();
+        }
+    }
+
+    // Arms a trap that halts at the start of the next BASIC line without resuming - valid only
+    // while the session is already running (e.g. right after Continue/Start).
+    private async Task DebugPauseAsync()
+    {
+        if (DebugSession == null) return;
+
+        try
+        {
+            await DebugSession.PauseAsync();
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Pause failed: {ex.Message}", StatusType.Error);
+        }
+    }
+
+    // Executes one BASIC line and halts again - valid only while already halted.
+    private async Task DebugStepLineAsync()
+    {
+        if (DebugSession == null) return;
+
+        try
+        {
+            await DebugSession.StepLineAsync();
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Step failed: {ex.Message}", StatusType.Error);
+        }
+    }
+
+    // Runs until execution returns from the innermost GOSUB or FOR loop active at the current
+    // stop point - valid only while already halted.
+    private async Task DebugStepOutAsync()
+    {
+        if (DebugSession == null) return;
+
+        try
+        {
+            await DebugSession.StepOutAsync();
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Step out failed: {ex.Message}", StatusType.Error);
+        }
+    }
+
+    // Ends the active debug session - deletes every checkpoint it created and detaches, without
+    // resetting or otherwise disturbing the running machine.
+    private async Task DebugStopAsync()
+    {
+        if (DebugSession == null) return;
+
+        try
+        {
+            await DebugSession.DisposeAsync();
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Error stopping debug session: {ex.Message}", StatusType.Error);
+        }
+        finally
+        {
+            CleanupDebugSessionState();
+            SetStatus("Debug session stopped.", StatusType.Info);
+        }
+    }
+
+    // Unsubscribes from the session's events and clears every debug-related property, but does
+    // not itself dispose the session - callers that already hold a reference (DebugStopAsync,
+    // the ConnectionLost handler) are responsible for that.
+    private void CleanupDebugSessionState()
+    {
+        if (DebugSession != null)
+        {
+            DebugSession.Stopped -= OnDebugSessionStopped;
+            DebugSession.Resumed -= OnDebugSessionResumed;
+            DebugSession.ConnectionLost -= OnDebugSessionConnectionLost;
+        }
+
+        DebugSession = null;
+        DebugTab = null;
+        DebugLineAddressTable = null;
+        DebugCurrentDocumentLine = null;
+        DebugVariables.Clear();
+        DebugCallStack.Clear();
+        IsDebugStopped = false;
+    }
+
+    // Raised from ViceDebugSession's background read loop - marshals onto the UI thread before
+    // touching any bindable property.
+    private void OnDebugSessionStopped(object? sender, DebugStoppedEventArgs e)
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            IsDebugStopped = true;
+            DebugCurrentDocumentLine = DebugLineAddressTable != null
+                && DebugLineAddressTable.BasicLineToDocumentLine.TryGetValue(e.Curlin, out int documentLine)
+                    ? documentLine
+                    : null;
+
+            string breakpointNote = e.CheckpointNumber.HasValue ? " (breakpoint)" : "";
+            SetStatus($"Stopped at line {e.Curlin}{breakpointNote}.", StatusType.Info);
+        });
+
+        _ = RefreshDebugVariablesAndCallStackAsync();
+    }
+
+    private void OnDebugSessionResumed(object? sender, EventArgs e)
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            IsDebugStopped = false;
+            DebugCurrentDocumentLine = null;
+            DebugVariables.Clear();
+            DebugCallStack.Clear();
+            SetStatus("Running…", StatusType.Info);
+        });
+    }
+
+    // Reads the variable table and 6502 stack from the machine and repopulates DebugVariables/
+    // DebugCallStack - the I/O runs off the UI thread (it's several round trips over the debug
+    // session's connection), with only the final collection updates marshaled back.
+    /// <summary>
+    /// Re-reads the variable table and call stack from the machine and refreshes
+    /// <see cref="DebugVariables"/>/<see cref="DebugCallStack"/> - public so a caller that just
+    /// wrote a new value to a variable (see <c>MainWindow.DebugVariablesGrid_CellEditEnding</c>)
+    /// can refresh the display with the true resulting value read back from the machine, rather
+    /// than trusting whatever was typed.
+    /// </summary>
+    public async Task RefreshDebugVariablesAndCallStackAsync()
+    {
+        if (DebugSession is not { } session) return;
+
+        try
+        {
+            byte[] zeroPage = await session.ReadMemoryAsync(0x2D, 4); // VARTAB ($2D-$2E), ARYTAB ($2F-$30)
+            ushort vartab = (ushort)(zeroPage[0] | (zeroPage[1] << 8));
+            ushort arytab = (ushort)(zeroPage[2] | (zeroPage[3] << 8));
+
+            var variables = new List<BasicVariable>();
+            if (arytab > vartab)
+            {
+                byte[] tableBytes = await session.ReadMemoryAsync(vartab, arytab - vartab);
+                variables.AddRange(VariableTableParser.ParseSimpleVariables(tableBytes, vartab, arytab));
+
+                // String values point into either literal program text or the string heap, so
+                // their characters aren't part of the table read above - resolve each one with
+                // its own follow-up read. Same PETSCII-byte-value-is-the-display-char-value
+                // convention PrgConverter.DetokenizeLine already uses for string literals.
+                for (int i = 0; i < variables.Count; i++)
+                {
+                    if (variables[i] is not { Type: BasicVariableType.String, Value: StringDescriptor descriptor })
+                        continue;
+                    if (descriptor.Length == 0) continue;
+
+                    byte[] chars = await session.ReadMemoryAsync(descriptor.HeapPointer, descriptor.Length);
+                    string text = new(chars.Select(b => (char)b).ToArray());
+                    variables[i] = variables[i] with { Value = new ResolvedStringValue(text, descriptor.HeapPointer) };
+                }
+
+                variables.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
+            }
+
+            byte stackPointer = await session.ReadStackPointerAsync();
+            byte[] stackPage = await session.ReadMemoryAsync(0x0100, 256);
+            var callStack = GosubStackParser.Parse(stackPage, stackPointer, DebugLineAddressTable);
+
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                DebugVariables.Clear();
+                foreach (var variable in variables)
+                    DebugVariables.Add(variable);
+
+                DebugCallStack.Clear();
+                foreach (var frame in callStack)
+                    DebugCallStack.Add(frame);
+            });
+        }
+        catch (Exception ex)
+        {
+            Application.Current.Dispatcher.Invoke(() =>
+                SetStatus($"Failed to refresh variables/call stack: {ex.Message}", StatusType.Error));
+        }
+    }
+
+    private void OnDebugSessionConnectionLost(object? sender, string message)
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            SetStatus($"Debug session lost: {message}", StatusType.Error);
+            CleanupDebugSessionState();
+        });
     }
 
     // Performs a machine action (reset, reboot, pause, resume, poweroff) on the C64 Ultimate.

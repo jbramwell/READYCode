@@ -29,6 +29,11 @@
     <SolidColorBrush x:Key="ThemeFolderExplorerHeaderBg"     Color="#9B90D2"/>
     <SolidColorBrush x:Key="ThemeFolderExplorerHeaderBorder" Color="#352879"/>
 
+    <!-- Debug panel (Variables/Breakpoints) DataGrid row/column separator lines - the same dark
+         blue-purple as the header border above, subdued against this theme's light purple
+         background. -->
+    <SolidColorBrush x:Key="ThemeDataGridLineBrush" Color="#352879"/>
+
     <!-- Splitters -->
     <SolidColorBrush x:Key="ThemeSplitter" Color="#4A3D95"/>
 
