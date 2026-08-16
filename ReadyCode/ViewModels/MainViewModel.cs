@@ -50,7 +50,7 @@ public class MainViewModel : INotifyPropertyChanged
     private ComparableFileRef? _pendingCompareFile;
     private readonly SourcePrinter _printer = new();
 
-    private ViceDebugSession? _debugSession;
+    private IDebugSession? _debugSession;
     private bool _isDebugStopped;
     private EditorTab? _debugTab;
     private BasicLineAddressTable? _debugLineAddressTable;
@@ -110,16 +110,23 @@ public class MainViewModel : INotifyPropertyChanged
         // the Debug menu itself only ever acts on a session already in progress.
         DebugStartOnViceCommand = new RelayCommand(async _ => await DebugStartOnViceAsync(),
             _ => !IsDebugging && ActiveTab is { Language: EditorLanguage.Basic });
-        // C64U debugging isn't implemented yet (a materially different mechanism - a software
-        // debug stub injected into the running BASIC interpreter - planned as a separate
-        // follow-up), so this is permanently disabled rather than wired to a working start flow.
-        DebugStartOnC64UCommand = new RelayCommand(_ => { }, _ => false);
+        DebugStartOnC64UCommand = new RelayCommand(async _ => await DebugStartOnC64UAsync(),
+            _ => !IsDebugging && ActiveTab is { Language: EditorLanguage.Basic });
 
         DebugContinueCommand = new RelayCommand(async _ => await DebugContinueAsync(), _ => IsDebugging && IsDebugStopped);
         DebugPauseCommand = new RelayCommand(async _ => await DebugPauseAsync(), _ => IsDebugging && !IsDebugStopped);
         DebugStepLineCommand = new RelayCommand(async _ => await DebugStepLineAsync(), _ => IsDebugging && IsDebugStopped);
-        DebugStepOutCommand = new RelayCommand(async _ => await DebugStepOutAsync(), _ => IsDebugging && IsDebugStopped);
-        DebugStopCommand = new RelayCommand(async _ => await DebugStopAsync(), _ => IsDebugging && IsDebugStopped);
+        DebugStepOutCommand = new RelayCommand(async _ => await DebugStepOutAsync(),
+            _ => IsDebugging && IsDebugStopped && DebugSession!.SupportsCallStackAndStepOut);
+        // Deliberately gated on IsDebugging alone, not IsDebugStopped like the other controls -
+        // Stop is this session's only escape hatch. If the running program gets halted from
+        // outside the debugger entirely (RUN/STOP on the C64U, Esc in VICE), our own Stopped/
+        // ConnectionLost events never fire (neither goes through the checkpoint/GONE hook this
+        // debugger watches), so IsDebugStopped stays stuck at false forever. Requiring it here
+        // too would gray out Stop right alongside Start, with no way back in short of restarting
+        // the app - DisposeAsync is already best-effort/tolerant of a desynced target, so it's
+        // safe to always allow.
+        DebugStopCommand = new RelayCommand(async _ => await DebugStopAsync(), _ => IsDebugging);
 
         HelpGitHubCommand = new RelayCommand(_ => OpenGitHubRepo());
         HelpDocsCommand = new RelayCommand(_ => OpenDocs());
@@ -696,9 +703,10 @@ public class MainViewModel : INotifyPropertyChanged
     public DebugConfigStore DebugConfig { get; } = DebugConfigStore.Load();
 
     /// <summary>
-    /// Gets the live VICE debug session, or null when no BASIC debug session is active.
+    /// Gets the live debug session (VICE or C64 Ultimate - whichever target was used to start
+    /// it), or null when no BASIC debug session is active.
     /// </summary>
-    public ViceDebugSession? DebugSession
+    public IDebugSession? DebugSession
     {
         get => _debugSession;
         private set
@@ -781,8 +789,9 @@ public class MainViewModel : INotifyPropertyChanged
     public ICommand DebugStartOnViceCommand { get; }
 
     /// <summary>
-    /// Gets the command that would start a new BASIC debug session on the C64 Ultimate - the
-    /// C64U menu's "Debug" item. Always disabled: C64U debugging isn't implemented yet.
+    /// Gets the command that starts a new BASIC debug session on the C64 Ultimate for the active
+    /// tab - the C64U menu's "Debug" item. Step Out and the Call Stack panel stay unavailable for
+    /// a session started this way - see <see cref="IDebugSession.SupportsCallStackAndStepOut"/>.
     /// </summary>
     public ICommand DebugStartOnC64UCommand { get; }
 
@@ -1456,12 +1465,70 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    // Starts a new BASIC debug session on VICE for the active tab, arming every enabled
-    // breakpoint before the program runs. The debug session always debugs the exact, unmodified
-    // editor text: unlike an ordinary Run, PrepareCodeForTransfer's minify pipeline is
-    // deliberately NOT applied here, since minification (in particular line renumbering) would
-    // desynchronize the source the user set breakpoints against from what's actually running.
-    private async Task DebugStartOnViceAsync()
+    // Starts a new BASIC debug session on VICE for the active tab. VICE's own RUN\r is typed
+    // over the debug session's own connection (not a separate one-shot one) - a second
+    // connection contending with the session's while the breakpoint checkpoint is active caused
+    // this exact call to stall past its timeout in practice, and the resulting "failed to start"
+    // cleanup deleted the checkpoint that was, by then, correctly holding the CPU stopped at the
+    // very breakpoint it hit - so the falsely-reported failure was what let execution run right
+    // past it.
+    private Task DebugStartOnViceAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Settings.ViceEmulatorPath))
+        {
+            SetStatus("Please set the VICE emulator path in Settings - Preferences first.", StatusType.Error);
+            return Task.CompletedTask;
+        }
+
+        var transferClient = new ViceClient(Settings.ViceMonitorHost, Settings.ViceMonitorPort);
+
+        return StartDebugSessionAsync(
+            "VICE",
+            (tab, prgData) => transferClient.TransferAsync(Settings.ViceEmulatorPath, prgData, tab.FileName, Settings.ViceBringToForeground),
+            async () => (IDebugSession)await ViceDebugSession.StartAsync(Settings.ViceMonitorHost, Settings.ViceMonitorPort),
+            session => ((ViceDebugSession)session).TypeAsync("RUN\r"));
+    }
+
+    // Starts a new BASIC debug session on the C64 Ultimate for the active tab. Unlike VICE's
+    // binary monitor connection, every C64U REST call is an independent, stateless HTTP request -
+    // there's no persistent connection to contend with another one, so typing RUN\r through a
+    // fresh C64UltimateClient (rather than routing it through the session) is safe here.
+    private Task DebugStartOnC64UAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Settings.C64UUrl))
+        {
+            SetStatus("Please set the C64 Ultimate URL in Settings - Preferences first.", StatusType.Error);
+            return Task.CompletedTask;
+        }
+
+        var client = new C64UltimateClient();
+
+        return StartDebugSessionAsync(
+            "the C64 Ultimate",
+            async (_, prgData) =>
+            {
+                await client.LoadPrgAsync(Settings.C64UUrl, prgData);
+                // A load appears to trigger a machine reset, same as VICE's autostart - without
+                // settling first, uploading the debug stub and patching the GONE vector
+                // immediately afterward races that reset.
+                await Task.Delay(SysCommandDelay);
+            },
+            async () => (IDebugSession)await C64UDebugSession.StartAsync(Settings.C64UUrl),
+            _ => client.TypeAsync(Settings.C64UUrl, "RUN\r"));
+    }
+
+    // Shared session-start orchestration for both targets: validates there's a BASIC tab to
+    // debug, builds the line address table and tokenized program from the exact, unmodified
+    // editor text (unlike an ordinary Run, PrepareCodeForTransfer's minify pipeline is
+    // deliberately NOT applied here, since minification - in particular line renumbering - would
+    // desynchronize the source the user set breakpoints against from what's actually running),
+    // transfers it, opens the debug session, arms every enabled breakpoint, and starts the
+    // program running.
+    private async Task StartDebugSessionAsync(
+        string targetName,
+        Func<EditorTab, byte[], Task> transferAsync,
+        Func<Task<IDebugSession>> createSessionAsync,
+        Func<IDebugSession, Task> typeRunAsync)
     {
         if (DebugSession != null) return; // already debugging - only Continue (Debug menu) applies now
 
@@ -1478,13 +1545,7 @@ public class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(Settings.ViceEmulatorPath))
-        {
-            SetStatus("Please set the VICE emulator path in Settings - Preferences first.", StatusType.Error);
-            return;
-        }
-
-        ViceDebugSession? session = null;
+        IDebugSession? session = null;
         try
         {
             SetStatus("Building program…");
@@ -1492,12 +1553,11 @@ public class MainViewModel : INotifyPropertyChanged
             var lineTable = BasicLineAddressTable.Build(text);
             byte[] prgData = new PrgConverter().ConvertToPrg(text);
 
-            SetStatus("Transferring program to VICE…");
-            var transferClient = new ViceClient(Settings.ViceMonitorHost, Settings.ViceMonitorPort);
-            await transferClient.TransferAsync(Settings.ViceEmulatorPath, prgData, tab.FileName, Settings.ViceBringToForeground);
+            SetStatus($"Transferring program to {targetName}…");
+            await transferAsync(tab, prgData);
 
             SetStatus("Opening debug connection…");
-            session = await ViceDebugSession.StartAsync(Settings.ViceMonitorHost, Settings.ViceMonitorPort);
+            session = await createSessionAsync();
 
             string breakpointFileKey = tab.FilePath ?? tab.FileName;
             var enabledLines = BreakpointStore.EnabledLinesFor(breakpointFileKey)
@@ -1521,20 +1581,14 @@ public class MainViewModel : INotifyPropertyChanged
             IsDebugStopped = false;
 
             SetStatus("Starting program…");
-            // Matches RunOnViceAsync's own SYS-command delay - the autostart transfer above
-            // triggers a machine reset, and typing into the keyboard buffer before the KERNAL's
-            // cold-start sequence finishes and starts polling it again silently drops the
-            // keystrokes rather than erroring, leaving the machine sitting at READY.
+            // The transfer above triggers a machine reset - typing into the keyboard buffer
+            // before the KERNAL's cold-start sequence finishes and starts polling it again
+            // silently drops the keystrokes rather than erroring, leaving the machine sitting at
+            // READY (matches RunOnViceAsync's own SYS-command delay for the same reason).
             await Task.Delay(SysCommandDelay);
-            // Typed over the debug session's own connection (not transferClient's separate
-            // one-shot one) - a second connection contending with the session's while the
-            // breakpoint checkpoint is active caused this exact call to stall past its timeout
-            // in practice, and the resulting "failed to start" cleanup deleted the checkpoint
-            // that was, by then, correctly holding the CPU stopped at the very breakpoint it hit
-            // - so the falsely-reported failure was what let execution run right past it.
-            await session.TypeAsync("RUN\r");
+            await typeRunAsync(session);
 
-            SetStatus("Debugging on VICE. Running…", StatusType.Info);
+            SetStatus($"Debugging on {targetName}. Running…", StatusType.Info);
         }
         catch (Exception ex)
         {
@@ -1708,9 +1762,16 @@ public class MainViewModel : INotifyPropertyChanged
                 variables.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
             }
 
-            byte stackPointer = await session.ReadStackPointerAsync();
-            byte[] stackPage = await session.ReadMemoryAsync(0x0100, 256);
-            var callStack = GosubStackParser.Parse(stackPage, stackPointer, DebugLineAddressTable);
+            // The GOSUB call stack needs the 6502 stack pointer, which not every target can
+            // read (the C64 Ultimate's REST API has no register access at all - see
+            // IDebugSession.SupportsCallStackAndStepOut) - left empty rather than attempted there.
+            IReadOnlyList<GosubFrame> callStack = Array.Empty<GosubFrame>();
+            if (session.SupportsCallStackAndStepOut)
+            {
+                byte stackPointer = await session.ReadStackPointerAsync();
+                byte[] stackPage = await session.ReadMemoryAsync(0x0100, 256);
+                callStack = GosubStackParser.Parse(stackPage, stackPointer, DebugLineAddressTable);
+            }
 
             Application.Current.Dispatcher.Invoke(() =>
             {

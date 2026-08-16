@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Net.Sockets;
+using ReadyCode.Debugger;
 
 namespace ReadyCode.Vice;
 
@@ -36,7 +37,7 @@ namespace ReadyCode.Vice;
 ///   times more often than necessary and became visibly unstable under that load. The CURLIN-write
 ///   checkpoint used here fires at the coarser, actually-wanted granularity instead.
 /// </summary>
-public sealed class ViceDebugSession : IAsyncDisposable
+public sealed class ViceDebugSession : IDebugSession
 {
     #region Private Fields
 
@@ -100,6 +101,11 @@ public sealed class ViceDebugSession : IAsyncDisposable
     /// Gets every BASIC line number that currently has an active breakpoint.
     /// </summary>
     public IReadOnlyCollection<ushort> BreakpointLines => (IReadOnlyCollection<ushort>)_breakpointLines.Keys;
+
+    /// <summary>
+    /// Always true for VICE - the binary monitor exposes registers (including SP) directly.
+    /// </summary>
+    public bool SupportsCallStackAndStepOut => true;
 
     /// <summary>
     /// Occurs when the CPU stops at a genuine line boundary - either a user breakpoint, or a
@@ -464,11 +470,3 @@ public sealed class ViceDebugSession : IAsyncDisposable
 
     #endregion
 }
-
-/// <summary>
-/// Describes why and where a <see cref="ViceDebugSession"/> stopped. <see cref="CheckpointNumber"/>
-/// is non-null exactly when the stop was recognized as a breakpoint hit - despite the name (kept
-/// for API stability), it carries the BASIC line number, not a real VICE checkpoint id, since a
-/// single shared checkpoint now backs every breakpoint (see the class-level remarks).
-/// </summary>
-public sealed record DebugStoppedEventArgs(ushort ProgramCounter, ushort Curlin, int? CheckpointNumber);

@@ -6335,9 +6335,9 @@ public partial class MainWindow : Window
 
     // Reacts to a breakpoint's IsEnabled changing (the Breakpoints grid's "On" checkbox, or any
     // future path that flips it) - persists the change, refreshes the gutter dot, and - if a
-    // debug session is attached to this same file - updates VICE's live checkpoint too, since a
-    // debug session tracks its own independent set of active breakpoint lines (see
-    // ViceDebugSession) that a plain IsEnabled flip on the model doesn't touch by itself.
+    // debug session is attached to this same file - updates the live target too, since a debug
+    // session (VICE or C64U - see IDebugSession) tracks its own independent set of active
+    // breakpoint lines that a plain IsEnabled flip on the model doesn't touch by itself.
     private async void Breakpoint_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(Breakpoint.IsEnabled)) return;

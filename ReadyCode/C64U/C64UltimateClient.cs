@@ -31,7 +31,9 @@ public class C64UltimateClient
     #region Public Methods
 
     /// <summary>
-    /// Uploads a tokenized BASIC program and runs it via POST /v1/runners:load_prg.
+    /// Uploads a tokenized BASIC program without running it via POST /v1/runners:load_prg - the
+    /// user (or calling code) can start it afterward with a typed RUN, or with
+    /// <see cref="TypeAsync"/>. Contrast <see cref="RunPrgAsync"/>, which runs it immediately.
     /// </summary>
     /// <param name="baseUrl">Base URL of the C64 Ultimate's REST API.</param>
     /// <param name="prgData">The PRG-format program data to upload.</param>

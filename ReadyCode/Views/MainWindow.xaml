@@ -1124,8 +1124,10 @@
              keep the spec's original keys. Alt+Shift+F5 only starts a session now (disables
              itself once one exists) - Continue (Debug menu) has no dedicated key, since the F5
              family has no combination left unclaimed for it. -->
-        <!-- Ctrl+Shift+F5 (Stop Debugging) and Debug menu's Continue require the session to be
-             halted, not merely active - see the Debug Menu Reorganization behavior notes. -->
+        <!-- Debug menu's Continue requires the session to be halted, not merely active - see the
+             Debug Menu Reorganization behavior notes. Ctrl+Shift+F5 (Stop Debugging) does NOT -
+             it's the only way out if the program gets stopped from outside the debugger entirely
+             (RUN/STOP on the C64U, Esc in VICE), which this debugger has no way to detect. -->
         <KeyBinding Key="F5" Modifiers="Alt+Shift" Command="{Binding ViewModel.DebugStartOnViceCommand}"/>
         <KeyBinding Key="F5" Modifiers="Ctrl+Shift" Command="{Binding ViewModel.DebugStopCommand}"/>
         <KeyBinding Key="F6" Command="{Binding ViewModel.DebugPauseCommand}"/>
@@ -1258,9 +1260,7 @@
                 <MenuItem Header="_Run"      Command="{Binding ViewModel.C64URunCommand}" InputGestureText="F5">
                     <MenuItem.Icon><TextBlock Text="&#xE768;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
                 </MenuItem>
-                <!-- Always disabled - C64U debugging isn't implemented yet (see DebugStartOnC64UCommand). -->
-                <MenuItem Header="_Debug" Command="{Binding ViewModel.DebugStartOnC64UCommand}"
-                          ToolTip="C64U debugging isn't available yet."/>
+                <MenuItem Header="_Debug" Command="{Binding ViewModel.DebugStartOnC64UCommand}"/>
                 <Separator/>
                 <MenuItem Header="R_eset"     Command="{Binding ViewModel.C64UResetCommand}"/>
                 <MenuItem Header="Re_boot"    Command="{Binding ViewModel.C64URebootCommand}"/>
