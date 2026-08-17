@@ -1068,13 +1068,12 @@
         <KeyBinding Key="V" Modifiers="Ctrl+Alt"   Command="{Binding ViewVariablesCommand}"/>
         <KeyBinding Key="Z" Modifiers="Alt"        Command="{Binding ViewWordWrapCommand}"/>
 
-        <!-- C64U Menu -->
-        <KeyBinding Key="F5" Modifiers="Ctrl" Command="{Binding ViewModel.C64UTransferCommand}"/>
-        <KeyBinding Key="F5" Command="{Binding ViewModel.C64URunCommand}"/>
+        <!-- C64U Menu - Load has no shortcut of its own (it used to be Ctrl+F5, freed up for Run
+             Without Debugging below to eliminate the conflict). -->
+        <KeyBinding Key="F5" Modifiers="Ctrl" Command="{Binding ViewModel.C64URunCommand}"/>
 
-        <!-- VICE Menu -->
-        <KeyBinding Key="F5" Modifiers="Ctrl+Alt" Command="{Binding ViewModel.ViceTransferCommand}"/>
-        <KeyBinding Key="F5" Modifiers="Alt" Command="{Binding ViewModel.ViceRunCommand}"/>
+        <!-- VICE Menu - see the C64U note above; Load's old Ctrl+Alt+F5 is freed the same way. -->
+        <KeyBinding Key="F5" Modifiers="Ctrl+Alt" Command="{Binding ViewModel.ViceRunCommand}"/>
 
         <!-- Screen Control (Ctrl+1–8) -->
         <KeyBinding Key="D1" Modifiers="Ctrl" Command="{Binding InsertSpecialCharCommand}" CommandParameter="19"/>
@@ -1107,33 +1106,47 @@
         <KeyBinding Key="D8" Modifiers="Ctrl+Shift+Alt" Command="{Binding InsertSpecialCharCommand}" CommandParameter="155"/>
 
         <!-- Function Keys SHIFT+F1-F8. Shift+F3 only reaches this binding when the Find bar is
-             closed - Window_PreviewKeyDown claims it for Find Previous while the bar is open. -->
+             closed - Window_PreviewKeyDown claims it for Find Previous while the bar is open.
+             Shift+F5 is deliberately missing from this set (was character code 135) - it's now
+             C64U's Stop Debugging below, which won this conflict; that PETSCII character is still
+             reachable from the Special Characters panel. -->
         <KeyBinding Key="F1" Modifiers="Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="133"/>
         <KeyBinding Key="F2" Modifiers="Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="137"/>
         <KeyBinding Key="F3" Modifiers="Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="134"/>
         <KeyBinding Key="F4" Modifiers="Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="138"/>
-        <KeyBinding Key="F5" Modifiers="Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="135"/>
         <KeyBinding Key="F6" Modifiers="Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="139"/>
         <KeyBinding Key="F7" Modifiers="Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="136"/>
         <KeyBinding Key="F8" Modifiers="Shift" Command="{Binding InsertSpecialCharCommand}" CommandParameter="140"/>
 
-        <!-- Debug (BASIC/VICE). Alt+Shift+F5/Ctrl+Shift+F5 rather than the plain F5 family used
-             by Run/Transfer above, and rather than the spec's original F5/Shift+F5 - every plain
-             F5 combination up through Ctrl+Alt+F5 is already taken by Run/Transfer, and Shift+F5
-             is already the special-character binding right above. F6/F10 are unused, so those
-             keep the spec's original keys. Alt+Shift+F5 only starts a session now (disables
-             itself once one exists) - Continue (Debug menu) has no dedicated key, since the F5
-             family has no combination left unclaimed for it. -->
-        <!-- Debug menu's Continue requires the session to be halted, not merely active - see the
-             Debug Menu Reorganization behavior notes. Ctrl+Shift+F5 (Stop Debugging) does NOT -
-             it's the only way out if the program gets stopped from outside the debugger entirely
-             (RUN/STOP on the C64U, Esc in VICE), which this debugger has no way to detect. -->
-        <KeyBinding Key="F5" Modifiers="Alt+Shift" Command="{Binding ViewModel.DebugStartOnViceCommand}"/>
-        <KeyBinding Key="F5" Modifiers="Ctrl+Shift" Command="{Binding ViewModel.DebugStopCommand}"/>
-        <KeyBinding Key="F6" Command="{Binding ViewModel.DebugPauseCommand}"/>
-        <KeyBinding Key="F10" Command="{Binding ViewModel.DebugStepLineCommand}"/>
+        <!-- Debug (C64U) - unmodified F-keys, matching the C64U menu's own shortcut column. -->
+        <KeyBinding Key="F5" Command="{Binding ViewModel.DebugStartOrContinueOnC64UCommand}"/>
+        <KeyBinding Key="F5" Modifiers="Ctrl+Shift" Command="{Binding ViewModel.DebugRestartOnC64UCommand}"/>
+        <KeyBinding Key="F5" Modifiers="Shift" Command="{Binding ViewModel.DebugStopCommand}"/>
+        <KeyBinding Key="F10" Command="{Binding ViewModel.DebugStepOverCommand}"/>
+        <KeyBinding Key="F11" Command="{Binding ViewModel.DebugStepIntoCommand}"/>
         <KeyBinding Key="F11" Modifiers="Shift" Command="{Binding ViewModel.DebugStepOutCommand}"/>
+        <KeyBinding Key="F10" Modifiers="Ctrl" Command="{Binding DebugRunToCursorCommand}"/>
         <KeyBinding Key="F9" Command="{Binding DebugToggleBreakpointCommand}"/>
+        <KeyBinding Key="F9" Modifiers="Ctrl" Command="{Binding DebugToggleBreakpointEnabledCommand}"/>
+        <KeyBinding Key="F9" Modifiers="Ctrl+Shift" Command="{Binding DebugDeleteAllBreakpointsCommand}"/>
+
+        <!-- Debug (VICE) - same actions as the C64U set above, Alt-prefixed throughout, matching
+             the VICE menu's own shortcut column and the established "Alt = VICE" convention
+             already used by Run Without Debugging above. -->
+        <KeyBinding Key="F5" Modifiers="Alt" Command="{Binding ViewModel.DebugStartOrContinueOnViceCommand}"/>
+        <KeyBinding Key="F5" Modifiers="Ctrl+Alt+Shift" Command="{Binding ViewModel.DebugRestartOnViceCommand}"/>
+        <KeyBinding Key="F5" Modifiers="Alt+Shift" Command="{Binding ViewModel.DebugStopCommand}"/>
+        <KeyBinding Key="F10" Modifiers="Alt" Command="{Binding ViewModel.DebugStepOverCommand}"/>
+        <KeyBinding Key="F11" Modifiers="Alt" Command="{Binding ViewModel.DebugStepIntoCommand}"/>
+        <KeyBinding Key="F11" Modifiers="Alt+Shift" Command="{Binding ViewModel.DebugStepOutCommand}"/>
+        <KeyBinding Key="F10" Modifiers="Ctrl+Alt" Command="{Binding DebugRunToCursorCommand}"/>
+        <KeyBinding Key="F9" Modifiers="Alt" Command="{Binding DebugToggleBreakpointCommand}"/>
+        <KeyBinding Key="F9" Modifiers="Ctrl+Alt" Command="{Binding DebugToggleBreakpointEnabledCommand}"/>
+        <KeyBinding Key="F9" Modifiers="Ctrl+Alt+Shift" Command="{Binding DebugDeleteAllBreakpointsCommand}"/>
+
+        <!-- Debug - Pause, same shared command both ways, matching the F5/F9/F10/F11 pattern above. -->
+        <KeyBinding Key="F6" Command="{Binding ViewModel.DebugPauseCommand}"/>
+        <KeyBinding Key="F6" Modifiers="Alt" Command="{Binding ViewModel.DebugPauseCommand}"/>
     </Window.InputBindings>
 
     <DockPanel>
@@ -1245,6 +1258,9 @@
                           IsCheckable="True"
                           IsChecked="{Binding ViewModel.ShowVariableExplorer, Mode=TwoWay}"
                           InputGestureText="Ctrl+Alt+V"/>
+                <MenuItem Header="_Debug Panel"
+                          IsCheckable="True"
+                          IsChecked="{Binding ViewModel.IsDebugPanelOpen, Mode=TwoWay}"/>
                 <Separator/>
                 <MenuItem Header="_Word Wrap"
                           IsCheckable="True"
@@ -1256,11 +1272,24 @@
             </MenuItem>
 
             <MenuItem Header="C64_U" Visibility="{Binding ViewModel.ShowC64UMenu, Converter={StaticResource BoolToVisibility}}">
-                <MenuItem Header="_Load" Command="{Binding ViewModel.C64UTransferCommand}" InputGestureText="Ctrl+F5"/>
-                <MenuItem Header="_Run"      Command="{Binding ViewModel.C64URunCommand}" InputGestureText="F5">
+                <MenuItem Header="_Load" Command="{Binding ViewModel.C64UTransferCommand}"/>
+                <MenuItem Header="_Run Without Debugging" Command="{Binding ViewModel.C64URunCommand}" InputGestureText="Ctrl+F5">
                     <MenuItem.Icon><TextBlock Text="&#xE768;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
                 </MenuItem>
-                <MenuItem Header="_Debug" Command="{Binding ViewModel.DebugStartOnC64UCommand}"/>
+                <Separator/>
+                <MenuItem Header="_Start Debugging / Continue" Command="{Binding ViewModel.DebugStartOrContinueOnC64UCommand}" InputGestureText="F5"/>
+                <MenuItem Header="_Pause" Command="{Binding ViewModel.DebugPauseCommand}" InputGestureText="F6"/>
+                <MenuItem Header="Restart De_bugging" Command="{Binding ViewModel.DebugRestartOnC64UCommand}" InputGestureText="Ctrl+Shift+F5"/>
+                <MenuItem Header="Sto_p Debugging" Command="{Binding ViewModel.DebugStopCommand}" InputGestureText="Shift+F5"/>
+                <Separator/>
+                <MenuItem Header="Step _Over" Command="{Binding ViewModel.DebugStepOverCommand}" InputGestureText="F10"/>
+                <MenuItem Header="Step _Into" Command="{Binding ViewModel.DebugStepIntoCommand}" InputGestureText="F11"/>
+                <MenuItem Header="Step O_ut"  Command="{Binding ViewModel.DebugStepOutCommand}"  InputGestureText="Shift+F11"/>
+                <MenuItem Header="R_un to Cursor" Command="{Binding DebugRunToCursorCommand}" InputGestureText="Ctrl+F10"/>
+                <Separator/>
+                <MenuItem Header="_Toggle Breakpoint" Command="{Binding DebugToggleBreakpointCommand}" InputGestureText="F9"/>
+                <MenuItem Header="_Enable/Disable Breakpoint" Command="{Binding DebugToggleBreakpointEnabledCommand}" InputGestureText="Ctrl+F9"/>
+                <MenuItem Header="_Delete All Breakpoints" Command="{Binding DebugDeleteAllBreakpointsCommand}" InputGestureText="Ctrl+Shift+F9"/>
                 <Separator/>
                 <MenuItem Header="R_eset"     Command="{Binding ViewModel.C64UResetCommand}"/>
                 <MenuItem Header="Re_boot"    Command="{Binding ViewModel.C64URebootCommand}"/>
@@ -1272,11 +1301,24 @@
             </MenuItem>
 
             <MenuItem Header="VI_CE" Visibility="{Binding ViewModel.ShowViceMenu, Converter={StaticResource BoolToVisibility}}">
-                <MenuItem Header="_Load" Command="{Binding ViewModel.ViceTransferCommand}" InputGestureText="Ctrl+Alt+F5"/>
-                <MenuItem Header="_Run"      Command="{Binding ViewModel.ViceRunCommand}" InputGestureText="Alt+F5">
+                <MenuItem Header="_Load" Command="{Binding ViewModel.ViceTransferCommand}"/>
+                <MenuItem Header="_Run Without Debugging" Command="{Binding ViewModel.ViceRunCommand}" InputGestureText="Ctrl+Alt+F5">
                     <MenuItem.Icon><TextBlock Text="&#xE768;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
                 </MenuItem>
-                <MenuItem Header="_Debug"    Command="{Binding ViewModel.DebugStartOnViceCommand}" InputGestureText="Alt+Shift+F5"/>
+                <Separator/>
+                <MenuItem Header="_Start Debugging / Continue" Command="{Binding ViewModel.DebugStartOrContinueOnViceCommand}" InputGestureText="Alt+F5"/>
+                <MenuItem Header="_Pause" Command="{Binding ViewModel.DebugPauseCommand}" InputGestureText="Alt+F6"/>
+                <MenuItem Header="Restart De_bugging" Command="{Binding ViewModel.DebugRestartOnViceCommand}" InputGestureText="Ctrl+Alt+Shift+F5"/>
+                <MenuItem Header="Sto_p Debugging" Command="{Binding ViewModel.DebugStopCommand}" InputGestureText="Alt+Shift+F5"/>
+                <Separator/>
+                <MenuItem Header="Step _Over" Command="{Binding ViewModel.DebugStepOverCommand}" InputGestureText="Alt+F10"/>
+                <MenuItem Header="Step _Into" Command="{Binding ViewModel.DebugStepIntoCommand}" InputGestureText="Alt+F11"/>
+                <MenuItem Header="Step O_ut"  Command="{Binding ViewModel.DebugStepOutCommand}"  InputGestureText="Alt+Shift+F11"/>
+                <MenuItem Header="R_un to Cursor" Command="{Binding DebugRunToCursorCommand}" InputGestureText="Ctrl+Alt+F10"/>
+                <Separator/>
+                <MenuItem Header="_Toggle Breakpoint" Command="{Binding DebugToggleBreakpointCommand}" InputGestureText="Alt+F9"/>
+                <MenuItem Header="_Enable/Disable Breakpoint" Command="{Binding DebugToggleBreakpointEnabledCommand}" InputGestureText="Ctrl+Alt+F9"/>
+                <MenuItem Header="_Delete All Breakpoints" Command="{Binding DebugDeleteAllBreakpointsCommand}" InputGestureText="Ctrl+Alt+Shift+F9"/>
                 <Separator/>
                 <MenuItem Header="R_eset"     Command="{Binding ViewModel.ViceResetCommand}"/>
                 <MenuItem Header="Re_boot"    Command="{Binding ViewModel.ViceRebootCommand}"/>
@@ -1285,25 +1327,6 @@
                 <MenuItem Header="_Disassemble at..." Click="ViceDisassemble_Click"/>
                 <Separator/>
                 <MenuItem Header="_About VICE" Command="{Binding ViewModel.ViceSystemInfoCommand}"/>
-            </MenuItem>
-
-            <MenuItem Header="_Debug">
-                <!-- Starting a session lives in the C64U/VICE menus' own "Debug" items now (the
-                     active target is whichever one was clicked) - this menu only ever acts on a
-                     session already in progress. -->
-                <MenuItem Header="_Continue" Command="{Binding ViewModel.DebugContinueCommand}">
-                    <MenuItem.Icon><TextBlock Text="&#xE768;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
-                </MenuItem>
-                <MenuItem Header="_Pause"     Command="{Binding ViewModel.DebugPauseCommand}"    InputGestureText="F6"/>
-                <MenuItem Header="Step _Line" Command="{Binding ViewModel.DebugStepLineCommand}" InputGestureText="F10"/>
-                <MenuItem Header="Step _Out"  Command="{Binding ViewModel.DebugStepOutCommand}"  InputGestureText="Shift+F11"/>
-                <MenuItem Header="S_top Debugging" Command="{Binding ViewModel.DebugStopCommand}" InputGestureText="Ctrl+Shift+F5"/>
-                <Separator/>
-                <MenuItem Header="Toggle _Breakpoint" Command="{Binding DebugToggleBreakpointCommand}" InputGestureText="F9"/>
-                <Separator/>
-                <MenuItem Header="Show Debu_g Panel"
-                          IsCheckable="True"
-                          IsChecked="{Binding ViewModel.IsDebugPanelOpen, Mode=TwoWay}"/>
             </MenuItem>
 
             <MenuItem Header="_Preferences">

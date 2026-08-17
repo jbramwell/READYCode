@@ -202,7 +202,13 @@ public sealed class C64UDebugSession : IDebugSession
     /// Executes from the current stop point until the next BASIC line begins, then stops again -
     /// call this only while already stopped, since it resumes execution itself.
     /// </summary>
-    public Task StepLineAsync() => PauseAsync(); // identical stub-side behavior - see class remarks
+    public Task StepIntoAsync() => PauseAsync(); // identical stub-side behavior - see class remarks
+
+    /// <summary>
+    /// Not supported - see <see cref="SupportsCallStackAndStepOut"/>.
+    /// </summary>
+    public Task StepOverAsync() =>
+        throw new NotSupportedException("Step Over isn't available when debugging the C64 Ultimate - skipping past a GOSUB requires reading the 6502 stack pointer, which its REST API has no way to do. Use Step Into instead.");
 
     /// <summary>
     /// Not supported - see <see cref="SupportsCallStackAndStepOut"/>.

@@ -74,9 +74,19 @@ public interface IDebugSession : IAsyncDisposable
 
     /// <summary>
     /// Executes from the current stop point until the next BASIC line begins, then stops again -
-    /// call this only while already stopped, since it resumes execution itself.
+    /// entering a GOSUB called along the way, if any. Call this only while already stopped, since
+    /// it resumes execution itself.
     /// </summary>
-    Task StepLineAsync();
+    Task StepIntoAsync();
+
+    /// <summary>
+    /// Executes from the current stop point until the next BASIC line begins, then stops again -
+    /// but if that requires entering a GOSUB, runs it to completion first rather than stopping
+    /// inside it. Only valid when <see cref="SupportsCallStackAndStepOut"/> is true (skipping over
+    /// a call requires knowing when the stack has unwound back past it). Call this only while
+    /// already stopped, since it resumes execution itself.
+    /// </summary>
+    Task StepOverAsync();
 
     /// <summary>
     /// Runs until execution returns from the innermost GOSUB or FOR loop active at the current
@@ -114,7 +124,7 @@ public interface IDebugSession : IAsyncDisposable
 /// is non-null exactly when the stop was recognized as a breakpoint hit; despite the name (kept
 /// for API stability from when VICE tracked real per-breakpoint checkpoint numbers), it now
 /// carries the BASIC line number for both targets, since neither one tracks per-breakpoint ids
-/// server-side anymore (VICE uses a single shared checkpoint; the C64U stub tracks only one
-/// active breakpoint line at a time - see <see cref="ReadyCode.C64U.C64UDebugSession"/>).
+/// server-side anymore (VICE uses a single shared checkpoint; the C64U stub watches a small table
+/// of armed lines directly - see <see cref="ReadyCode.C64U.C64UDebugSession"/>).
 /// </summary>
 public sealed record DebugStoppedEventArgs(ushort ProgramCounter, ushort Curlin, int? CheckpointNumber);

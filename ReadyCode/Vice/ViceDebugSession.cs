@@ -76,6 +76,14 @@ public sealed class ViceDebugSession : IDebugSession
     // GOSUB's - was never verified against a live system; see GosubStackParser).
     private byte? _stepOutStartStackPointer;
 
+    // Set by StepOver: the SP at the moment it was requested, i.e. before whatever statement is
+    // about to run. If the very next line boundary reached is INSIDE a newly-pushed frame (SP
+    // has gone strictly lower than this baseline - the current statement turned out to be a
+    // GOSUB), that call is run to completion (same technique as _stepOutStartStackPointer) before
+    // reporting the stop, rather than stopping on its first line. If no push happened, the first
+    // line boundary reached is already at the same depth, and is reported immediately.
+    private byte? _stepOverStartStackPointer;
+
     private bool _disposed;
 
     // Cached on first use - the VICE binary monitor protocol docs explicitly warn register ids
@@ -188,12 +196,26 @@ public sealed class ViceDebugSession : IDebugSession
 
     /// <summary>
     /// Executes from the current stop point until the next BASIC line begins, then stops again -
-    /// call this only while already stopped, since it resumes execution itself after arming the trap.
+    /// entering a GOSUB called along the way, if any. Call this only while already stopped, since
+    /// it resumes execution itself after arming the trap.
     /// </summary>
-    public async Task StepLineAsync()
+    public async Task StepIntoAsync()
     {
         await EnsureMasterCheckpointAsync();
         _awaitingLineBoundary = true;
+        await ContinueAsync();
+    }
+
+    /// <summary>
+    /// Executes from the current stop point until the next BASIC line begins, then stops again -
+    /// but if that requires entering a GOSUB, runs it to completion first ("step over") instead of
+    /// stopping on its first line. Also stops early if an active breakpoint is hit along the way.
+    /// Call this only while already stopped, since it resumes execution itself.
+    /// </summary>
+    public async Task StepOverAsync()
+    {
+        await EnsureMasterCheckpointAsync();
+        _stepOverStartStackPointer = await ReadStackPointerAsync();
         await ContinueAsync();
     }
 
@@ -434,6 +456,23 @@ public sealed class ViceDebugSession : IDebugSession
                 }
 
                 _stepOutStartStackPointer = null;
+                Stopped?.Invoke(this, new DebugStoppedEventArgs(programCounter, curlin, isBreakpointLine ? curlin : null));
+                return;
+            }
+
+            if (_stepOverStartStackPointer is { } stepOverBaseline)
+            {
+                // Strictly lower than the baseline means a new frame was pushed reaching this line
+                // - the statement StepOver was called for turned out to be a GOSUB, so run it to
+                // completion (same mechanism as StepOut) instead of stopping on its first line.
+                byte currentStackPointer = await ReadStackPointerAsync();
+                if (currentStackPointer < stepOverBaseline && !isBreakpointLine)
+                {
+                    await ContinueAsync();
+                    return;
+                }
+
+                _stepOverStartStackPointer = null;
                 Stopped?.Invoke(this, new DebugStoppedEventArgs(programCounter, curlin, isBreakpointLine ? curlin : null));
                 return;
             }

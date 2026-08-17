@@ -220,6 +220,12 @@ public partial class MainWindow : Window
 
         DebugToggleBreakpointCommand = new RelayCommand(_ => ToggleBreakpointAtCaret(),
             _ => ViewModel.ActiveTab is { Language: EditorLanguage.Basic });
+        DebugToggleBreakpointEnabledCommand = new RelayCommand(_ => ToggleBreakpointEnabledAtCaret(),
+            _ => ViewModel.ActiveTab is { Language: EditorLanguage.Basic });
+        DebugDeleteAllBreakpointsCommand = new RelayCommand(async _ => await DeleteAllBreakpointsAsync(),
+            _ => ViewModel.BreakpointStore.Breakpoints.Count > 0);
+        DebugRunToCursorCommand = new RelayCommand(async _ => await RunToCursorAsync(),
+            _ => ViewModel.IsDebugging && ViewModel.IsDebugStopped);
 
         ViewModel.PropertyChanged += (_, e) =>
         {
@@ -500,6 +506,12 @@ public partial class MainWindow : Window
     // lifecycle commands on MainViewModel)
     /// <summary>Gets the command that sets or clears a breakpoint on the caret's current BASIC line.</summary>
     public ICommand DebugToggleBreakpointCommand { get; }
+    /// <summary>Gets the command that enables or disables (without removing) the breakpoint on the caret's current BASIC line.</summary>
+    public ICommand DebugToggleBreakpointEnabledCommand { get; }
+    /// <summary>Gets the command that removes every breakpoint, across all files.</summary>
+    public ICommand DebugDeleteAllBreakpointsCommand { get; }
+    /// <summary>Gets the command that resumes a halted debug session and runs until the caret's current line is reached.</summary>
+    public ICommand DebugRunToCursorCommand { get; }
 
     #endregion
 
@@ -6198,6 +6210,75 @@ public partial class MainWindow : Window
                 ViewModel.SetStatus($"Failed to update breakpoint on VICE: {ex.Message}", StatusType.Error);
             }
         }
+    }
+
+    // Ctrl+F9 / "Enable/Disable Breakpoint": flips IsEnabled on the breakpoint already at the
+    // caret's line, if one exists there - unlike Toggle Breakpoint (F9), this never adds or
+    // removes one. Reuses Breakpoint_PropertyChanged (already wired to every breakpoint's
+    // IsEnabled) for persisting, refreshing the gutter, and syncing a live debug session, so
+    // nothing further is needed here beyond flipping the flag.
+    private void ToggleBreakpointEnabledAtCaret()
+    {
+        var tab = ViewModel.ActiveTab;
+        if (tab is not { Language: EditorLanguage.Basic }) return;
+
+        var lineTable = _activeTabLineAddressTable ?? BasicLineAddressTable.Build(tab.Document.Text);
+        if (!lineTable.DocumentLineToBasicLine.TryGetValue(Editor.TextArea.Caret.Line, out ushort basicLine))
+            return;
+
+        string fileKey = tab.FilePath ?? tab.FileName;
+        var existing = ViewModel.BreakpointStore.Find(fileKey, basicLine);
+        if (existing == null) return; // nothing set at this line to enable/disable
+
+        existing.IsEnabled = !existing.IsEnabled;
+    }
+
+    // Ctrl+Shift+F9 / "Delete All Breakpoints": clears every breakpoint, across every file, not
+    // just the active tab - matches Visual Studio's own "Delete All Breakpoints" scope. Captures
+    // the active debug tab's enabled lines before clearing, since BreakpointStore.Clear() alone
+    // only touches the in-memory model, not whatever a live session still has armed.
+    private async Task DeleteAllBreakpointsAsync()
+    {
+        var session = ViewModel.DebugSession;
+        var debugTab = ViewModel.DebugTab;
+        List<ushort> liveLines = new();
+        if (session != null && debugTab != null)
+        {
+            string debugTabFileKey = debugTab.FilePath ?? debugTab.FileName;
+            liveLines = ViewModel.BreakpointStore.EnabledLinesFor(debugTabFileKey).ToList();
+        }
+
+        ViewModel.BreakpointStore.Clear();
+        RefreshBreakpointMargin();
+        ViewModel.PersistBreakpoints();
+
+        if (session == null) return;
+        foreach (ushort line in liveLines)
+        {
+            try { await session.RemoveBreakpointAsync(line); }
+            catch (Exception ex)
+            {
+                ViewModel.SetStatus($"Failed to remove breakpoint from the live session: {ex.Message}", StatusType.Error);
+            }
+        }
+    }
+
+    // Ctrl+F10 / "Run to Cursor": resolves the caret's line to a BASIC line number and hands off
+    // to MainViewModel.RunToLineAsync, which owns the actual session-level logic (arming a
+    // temporary breakpoint there if needed, then continuing).
+    private async Task RunToCursorAsync()
+    {
+        var tab = ViewModel.ActiveTab;
+        if (tab is not { Language: EditorLanguage.Basic }) return;
+
+        var lineTable = _activeTabLineAddressTable ?? BasicLineAddressTable.Build(tab.Document.Text);
+        if (!lineTable.DocumentLineToBasicLine.TryGetValue(Editor.TextArea.Caret.Line, out ushort basicLine))
+        {
+            ViewModel.SetStatus("Run to Cursor requires the caret to be on a line with code.", StatusType.Error);
+            return;
+        }
+
+        await ViewModel.RunToLineAsync(basicLine);
     }
 
     // Pushes the halted line (if any) into the current-execution-line renderer, activating the

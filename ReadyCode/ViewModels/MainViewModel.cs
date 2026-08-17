@@ -56,6 +56,12 @@ public class MainViewModel : INotifyPropertyChanged
     private BasicLineAddressTable? _debugLineAddressTable;
     private int? _debugCurrentDocumentLine;
 
+    // Set by RunToLineAsync when it had to arm a breakpoint of its own (the target line had none
+    // already) - removed again the next time the session stops for any reason, whether it reached
+    // that line or was interrupted by something else first, so a one-off "run to cursor" never
+    // lingers as a permanent breakpoint.
+    private ushort? _runToCursorTempBreakpointLine;
+
     // How long to wait after loading a standalone (no BASIC loader stub) program - on either
     // the C64U (load_prg) or VICE (autostart with RL=0) - before typing a "SYS <origin>"
     // command, since both trigger a machine reset first. Needs to be long enough for the
@@ -105,17 +111,26 @@ public class MainViewModel : INotifyPropertyChanged
         VicePowerOffCommand = new RelayCommand(async _ => await ViceMachineActionAsync(c => c.PowerOffAsync(Settings.ViceEmulatorPath), "VICE emulator closed."));
         ViceSystemInfoCommand = new RelayCommand(async _ => await ShowViceSystemInfoAsync());
 
-        // Starting a session now happens from the C64U/VICE menus' own "Debug" items (one per
-        // target, since the active debug target is determined solely by which one was clicked);
-        // the Debug menu itself only ever acts on a session already in progress.
-        DebugStartOnViceCommand = new RelayCommand(async _ => await DebugStartOnViceAsync(),
-            _ => !IsDebugging && ActiveTab is { Language: EditorLanguage.Basic });
-        DebugStartOnC64UCommand = new RelayCommand(async _ => await DebugStartOnC64UAsync(),
-            _ => !IsDebugging && ActiveTab is { Language: EditorLanguage.Basic });
+        // "Start Debugging / Continue" in the C64U/VICE menus - starts a fresh session on that
+        // target if none is active, or just resumes the (necessarily unique - only one session
+        // can ever be active at a time) already-halted one otherwise, matching Visual Studio's own
+        // overloaded F5 behavior. The Debug menu's separate "Continue" item covers the same resume
+        // action without needing to remember which target menu started the session.
+        DebugStartOrContinueOnViceCommand = new RelayCommand(async _ => await DebugStartOrContinueOnViceAsync(),
+            _ => IsDebugging ? IsDebugStopped : ActiveTab is { Language: EditorLanguage.Basic });
+        DebugStartOrContinueOnC64UCommand = new RelayCommand(async _ => await DebugStartOrContinueOnC64UAsync(),
+            _ => IsDebugging ? IsDebugStopped : ActiveTab is { Language: EditorLanguage.Basic });
 
-        DebugContinueCommand = new RelayCommand(async _ => await DebugContinueAsync(), _ => IsDebugging && IsDebugStopped);
+        // "Restart Debugging" - only meaningful (and only enabled) for whichever target actually
+        // started the currently active session, since restarting implies re-running that same
+        // target's transfer-and-launch sequence.
+        DebugRestartOnViceCommand = new RelayCommand(async _ => await DebugRestartOnViceAsync(), _ => DebugSession is ViceDebugSession);
+        DebugRestartOnC64UCommand = new RelayCommand(async _ => await DebugRestartOnC64UAsync(), _ => DebugSession is C64UDebugSession);
+
         DebugPauseCommand = new RelayCommand(async _ => await DebugPauseAsync(), _ => IsDebugging && !IsDebugStopped);
-        DebugStepLineCommand = new RelayCommand(async _ => await DebugStepLineAsync(), _ => IsDebugging && IsDebugStopped);
+        DebugStepIntoCommand = new RelayCommand(async _ => await DebugStepIntoAsync(), _ => IsDebugging && IsDebugStopped);
+        DebugStepOverCommand = new RelayCommand(async _ => await DebugStepOverAsync(),
+            _ => IsDebugging && IsDebugStopped && DebugSession!.SupportsCallStackAndStepOut);
         DebugStepOutCommand = new RelayCommand(async _ => await DebugStepOutAsync(),
             _ => IsDebugging && IsDebugStopped && DebugSession!.SupportsCallStackAndStepOut);
         // Deliberately gated on IsDebugging alone, not IsDebugStopped like the other controls -
@@ -783,22 +798,30 @@ public class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<GosubFrame> DebugCallStack { get; } = new();
 
     /// <summary>
-    /// Gets the command that starts a new BASIC debug session on VICE for the active tab - the
-    /// VICE menu's "Debug" item.
+    /// Gets the command that starts a new BASIC debug session on VICE for the active tab, or
+    /// resumes one already halted - the VICE menu's "Start Debugging / Continue" item.
     /// </summary>
-    public ICommand DebugStartOnViceCommand { get; }
+    public ICommand DebugStartOrContinueOnViceCommand { get; }
 
     /// <summary>
     /// Gets the command that starts a new BASIC debug session on the C64 Ultimate for the active
-    /// tab - the C64U menu's "Debug" item. Step Out and the Call Stack panel stay unavailable for
-    /// a session started this way - see <see cref="IDebugSession.SupportsCallStackAndStepOut"/>.
+    /// tab, or resumes one already halted - the C64U menu's "Start Debugging / Continue" item.
+    /// Step Out/Step Over and the Call Stack panel stay unavailable for a session started this
+    /// way - see <see cref="IDebugSession.SupportsCallStackAndStepOut"/>.
     /// </summary>
-    public ICommand DebugStartOnC64UCommand { get; }
+    public ICommand DebugStartOrContinueOnC64UCommand { get; }
 
     /// <summary>
-    /// Gets the command that resumes a halted debug session - the Debug menu's "Continue".
+    /// Gets the command that stops then immediately restarts the active debug session on VICE -
+    /// only enabled while the currently active session actually is a VICE one.
     /// </summary>
-    public ICommand DebugContinueCommand { get; }
+    public ICommand DebugRestartOnViceCommand { get; }
+
+    /// <summary>
+    /// Gets the command that stops then immediately restarts the active debug session on the C64
+    /// Ultimate - only enabled while the currently active session actually is a C64U one.
+    /// </summary>
+    public ICommand DebugRestartOnC64UCommand { get; }
 
     /// <summary>
     /// Gets the command that halts the active debug session at the start of the next BASIC line.
@@ -806,9 +829,18 @@ public class MainViewModel : INotifyPropertyChanged
     public ICommand DebugPauseCommand { get; }
 
     /// <summary>
-    /// Gets the command that executes one BASIC line and halts again.
+    /// Gets the command that executes one BASIC line and halts again, entering a GOSUB called
+    /// along the way, if any.
     /// </summary>
-    public ICommand DebugStepLineCommand { get; }
+    public ICommand DebugStepIntoCommand { get; }
+
+    /// <summary>
+    /// Gets the command that executes one BASIC line and halts again, running any GOSUB called
+    /// along the way to completion rather than stopping inside it. Only enabled when
+    /// <see cref="IDebugSession.SupportsCallStackAndStepOut"/> is true (the C64 Ultimate can't
+    /// tell a GOSUB call apart from any other statement without register access).
+    /// </summary>
+    public ICommand DebugStepOverCommand { get; }
 
     /// <summary>
     /// Gets the command that runs until execution returns from the innermost GOSUB or FOR loop
@@ -1448,9 +1480,8 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    // Resumes a halted debug session - the Debug menu's "Continue", distinct from starting a new
-    // session (see DebugStartOnViceAsync), which now only ever happens from the C64U/VICE menus'
-    // own "Debug" items.
+    // Resumes a halted debug session - what each target menu's "Start Debugging / Continue" item
+    // falls back to once a session already exists.
     private async Task DebugContinueAsync()
     {
         if (DebugSession == null) return;
@@ -1463,6 +1494,31 @@ public class MainViewModel : INotifyPropertyChanged
         {
             SetStatus($"Continue failed: {ex.Message}", StatusType.Error);
         }
+    }
+
+    // "Start Debugging / Continue" (VICE menu) - starts fresh if nothing's active, otherwise just
+    // resumes the halted session already in progress (which, since only one session can ever be
+    // active, is necessarily the same one this same menu would have started).
+    private Task DebugStartOrContinueOnViceAsync() => IsDebugging ? DebugContinueAsync() : DebugStartOnViceAsync();
+
+    // "Start Debugging / Continue" (C64U menu) - see DebugStartOrContinueOnViceAsync.
+    private Task DebugStartOrContinueOnC64UAsync() => IsDebugging ? DebugContinueAsync() : DebugStartOnC64UAsync();
+
+    // Stops then immediately starts a fresh session on VICE - "Restart Debugging". Only ever
+    // invoked while a VICE session is the one active (see DebugRestartOnViceCommand's CanExecute).
+    private async Task DebugRestartOnViceAsync()
+    {
+        await DebugStopAsync();
+        await DebugStartOnViceAsync();
+    }
+
+    // Stops then immediately starts a fresh session on the C64 Ultimate - "Restart Debugging".
+    // Only ever invoked while a C64U session is the one active (see DebugRestartOnC64UCommand's
+    // CanExecute).
+    private async Task DebugRestartOnC64UAsync()
+    {
+        await DebugStopAsync();
+        await DebugStartOnC64UAsync();
     }
 
     // Starts a new BASIC debug session on VICE for the active tab. VICE's own RUN\r is typed
@@ -1614,18 +1670,35 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    // Executes one BASIC line and halts again - valid only while already halted.
-    private async Task DebugStepLineAsync()
+    // Executes one BASIC line and halts again, entering a GOSUB called along the way, if any -
+    // valid only while already halted.
+    private async Task DebugStepIntoAsync()
     {
         if (DebugSession == null) return;
 
         try
         {
-            await DebugSession.StepLineAsync();
+            await DebugSession.StepIntoAsync();
         }
         catch (Exception ex)
         {
             SetStatus($"Step failed: {ex.Message}", StatusType.Error);
+        }
+    }
+
+    // Executes one BASIC line and halts again, running any GOSUB called along the way to
+    // completion rather than stopping inside it - valid only while already halted.
+    private async Task DebugStepOverAsync()
+    {
+        if (DebugSession == null) return;
+
+        try
+        {
+            await DebugSession.StepOverAsync();
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Step over failed: {ex.Message}", StatusType.Error);
         }
     }
 
@@ -1642,6 +1715,37 @@ public class MainViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             SetStatus($"Step out failed: {ex.Message}", StatusType.Error);
+        }
+    }
+
+    /// <summary>
+    /// Resumes a halted debug session and runs until it reaches <paramref name="basicLine"/> (or
+    /// stops for any other reason first) - "Run to Cursor". If no breakpoint already exists there,
+    /// arms a temporary one that's automatically removed the next time the session stops, whether
+    /// or not it was this line that stopped it. Called from <c>MainWindow</c> with the caret's
+    /// line already resolved to a BASIC line number, since caret access is a view concern.
+    /// </summary>
+    public async Task RunToLineAsync(ushort basicLine)
+    {
+        if (DebugSession is not { } session || !IsDebugStopped) return;
+
+        bool alreadyBreakpoint = DebugTab != null
+            && BreakpointStore.Find(DebugTab.FilePath ?? DebugTab.FileName, basicLine) is { IsEnabled: true };
+
+        try
+        {
+            if (!alreadyBreakpoint)
+            {
+                await session.SetLineBreakpointAsync(basicLine);
+                _runToCursorTempBreakpointLine = basicLine;
+            }
+
+            await session.ContinueAsync();
+        }
+        catch (Exception ex)
+        {
+            _runToCursorTempBreakpointLine = null;
+            SetStatus($"Run to Cursor failed: {ex.Message}", StatusType.Error);
         }
     }
 
@@ -1703,7 +1807,20 @@ public class MainViewModel : INotifyPropertyChanged
             SetStatus($"Stopped at line {e.Curlin}{breakpointNote}.", StatusType.Info);
         });
 
+        if (_runToCursorTempBreakpointLine is { } tempLine)
+        {
+            _runToCursorTempBreakpointLine = null;
+            _ = RemoveRunToCursorTempBreakpointAsync(tempLine);
+        }
+
         _ = RefreshDebugVariablesAndCallStackAsync();
+    }
+
+    private async Task RemoveRunToCursorTempBreakpointAsync(ushort basicLine)
+    {
+        if (DebugSession is not { } session) return;
+        try { await session.RemoveBreakpointAsync(basicLine); }
+        catch { /* best-effort - the session may already be gone, or about to be */ }
     }
 
     private void OnDebugSessionResumed(object? sender, EventArgs e)
