@@ -56,6 +56,8 @@ public class PrgConverterTests
     [InlineData("10 PRINT \"HELLO WORLD\"")]
     [InlineData("10 FOR I=1 TO 10\n20 PRINT I\n30 NEXT I")]
     [InlineData("10 IF X=1 THEN GOTO 30\n20 PRINT \"NO\"\n30 PRINT \"YES\"")]
+    [InlineData("10 PRINT SPC(5)\"HELLO WORLD\"")]
+    [InlineData("10 PRINT TAB(5)\"HELLO WORLD\"")]
     public void ConvertToPrg_ThenConvertFromPrg_RetokenizesToIdenticalBytes(string source)
     {
         // The strongest available round-trip check: ConvertFromPrg's spacing doesn't necessarily
@@ -103,6 +105,31 @@ public class PrgConverterTests
         byte[] prg = converter.ConvertToPrg("10 PRINT \"PRINT THIS\"");
         string listing = converter.ConvertFromPrg(prg);
         Assert.Contains("\"PRINT THIS\"", listing);
+    }
+
+    [Fact]
+    public void ConvertFromPrg_SpcTokenRendersWithSingleParen()
+    {
+        // Regression test: SPC(=0xA6 bakes the opening paren into the token's own display text
+        // on real hardware, so the tokenized stream must contain exactly one "(" byte, and
+        // detokenizing it must not duplicate that paren (e.g. "SPC((5)").
+        var converter = new PrgConverter();
+        byte[] prg = converter.ConvertToPrg("10 PRINT SPC(5)\"HELLO WORLD\"");
+        string listing = converter.ConvertFromPrg(prg);
+
+        Assert.Contains("SPC(5)", listing);
+        Assert.DoesNotContain("SPC((5)", listing);
+    }
+
+    [Fact]
+    public void ConvertFromPrg_TabTokenRendersWithSingleParen()
+    {
+        var converter = new PrgConverter();
+        byte[] prg = converter.ConvertToPrg("10 PRINT TAB(5)\"HELLO WORLD\"");
+        string listing = converter.ConvertFromPrg(prg);
+
+        Assert.Contains("TAB(5)", listing);
+        Assert.DoesNotContain("TAB((5)", listing);
     }
 
     // ── IsBasicProgram ───────────────────────────────────────────────────────

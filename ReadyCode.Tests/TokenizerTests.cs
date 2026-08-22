@@ -147,6 +147,46 @@ public class TokenizerTests
         Assert.Equal(once, twice);
     }
 
+    // ── Paren-inclusive tokens (TAB(, SPC() ──────────────────────────────────
+
+    [Fact]
+    public void TokenizeLine_TabParenSwallowsTheParen()
+    {
+        // TAB(=0xA3. The real KERNAL bakes the "(" into the token's display text, so the
+        // tokenizer must not also emit a literal "(" byte, or LISTing on real hardware/VICE
+        // shows "TAB((".
+        var bytes = Tokenize("TAB(5)");
+        byte[] expected = [0xA3, (byte)'5', (byte)')'];
+        Assert.Equal(expected, bytes);
+    }
+
+    [Fact]
+    public void TokenizeLine_SpcParenSwallowsTheParen()
+    {
+        // SPC(=0xA6, same paren-inclusive quirk as TAB(.
+        var bytes = Tokenize("SPC(5)");
+        byte[] expected = [0xA6, (byte)'5', (byte)')'];
+        Assert.Equal(expected, bytes);
+    }
+
+    [Fact]
+    public void TokenizeLine_TabAbbreviationParenSwallowsTheParen()
+    {
+        // "Ta" is TAB's shift-abbreviation - the paren-swallowing must apply here too.
+        var bytes = Tokenize("Ta(5)");
+        byte[] expected = [0xA3, (byte)'5', (byte)')'];
+        Assert.Equal(expected, bytes);
+    }
+
+    [Fact]
+    public void TokenizeLine_SpcAbbreviationParenSwallowsTheParen()
+    {
+        // "Sp" is SPC's shift-abbreviation - the paren-swallowing must apply here too.
+        var bytes = Tokenize("Sp(5)");
+        byte[] expected = [0xA6, (byte)'5', (byte)')'];
+        Assert.Equal(expected, bytes);
+    }
+
     // ── Keyword abbreviations ────────────────────────────────────────────────
 
     [Fact]

@@ -92,6 +92,12 @@ public class BasicTokenizer
                     tokens.Add(token);
                     pos += matchedLength;
 
+                    // TAB( and SPC( bake the opening paren into the token's own display text on
+                    // real hardware, so a literal "(" here must be swallowed, not re-emitted, or
+                    // LISTing the .prg on VICE/C64U shows a doubled paren.
+                    if (BasicTokens.ParenInclusiveTokens.Contains(token) && pos < line.Length && line[pos] == '(')
+                        pos++;
+
                     // After REM the rest of the line is a comment — copy verbatim.
                     if (token == _remToken)
                     {

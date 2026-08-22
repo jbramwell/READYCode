@@ -368,7 +368,12 @@ public class PrgConverter
             // This is the same rule the C64 BASIC interpreter follows: token expansion
             // stops at the opening quote and resumes after the closing quote.
             if (!inString && BasicTokens.ReverseTokenMap.TryGetValue(b, out var keyword))
+            {
+                // TAB( and SPC( bake the opening paren into the token itself on real hardware.
                 sb.Append(keyword);
+                if (BasicTokens.ParenInclusiveTokens.Contains(b))
+                    sb.Append('(');
+            }
             else
                 sb.Append((char)b);
         }

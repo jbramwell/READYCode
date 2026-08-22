@@ -129,6 +129,18 @@ public static class BasicTokens
         TokenMap.ToDictionary(kvp => kvp.Value, kvp => kvp.Key);
 
     /// <summary>
+    /// The token bytes for TAB( and SPC( - the only two BASIC V2 tokens whose real KERNAL display
+    /// text bakes in the opening parenthesis rather than treating it as a separate character. The
+    /// tokenizer must consume a following "(" without emitting it, and the detokenizer must emit
+    /// it as part of the keyword, or a round trip through real hardware/VICE doubles the paren.
+    /// </summary>
+    public static readonly IReadOnlySet<byte> ParenInclusiveTokens = new HashSet<byte>
+    {
+        TokenMap["TAB"],
+        TokenMap["SPC"],
+    };
+
+    /// <summary>
     /// Word-style keyword tokens (excludes the single-character operators), sorted longest-first
     /// so greedy matching prefers e.g. PRINT# over PRINT, GOSUB over GO, LEFT$ over LET. Used
     /// everywhere a line of BASIC is scanned for keywords outside of tokenization itself: syntax
