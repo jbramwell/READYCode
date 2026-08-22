@@ -1,7 +1,6 @@
-# READYCode — Feature Roadmap
+# READYCode Roadmap
 
-*Generated August 2026*
-
+*Updated:* August 2026
 
 ---
 
