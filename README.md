@@ -10,6 +10,10 @@ A Windows 10/11 desktop code editor for writing Commodore 64 BASIC and 6502 asse
 
 For anyone interested in providing feedback into a BASIC Module System (i.e., splitting a BASIC program across multiple files), please [find the spec here](https://github.com/jbramwell/READYCode/issues/1) and provide your feedback. I truly appreciate it. Thanks!
 
+## READYCode Roadmap
+
+If you want to see the features being considered and/or planned for READYCode, check out the [roadmap](Roadmap.html). If you would like to suggest additional features - or comment on existing roadmap items - please [open a new issue](https://github.com/jbramwell/READYCode/issues/new/choose).
+
 ## Why this exists
 
 Writing BASIC for the C64 the "authentic" way means typing into the C64's own line editor: no syntax
