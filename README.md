@@ -12,7 +12,7 @@ For anyone interested in providing feedback into a BASIC Module System (i.e., sp
 
 ## READYCode Roadmap
 
-If you want to see the features being considered and/or planned for READYCode, check out the [roadmap](Roadmap.html). If you would like to suggest additional features - or comment on existing roadmap items - please [open a new issue](https://github.com/jbramwell/READYCode/issues/new/choose).
+If you want to see the features being considered and/or planned for READYCode, check out the [roadmap](Roadmap.md). If you would like to suggest additional features - or comment on existing roadmap items - please [open a new issue](https://github.com/jbramwell/READYCode/issues/new/choose).
 
 ## Why this exists
 
