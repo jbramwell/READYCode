@@ -178,6 +178,18 @@ public class PrgConverterTests
         Assert.False(new PrgConverter().IsBasicProgram([0x01]));
     }
 
+    [Fact]
+    public void IsBasicProgram_TrailingPaddingAfterEndMarker_ReturnsTrue()
+    {
+        // Regression test: a real-world .prg (e.g. one extracted whole from a D64 disk sector)
+        // can carry a few stray bytes past its own 0x0000 end-of-program marker. Real hardware
+        // stops following the line-link chain right at that marker and never looks past it, so
+        // this must still be recognized as BASIC rather than falling back to the hex/ML viewer.
+        byte[] prg = new PrgConverter().ConvertToPrg("10 PRINT \"HI\"\n20 GOTO 10");
+        byte[] withPadding = [..prg, 0xA0, 0x00, 0xAE];
+        Assert.True(new PrgConverter().IsBasicProgram(withPadding));
+    }
+
     // ── TryDetectBasicStub ───────────────────────────────────────────────────
 
     [Fact]

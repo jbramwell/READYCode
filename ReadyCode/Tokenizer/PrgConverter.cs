@@ -213,7 +213,11 @@ public class PrgConverter
     /// essentially never satisfies by chance. Token bytes themselves aren't validated - real
     /// historical programs sometimes carry stray high-bit bytes (leftover graphics/cursor
     /// characters, editor artifacts) that are harmless in practice but would otherwise cause
-    /// false negatives on genuinely valid programs.
+    /// false negatives on genuinely valid programs. Bytes trailing the program's own 0x0000
+    /// end-of-program marker aren't validated either, for the same reason - real hardware stops
+    /// following the link chain the moment it hits that marker and never looks at what comes
+    /// after it in the file, and real-world .prg files routinely carry a few bytes of leftover
+    /// disk-sector padding past their last used byte.
     /// </summary>
     /// <param name="data">The .prg data to check.</param>
     /// <returns>True if the data is a well-formed tokenized BASIC program.</returns>
@@ -230,7 +234,7 @@ public class PrgConverter
 
             ushort link = (ushort)(data[pos] | (data[pos + 1] << 8));
             if (link == 0x0000)
-                return pos + 2 == data.Length;
+                return true;
 
             pos += 2;
             if (pos + 1 >= data.Length) return false;
