@@ -93,6 +93,10 @@ public partial class MainWindow : Window
 
     // Debounces BasicDiagnostics.Analyze so a full re-analysis doesn't run on every keystroke.
     private readonly DispatcherTimer _diagnosticsTimer;
+
+    // Debounces the find-bar's live match list so an edit doesn't re-search the whole document
+    // on every keystroke; only fired while the find bar is open (see Editor_TextChanged).
+    private readonly DispatcherTimer _findUpdateTimer;
     private IReadOnlyList<EditorDiagnostic> _currentDiagnostics = Array.Empty<EditorDiagnostic>();
 
     // The most recent assembly result for the active Asm tab, refreshed by RunAsmSymbolIndex on
@@ -258,13 +262,6 @@ public partial class MainWindow : Window
         breakpointsView.SortDescriptions.Add(new SortDescription(nameof(Breakpoint.FilePath), ListSortDirection.Ascending));
         breakpointsView.SortDescriptions.Add(new SortDescription(nameof(Breakpoint.LineNumber), ListSortDirection.Ascending));
 
-        FindBar.CloseRequested      += (_, _) => { _findHighlightColorizer.Clear(); Editor.TextArea.TextView.Redraw(); Editor.Focus(); };
-        FindBar.SearchChanged       += (_, _) => UpdateFindMatches();
-        FindBar.FindNextRequested   += (_, _) => FindNext();
-        FindBar.FindPreviousRequested += (_, _) => FindPrev();
-        FindBar.ReplaceRequested    += (_, _) => ExecuteReplace();
-        FindBar.ReplaceAllRequested += (_, _) => ExecuteReplaceAll();
-
         HexEditor.ByteEdited += (_, _) => { if (ViewModel.ActiveTab != null) ViewModel.ActiveTab.IsModified = true; };
 
         CompareControl.ViewStateChanged += (isUnified, ignoreWhitespace) =>
@@ -291,6 +288,16 @@ public partial class MainWindow : Window
         Editor.TextArea.TextView.BackgroundRenderers.Add(_debugCurrentLineRenderer);
         _diagnosticsTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _diagnosticsTimer.Tick += (_, _) => { _diagnosticsTimer.Stop(); RunDocumentAnalysis(); };
+        _findUpdateTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        _findUpdateTimer.Tick += (_, _) => { _findUpdateTimer.Stop(); UpdateFindMatches(); };
+
+        FindBar.CloseRequested      += (_, _) => { _findUpdateTimer.Stop(); _findHighlightColorizer.Clear(); Editor.TextArea.TextView.Redraw(); Editor.Focus(); };
+        FindBar.SearchChanged       += (_, _) => UpdateFindMatches();
+        FindBar.FindNextRequested   += (_, _) => FindNext();
+        FindBar.FindPreviousRequested += (_, _) => FindPrev();
+        FindBar.ReplaceRequested    += (_, _) => ExecuteReplace();
+        FindBar.ReplaceAllRequested += (_, _) => ExecuteReplaceAll();
+
         Editor.TextArea.Caret.PositionChanged += (_, _) =>
         {
             _lineNumberColorizer.ActiveDocumentLineNumber =
@@ -3943,7 +3950,7 @@ public partial class MainWindow : Window
         _findMatches.AddRange(ProjectSearcher.FindMatches(Editor.Document.Text, searchText, FindBar.MatchCase, FindBar.WholeWord, FindBar.UseRegex));
 
         _findMatchIndex = FindNearestMatchIndex(Editor.CaretOffset);
-        _findHighlightColorizer.SetMatches(_findMatches, _findMatchIndex);
+        _findHighlightColorizer.SetMatches(Editor.Document, _findMatches, _findMatchIndex);
         Editor.TextArea.TextView.Redraw();
         FindBar.SetMatchCount(_findMatchIndex + 1, _findMatches.Count);
     }
@@ -3976,7 +3983,7 @@ public partial class MainWindow : Window
         var (offset, length) = _findMatches[_findMatchIndex];
         Editor.Select(offset, length);
         Editor.ScrollToLine(Editor.Document.GetLineByOffset(offset).LineNumber);
-        _findHighlightColorizer.SetMatches(_findMatches, _findMatchIndex);
+        _findHighlightColorizer.SetMatches(Editor.Document, _findMatches, _findMatchIndex);
         Editor.TextArea.TextView.Redraw();
         FindBar.SetMatchCount(_findMatchIndex + 1, _findMatches.Count);
     }
@@ -6116,6 +6123,20 @@ public partial class MainWindow : Window
         // switches, since assigning Editor.Document in ActivateTab raises this same event.
         _diagnosticsTimer.Stop();
         _diagnosticsTimer.Start();
+
+        // Editing the document directly (rather than through Replace/Replace All) leaves the
+        // cached _findMatches offsets stale, so Next/Prev would jump to whatever text now sits
+        // at the old offset instead of the actual next match. Debounced the same way as
+        // diagnostics above, so a full re-search doesn't run on every keystroke either.
+        // The highlight itself doesn't need to wait for that recompute: FindHighlightColorizer
+        // paints from AnchorSegments, which AvalonEdit shifts automatically as this same edit
+        // is applied, so it keeps tracking its matched text (and repaints as part of this same
+        // keystroke's normal redraw) instead of sitting at a stale numeric offset.
+        if (FindBar.Visibility == Visibility.Visible)
+        {
+            _findUpdateTimer.Stop();
+            _findUpdateTimer.Start();
+        }
     }
 
     // Runs every debounced analysis pass for the active document in one go: diagnostics, folding,

@@ -16,7 +16,11 @@ public class FindHighlightColorizer : DocumentColorizingTransformer
 {
     #region Private Fields
 
-    private readonly List<(int Offset, int Length)> _matches = new();
+    // AnchorSegment (rather than raw offset/length) so a highlight tracks its matched text through
+    // edits elsewhere in the document between debounced re-searches - typing above a match pushes
+    // its anchors forward with it, instead of the highlight staying at a now-stale numeric offset
+    // and appearing to drift onto whatever text ends up there.
+    private readonly List<AnchorSegment> _matches = new();
     private int _currentIndex = -1;
 
     #endregion
@@ -50,12 +54,15 @@ public class FindHighlightColorizer : DocumentColorizingTransformer
     /// <summary>
     /// Replaces the set of highlighted matches and marks which one is current.
     /// </summary>
+    /// <param name="document">The document the offsets belong to, used to anchor each match so it
+    /// keeps tracking its matched text through subsequent edits.</param>
     /// <param name="matches">The offset/length pairs of all matches to highlight.</param>
     /// <param name="currentIndex">The index within <paramref name="matches"/> of the current match, or -1 for none.</param>
-    public void SetMatches(IEnumerable<(int Offset, int Length)> matches, int currentIndex)
+    public void SetMatches(TextDocument document, IEnumerable<(int Offset, int Length)> matches, int currentIndex)
     {
         _matches.Clear();
-        _matches.AddRange(matches);
+        foreach (var (offset, length) in matches)
+            _matches.Add(new AnchorSegment(document, offset, length));
         _currentIndex = currentIndex;
     }
 
@@ -81,7 +88,9 @@ public class FindHighlightColorizer : DocumentColorizingTransformer
 
         for (int i = 0; i < _matches.Count; i++)
         {
-            var (offset, length) = _matches[i];
+            var segment = _matches[i];
+            int offset = segment.Offset;
+            int length = segment.Length;
             if (offset + length <= lineStart || offset >= lineEnd) continue;
 
             int start = Math.Max(offset, lineStart);
