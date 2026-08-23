@@ -2,6 +2,7 @@
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
 using System.Globalization;
+using ReadyCode.Tokenizer;
 
 namespace ReadyCode.Debugger;
 
@@ -61,6 +62,11 @@ public static class VariableWriteBack
     {
         if (variable.Value is not ResolvedStringValue current)
             throw new InvalidOperationException("This string's value hasn't finished loading yet.");
+
+        // Reverse the display-only PUA glyph substitution (see PetsciiScreenCodeMap.ToDisplayText)
+        // back to raw PETSCII bytes-as-chars before anything else - a no-op for plain text with no
+        // such glyphs in it.
+        enteredText = PetsciiScreenCodeMap.FromDisplayText(enteredText);
 
         // Tolerate re-submitting the display format's surrounding quotes unchanged.
         string newText = enteredText;

@@ -2,6 +2,7 @@
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
 using ReadyCode.Debugger;
+using ReadyCode.Tokenizer;
 using Xunit;
 
 namespace ReadyCode.Tests;
@@ -103,6 +104,26 @@ public class VariableWriteBackTests
         var (_, bytes) = VariableWriteBack.Encode(variable, "\"WORLD\"");
 
         Assert.Equal("WORLD"u8.ToArray(), bytes);
+    }
+
+    [Fact]
+    public void Encode_String_PuaSubstitutedControlCodes_ConvertsBackToRawBytes()
+    {
+        // Simulates what the Variables grid's edit box now shows/passes: PUA-substituted
+        // control-code glyphs (see PetsciiScreenCodeMap.ToDisplayText), not the invisible raw
+        // bytes - e.g. a user editing colortest_prg.prg's A$ while keeping its leading
+        // cursor-right/reverse-on/white control codes visible and only changing "BLACK" to
+        // "WHITE".
+        string rawOriginal = (char)0x1D + "" + (char)0x12 + (char)0x05 + "BLACK" + (char)0x1D;
+        var current = new ResolvedStringValue(rawOriginal, HeapPointer: 0x3000);
+        var variable = new BasicVariable("A$", BasicVariableType.String, current, ValueAddress: 0x2500);
+
+        string rawEdited = (char)0x1D + "" + (char)0x12 + (char)0x05 + "WHITE" + (char)0x1D;
+        string enteredDisplayText = PetsciiScreenCodeMap.ToDisplayText(rawEdited);
+
+        var (_, bytes) = VariableWriteBack.Encode(variable, enteredDisplayText);
+
+        Assert.Equal(rawEdited.Select(c => (byte)c).ToArray(), bytes);
     }
 
     [Fact]

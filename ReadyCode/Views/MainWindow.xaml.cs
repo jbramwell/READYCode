@@ -6396,16 +6396,32 @@ public partial class MainWindow : Window
     // string, per the variable's type), writes it to the live machine, then re-reads the whole
     // variable table so the grid shows the true resulting value rather than trusting the typed
     // text verbatim - matters most for a string, which silently space-pads to its original
-    // length. Always cancels the grid's own edit (rather than letting its OneWay binding no-op)
-    // so this is the one path that ever applies a Variables-grid edit.
+    // length. Always cancels the grid's own edit (its templates have nothing bound two-way to
+    // push back anyway) so this is the one path that ever applies a Variables-grid edit.
+    //
+    // e.EditingElement is the DataGridTemplateColumn's generated ContentPresenter, not the
+    // CellEditingTemplate's TextBox directly (unlike a DataGridTextColumn, where it would be) -
+    // has to be located within it via the visual tree, or every edit silently no-ops here before
+    // ever reaching VariableWriteBack.
     private async void DebugVariablesGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
     {
         if (e.EditAction != DataGridEditAction.Commit) return;
         if (e.Row.Item is not BasicVariable variable) return;
-        if (e.EditingElement is not TextBox textBox) return;
+        if (e.EditingElement is not FrameworkElement editingElement) return;
+        if (FindVisualChild<TextBox>(editingElement) is not { } textBox) return;
         if (ViewModel.DebugSession is not { } session) return;
 
         e.Cancel = true;
+
+        // Writing memory while the target is running (not halted) would race the live program's
+        // own reads/writes of the same bytes - only safe while stopped, same as every other live
+        // debugger interaction (stepping, etc.).
+        if (!ViewModel.IsDebugStopped)
+        {
+            ViewModel.SetStatus($"Can't update {variable.Name} while running - pause first.", StatusType.Error);
+            return;
+        }
+
         string enteredText = textBox.Text;
 
         try
@@ -7696,8 +7712,19 @@ public partial class MainWindow : Window
             InsertSpecialChar((char)code);
     }
 
+    // Targets whichever control the click is actually meant for: the Variables grid's value edit
+    // box if that's focused, otherwise the main code editor (the historical, still-default
+    // target). There's no real copy/paste from this panel to redirect instead - its preview
+    // glyphs are static, non-selectable TextBlocks - so click-to-insert has to be the one
+    // mechanism that reaches both places.
     private void InsertSpecialChar(char ch)
     {
+        if (Keyboard.FocusedElement is TextBox textBox && FindAncestor<DataGrid>(textBox) == DebugVariablesGrid)
+        {
+            InsertSpecialCharIntoVariableEditBox(textBox, ch);
+            return;
+        }
+
         int start = Editor.SelectionStart;
         int length = Editor.SelectionLength;
         Editor.Document.Replace(start, length, ch.ToString());
@@ -7705,6 +7732,21 @@ public partial class MainWindow : Window
         Editor.CaretOffset = newOffset;
         Editor.Select(newOffset, 0);
         Editor.Focus();
+    }
+
+    // The Variables grid's value edit box shows PUA-substituted display text (see
+    // DebugVariableValueConverter/PetsciiScreenCodeMap.ToDisplayText), not raw PETSCII bytes, so
+    // the inserted character has to match that same convention - VariableWriteBack.EncodeString
+    // converts it back on commit.
+    private static void InsertSpecialCharIntoVariableEditBox(TextBox textBox, char ch)
+    {
+        char displayChar = (char)(0xE000 + PetsciiScreenCodeMap.ToScreenCode((byte)ch));
+        int start = textBox.SelectionStart;
+        textBox.Text = textBox.Text.Remove(start, textBox.SelectionLength).Insert(start, displayChar.ToString());
+        int newOffset = start + 1;
+        textBox.CaretIndex = newOffset;
+        textBox.Select(newOffset, 0);
+        textBox.Focus();
     }
 
     #endregion

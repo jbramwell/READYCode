@@ -45,10 +45,7 @@ public class PetsciiGlyphGenerator : VisualLineElementGenerator
         for (int i = startOffset; i < endOffset; i++)
         {
             char c = document.GetCharAt(i);
-            // PETSCII graphics diverge from ASCII starting at $5C (£, not \) and again from
-            // $5E through $7E (↑, ←, and the full graphics block), even though those code
-            // points fall inside the otherwise-identical printable ASCII range.
-            if (c < 0x20 || c > 0x7E || c == 0x5C || c >= 0x5E)
+            if (c <= 0xFF && PetsciiScreenCodeMap.NeedsGlyphSubstitution((byte)c))
                 return i;
         }
 
