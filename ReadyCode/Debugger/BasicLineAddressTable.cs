@@ -71,7 +71,7 @@ public sealed class BasicLineAddressTable
     public static BasicLineAddressTable Build(string sourceCode, ushort loadAddress = 0x0801)
     {
         var tokenizer = new BasicTokenizer();
-        var lines = sourceCode.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+        var lines = PrgConverter.SplitSourceLines(sourceCode);
 
         var lineAddresses = new Dictionary<ushort, ushort>();
         var documentLineToBasicLine = new Dictionary<int, ushort>();

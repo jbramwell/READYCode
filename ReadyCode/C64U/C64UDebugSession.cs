@@ -217,15 +217,6 @@ public sealed class C64UDebugSession : IDebugSession
         throw new NotSupportedException("Step Out isn't available when debugging the C64 Ultimate - its REST API has no way to read the 6502 stack pointer.");
 
     /// <summary>
-    /// Reads the BASIC line number currently executing (CURLIN, $39-$3A).
-    /// </summary>
-    public async Task<ushort> ReadCurlinAsync()
-    {
-        byte[] data = await ReadMemoryAsync(0x39, 2);
-        return (ushort)(data[0] | (data[1] << 8)); // CURLIN is stored little-endian
-    }
-
-    /// <summary>
     /// Not supported - see <see cref="SupportsCallStackAndStepOut"/>.
     /// </summary>
     public Task<byte> ReadStackPointerAsync() =>

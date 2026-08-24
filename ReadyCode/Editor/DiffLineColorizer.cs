@@ -38,11 +38,11 @@ public class DiffLineColorizer : DocumentColorizingTransformer
 {
     #region Private Fields
 
-    private static readonly Brush _insertedBg = MakeBrush(46, 160, 67, 40);
-    private static readonly Brush _deletedBg = MakeBrush(220, 53, 69, 40);
-    private static readonly Brush _insertedSubBg = MakeBrush(46, 160, 67, 100);
-    private static readonly Brush _deletedSubBg = MakeBrush(220, 53, 69, 100);
-    private static readonly Brush _imaginaryBg = MakeBrush(128, 128, 128, 35);
+    private static readonly Brush _insertedBg = MakeBrush(DiffColors.Inserted, 40);
+    private static readonly Brush _deletedBg = MakeBrush(DiffColors.Deleted, 40);
+    private static readonly Brush _insertedSubBg = MakeBrush(DiffColors.Inserted, 100);
+    private static readonly Brush _deletedSubBg = MakeBrush(DiffColors.Deleted, 100);
+    private static readonly Brush _imaginaryBg = MakeBrush(Color.FromRgb(128, 128, 128), 35);
 
     #endregion
 
@@ -111,9 +111,9 @@ public class DiffLineColorizer : DocumentColorizingTransformer
 
     #region Private Methods
 
-    private static SolidColorBrush MakeBrush(byte r, byte g, byte b, byte a)
+    private static SolidColorBrush MakeBrush(Color color, byte alpha)
     {
-        var brush = new SolidColorBrush(Color.FromArgb(a, r, g, b));
+        var brush = new SolidColorBrush(Color.FromArgb(alpha, color.R, color.G, color.B));
         brush.Freeze();
         return brush;
     }

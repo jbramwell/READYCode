@@ -10,10 +10,10 @@
     <SelfContained>false</SelfContained>
     
     <!-- Versioning — increment ApplicationVersion (Build digit) for each Store submission -->
-    <ApplicationVersion>2.1.0.0</ApplicationVersion>
-    <ApplicationDisplayVersion>2.1.0</ApplicationDisplayVersion>
-    <AssemblyVersion>2.1.0.0</AssemblyVersion>
-    <FileVersion>2.1.0.0</FileVersion>
+    <ApplicationVersion>2.2.0.0</ApplicationVersion>
+    <ApplicationDisplayVersion>2.2.0</ApplicationDisplayVersion>
+    <AssemblyVersion>2.2.0.0</AssemblyVersion>
+    <FileVersion>2.2.0.0</FileVersion>
 
     <!-- MSIX packaging — Release only so Debug builds remain fast -->
     <WindowsPackageType Condition="'$(Configuration)' == 'Release'">MSIX</WindowsPackageType>

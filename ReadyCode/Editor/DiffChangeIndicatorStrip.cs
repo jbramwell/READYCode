@@ -41,9 +41,9 @@ public sealed class DiffChangeIndicatorStrip : FrameworkElement
     {
         // Same hues DiffLineColorizer tints changed lines with, at full opacity - a strip mark
         // reads as "this row is red/green" the same way the line itself does.
-        _deletedBrush = new SolidColorBrush(Color.FromRgb(220, 53, 69));
+        _deletedBrush = new SolidColorBrush(DiffColors.Deleted);
         _deletedBrush.Freeze();
-        _insertedBrush = new SolidColorBrush(Color.FromRgb(46, 160, 67));
+        _insertedBrush = new SolidColorBrush(DiffColors.Inserted);
         _insertedBrush.Freeze();
     }
 

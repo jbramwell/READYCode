@@ -22,8 +22,8 @@ public class DiffPrefixMargin : AbstractMargin
     private const double _rightPadding = 6;
 
     private static readonly Typeface _typeface = new("Consolas");
-    private static readonly Brush _insertedBrush = new SolidColorBrush(Color.FromRgb(46, 160, 67));
-    private static readonly Brush _deletedBrush = new SolidColorBrush(Color.FromRgb(220, 53, 69));
+    private static readonly Brush _insertedBrush = new SolidColorBrush(DiffColors.Inserted);
+    private static readonly Brush _deletedBrush = new SolidColorBrush(DiffColors.Deleted);
     private static readonly Brush _neutralBrush = Brushes.Gray;
 
     #endregion

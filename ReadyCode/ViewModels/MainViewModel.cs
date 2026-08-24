@@ -1480,21 +1480,26 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    // Resumes a halted debug session - what each target menu's "Start Debugging / Continue" item
-    // falls back to once a session already exists.
-    private async Task DebugContinueAsync()
+    // Shared shape for every simple live-session interaction below (Continue/Pause/Step
+    // Into/Over/Out): no-op if there's no active session, run the call, report any failure via
+    // the status bar - collapses what would otherwise be five near-identical wrapper methods.
+    private async Task RunDebugCommandAsync(Func<IDebugSession, Task> action, string failureVerb)
     {
-        if (DebugSession == null) return;
+        if (DebugSession is not { } session) return;
 
         try
         {
-            await DebugSession.ContinueAsync();
+            await action(session);
         }
         catch (Exception ex)
         {
-            SetStatus($"Continue failed: {ex.Message}", StatusType.Error);
+            SetStatus($"{failureVerb} failed: {ex.Message}", StatusType.Error);
         }
     }
+
+    // Resumes a halted debug session - what each target menu's "Start Debugging / Continue" item
+    // falls back to once a session already exists.
+    private Task DebugContinueAsync() => RunDebugCommandAsync(session => session.ContinueAsync(), "Continue");
 
     // "Start Debugging / Continue" (VICE menu) - starts fresh if nothing's active, otherwise just
     // resumes the halted session already in progress (which, since only one session can ever be
@@ -1656,67 +1661,19 @@ public class MainViewModel : INotifyPropertyChanged
 
     // Arms a trap that halts at the start of the next BASIC line without resuming - valid only
     // while the session is already running (e.g. right after Continue/Start).
-    private async Task DebugPauseAsync()
-    {
-        if (DebugSession == null) return;
-
-        try
-        {
-            await DebugSession.PauseAsync();
-        }
-        catch (Exception ex)
-        {
-            SetStatus($"Pause failed: {ex.Message}", StatusType.Error);
-        }
-    }
+    private Task DebugPauseAsync() => RunDebugCommandAsync(session => session.PauseAsync(), "Pause");
 
     // Executes one BASIC line and halts again, entering a GOSUB called along the way, if any -
     // valid only while already halted.
-    private async Task DebugStepIntoAsync()
-    {
-        if (DebugSession == null) return;
-
-        try
-        {
-            await DebugSession.StepIntoAsync();
-        }
-        catch (Exception ex)
-        {
-            SetStatus($"Step failed: {ex.Message}", StatusType.Error);
-        }
-    }
+    private Task DebugStepIntoAsync() => RunDebugCommandAsync(session => session.StepIntoAsync(), "Step");
 
     // Executes one BASIC line and halts again, running any GOSUB called along the way to
     // completion rather than stopping inside it - valid only while already halted.
-    private async Task DebugStepOverAsync()
-    {
-        if (DebugSession == null) return;
-
-        try
-        {
-            await DebugSession.StepOverAsync();
-        }
-        catch (Exception ex)
-        {
-            SetStatus($"Step over failed: {ex.Message}", StatusType.Error);
-        }
-    }
+    private Task DebugStepOverAsync() => RunDebugCommandAsync(session => session.StepOverAsync(), "Step over");
 
     // Runs until execution returns from the innermost GOSUB or FOR loop active at the current
     // stop point - valid only while already halted.
-    private async Task DebugStepOutAsync()
-    {
-        if (DebugSession == null) return;
-
-        try
-        {
-            await DebugSession.StepOutAsync();
-        }
-        catch (Exception ex)
-        {
-            SetStatus($"Step out failed: {ex.Message}", StatusType.Error);
-        }
-    }
+    private Task DebugStepOutAsync() => RunDebugCommandAsync(session => session.StepOutAsync(), "Step out");
 
     /// <summary>
     /// Resumes a halted debug session and runs until it reaches <paramref name="basicLine"/> (or
@@ -1910,11 +1867,27 @@ public class MainViewModel : INotifyPropertyChanged
 
     private void OnDebugSessionConnectionLost(object? sender, string message)
     {
+        IDebugSession? session = null;
+
         Application.Current.Dispatcher.Invoke(() =>
         {
+            session = DebugSession;
             SetStatus($"Debug session lost: {message}", StatusType.Error);
             CleanupDebugSessionState();
         });
+
+        // Detached, not awaited inline: this event is itself raised from within the session's own
+        // background read/poll loop, and DisposeAsync awaits that very same task to finish -
+        // awaiting it directly here, on the same call stack, could hang forever. Best-effort and
+        // fire-and-forget, same as every other disposal path in this class: without this, a C64U
+        // session left halted when the connection drops would never get its RESUME_FLAG write or
+        // its GONE-vector restore, leaving the physical machine frozen until manually reset.
+        if (session != null)
+            _ = Task.Run(async () =>
+            {
+                try { await session.DisposeAsync(); }
+                catch { /* best-effort - the connection is already gone */ }
+            });
     }
 
     // Performs a machine action (reset, reboot, pause, resume, poweroff) on the C64 Ultimate.

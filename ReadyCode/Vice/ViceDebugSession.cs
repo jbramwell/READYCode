@@ -232,15 +232,6 @@ public sealed class ViceDebugSession : IDebugSession
     }
 
     /// <summary>
-    /// Reads the BASIC line number currently executing (CURLIN, $39-$3A).
-    /// </summary>
-    public async Task<ushort> ReadCurlinAsync()
-    {
-        byte[] data = await ReadMemoryAsync(0x39, 2);
-        return (ushort)(data[0] | (data[1] << 8)); // CURLIN is stored little-endian
-    }
-
-    /// <summary>
     /// Reads the 6502 stack pointer (SP), used to walk the GOSUB call stack from $0100+SP.
     /// </summary>
     public async Task<byte> ReadStackPointerAsync()
@@ -441,7 +432,7 @@ public sealed class ViceDebugSession : IDebugSession
     {
         try
         {
-            ushort curlin = await ReadCurlinAsync();
+            ushort curlin = await ((IDebugSession)this).ReadCurlinAsync();
             bool isBreakpointLine = _breakpointLines.ContainsKey(curlin);
 
             if (_stepOutStartStackPointer is { } startStackPointer)

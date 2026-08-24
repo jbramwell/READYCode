@@ -17,6 +17,14 @@ public class PrgConverter
     // Standard C64 BASIC load address
     private const ushort _loadAddress = 0x0801;
 
+    // How much data IsBasicProgram tolerates trailing its 0x0000 end-of-program marker before
+    // treating the file as something other than a complete BASIC program - one C64 disk sector's
+    // usable payload (a sector is 256 bytes total, minus its 2-byte next-track/sector link). Real
+    // .prg files extracted whole from a D64/D81 sector routinely carry a few bytes of leftover
+    // sector padding past their last used byte; genuine appended machine code (see
+    // TryDetectBasicStub) is virtually always far larger than this.
+    private const int _maxTrailingPaddingBytes = 254;
+
     #endregion
 
     #region Public Properties
@@ -49,7 +57,7 @@ public class PrgConverter
     public byte[] ConvertToPrg(string sourceCode)
     {
         var tokenizer = new BasicTokenizer();
-        var lines = sourceCode.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+        var lines = SplitSourceLines(sourceCode);
 
         // First pass: parse and tokenize all lines
         var parsedLines = new List<(ushort lineNumber, byte[] tokens)>();
@@ -213,11 +221,14 @@ public class PrgConverter
     /// essentially never satisfies by chance. Token bytes themselves aren't validated - real
     /// historical programs sometimes carry stray high-bit bytes (leftover graphics/cursor
     /// characters, editor artifacts) that are harmless in practice but would otherwise cause
-    /// false negatives on genuinely valid programs. Bytes trailing the program's own 0x0000
-    /// end-of-program marker aren't validated either, for the same reason - real hardware stops
-    /// following the link chain the moment it hits that marker and never looks at what comes
-    /// after it in the file, and real-world .prg files routinely carry a few bytes of leftover
-    /// disk-sector padding past their last used byte.
+    /// false negatives on genuinely valid programs. Up to <see cref="_maxTrailingPaddingBytes"/>
+    /// of data trailing the program's own 0x0000 end-of-program marker is tolerated too - real
+    /// hardware stops following the link chain the moment it hits that marker and never looks at
+    /// what comes after it in the file, and real-world .prg files routinely carry a few bytes of
+    /// leftover disk-sector padding past their last used byte - but no more than that: a BASIC
+    /// "loader" stub with real machine code appended (<see cref="TryDetectBasicStub"/>) also ends
+    /// with a legitimate 0x0000 sentinel by this same reasoning, and misclassifying that case as a
+    /// complete BASIC program would silently discard the code on the next save.
     /// </summary>
     /// <param name="data">The .prg data to check.</param>
     /// <returns>True if the data is a well-formed tokenized BASIC program.</returns>
@@ -234,7 +245,7 @@ public class PrgConverter
 
             ushort link = (ushort)(data[pos] | (data[pos + 1] << 8));
             if (link == 0x0000)
-                return true;
+                return data.Length - (pos + 2) <= _maxTrailingPaddingBytes;
 
             pos += 2;
             if (pos + 1 >= data.Length) return false;
@@ -384,6 +395,15 @@ public class PrgConverter
 
         return sb.ToString();
     }
+
+    /// <summary>
+    /// Splits BASIC source into lines, recognizing any of the three common line-ending styles.
+    /// Internal (rather than private) so <see cref="ReadyCode.Debugger.BasicLineAddressTable"/>
+    /// walks source exactly as <see cref="ConvertToPrg"/> does, without duplicating this logic or
+    /// letting the two drift apart.
+    /// </summary>
+    internal static string[] SplitSourceLines(string sourceCode) =>
+        sourceCode.Split(["\r\n", "\r", "\n"], StringSplitOptions.None);
 
     /// <summary>
     /// Parses the line number and code from a BASIC line. Internal (rather than private) so

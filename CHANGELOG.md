@@ -1,5 +1,22 @@
 # Change Log
 
+## [v2.2.0] - 2026-08-24
+
+### New Features
+
+- **BASIC Debugger** - full line-level debugging for BASIC programs against both VICE and a C64 Ultimate: breakpoints (gutter click, F9 to toggle, Ctrl+F9 to enable/disable, Ctrl+Shift+F9 to delete all), Step Into/Over/Out, Pause/Continue, Run to Cursor, a live Call Stack panel (VICE only - the C64 Ultimate's REST API has no CPU register access), and a live Variables panel showing every simple variable's current value
+- **Live variable editing** - double-click a variable's value in the Variables panel to edit it in place and write the new value straight back to the running VICE or C64 Ultimate session; a string value's PETSCII control codes (cursor movement, color, reverse video) render with their real C64 glyphs, matching the code editor's font, so they're visible and preservable rather than silently lost when editing a string that has them
+- **File Compare** - a side-by-side or unified diff view for any two comparable files (`.bas`, `.asm`/`.s`, or `.prg` - a BASIC `.prg` is detokenized and a machine-language one disassembled, the same as opening it directly would show), with an "Ignore Whitespace" toggle and a whole-document change-location strip for quick navigation to the next difference
+
+### Improvements
+
+- The Find bar no longer re-searches the whole document on every keystroke while typing nearby with it open - the search is debounced, and match highlights now track live edits via AvalonEdit's own text anchors instead of drifting onto the wrong text as the document changes
+
+### Bug Fixes
+
+- Fixed `SPC(`/`TAB(` tokenizing with a doubled opening parenthesis when the file was loaded on real hardware or VICE, since those two BASIC tokens bake the parenthesis into the token itself rather than treating it as a separate character
+- Fixed a `.prg` file with a few bytes of trailing disk-sector padding past its own end-of-program marker being misclassified as machine language instead of BASIC, opening it in the hex viewer instead of the editor
+
 ## [v2.1.0] - 2026-08-02
 
 ### New Features

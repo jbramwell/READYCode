@@ -21,7 +21,7 @@
 | Machine | Reboot | ✓ Done | ✓ Done |
 | Machine | Pause / Resume CPU | ✓ Done | ✓ Done |
 | Machine | Read C64 memory | ✓ Done | ✓ Done |
-| Machine | Write to C64 memory | Planned | Planned |
+| Machine | Write to C64 memory | ✓ Done | ✓ Done |
 | Machine | Power off | ✓ Done | ✓ Done |
 | Machine | Simulate menu button | Planned | N/A |
 | **Configuration** | | | |
@@ -81,12 +81,12 @@
 | Search | Regex search | ✓ Done | ✓ Done |
 | Search | Replace with preview / diff | Planned | Planned |
 | **Debugging: BASIC** | | | |
-| Debug | Pause / resume execution | Next Release | Next Release |
-| Debug | variable watch | Next Release | Next Release |
-| Debug | Live variable editor (write) | High Priority | High Priority |
-| Debug | Breakpoints | Next Release | Next Release |
+| Debug | Pause / resume execution | ✓ Done | ✓ Done |
+| Debug | variable watch | ✓ Done | ✓ Done |
+| Debug | Live variable editor (write) | ✓ Done | ✓ Done |
+| Debug | Breakpoints | ✓ Done | ✓ Done |
 | Debug | Live screen preview (VICE Only) | Not Possible (U64 Only) | Planned |
-| Debug | Step into / over | Next Release | Next Release |
+| Debug | Step into / over | ✓ Done | ✓ Done |
 | **Debugging: Assembly** | | | |
 | Debug | Live memory viewer (read) | ✓ Done | ✓ Done |
 | Debug | Pause / resume execution | Planned | Planned |
@@ -115,7 +115,7 @@
 | C64 Tools | Cartridge image (.crt) support | Planned | Planned |
 | C64 Tools | Tape image (.tap / .t64) support | Planned | Planned |
 | **Source Control &amp; Project Management** | | | |
-| Source Control | File diff viewer | In Next Release | In Next Release |
+| Source Control | File diff viewer | ✓ Done | ✓ Done |
 | Source Control | Git integration | Planned | Planned |
 | Project | Folder / project explorer | ✓ Done | ✓ Done |
 | Project | Project file / workspace settings | Planned | Planned |
@@ -124,3 +124,26 @@
 | Customize | Color themes | Planned | Planned |
 | Customize | Keyboard shortcut customization | Planned | Planned |
 | Customize | Extension / plugin system | Possible | Possible |
+
+---
+
+## Technical Debt (target: v2.3)
+
+Found during the v2.2 pre-submission code review. Held back from v2.2 specifically because each
+touches rendering or persisted user data - low unit-test coverage, worth doing with room to
+verify against the running app rather than right before a Store submission. (The other DRY
+findings from the same review were low-risk and already fixed for v2.2: `ReadCurlinAsync`,
+`DecodeSourceText`, the five debug-command wrappers, the breakpoint-sync-to-session logic, the
+diff insert/delete colors, and `BasicLineAddressTable`'s line-splitting.)
+
+- **Shared margin base class** - `BreakpointMargin`, `DiffPrefixMargin`, and the pre-existing
+  `AsmLineNumberMargin` independently re-implement the same `VisualLinesChanged`/
+  `ScrollOffsetChanged` hookup and text-centering helper. A shared `TextViewMarginBase` would
+  remove the triplication.
+- **`DebugCurrentLineRenderer`'s hand-rolled VisualLine lookup** - copies `CurrentLineBorderRenderer`'s
+  manual "find the VisualLine for a document line" loop instead of using AvalonEdit's own
+  `TextView.GetVisualLine(int)`, which the installed AvalonEdit version already provides.
+- **Shared `JsonFileStore<T>` for settings persistence** - `AppSettings` and `DebugConfigStore`
+  independently implement the identical try/catch-fallback `Load()`/`Save()` JSON persistence
+  mechanism. A shared generic helper would remove the duplication and the risk of the two drifting
+  (e.g. one gaining atomic-write or schema-versioning support the other doesn't).

@@ -96,9 +96,15 @@ public interface IDebugSession : IAsyncDisposable
     Task StepOutAsync();
 
     /// <summary>
-    /// Reads the BASIC line number currently executing (CURLIN, $39-$3A).
+    /// Reads the BASIC line number currently executing (CURLIN, $39-$3A) - identical for every
+    /// target, since it's just <see cref="ReadMemoryAsync"/> plus a little-endian combine, so it's
+    /// a default implementation here rather than duplicated per session.
     /// </summary>
-    Task<ushort> ReadCurlinAsync();
+    async Task<ushort> ReadCurlinAsync()
+    {
+        byte[] data = await ReadMemoryAsync(0x39, 2);
+        return (ushort)(data[0] | (data[1] << 8)); // CURLIN is stored little-endian
+    }
 
     /// <summary>
     /// Reads the 6502 stack pointer (SP), used to walk the GOSUB call stack from $0100+SP. Only

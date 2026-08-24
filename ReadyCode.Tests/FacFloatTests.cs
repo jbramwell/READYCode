@@ -90,5 +90,27 @@ public class FacFloatTests
         Assert.Throws<OverflowException>(() => FacFloat.Encode(1e60));
     }
 
+    [Fact]
+    public void Encode_PositiveInfinity_ThrowsRatherThanProducingBytes()
+    {
+        // double.TryParse happily parses an out-of-range literal like "1e400" to Infinity rather
+        // than failing, so a user typing that into a live Float variable's edit box reaches Encode
+        // directly - this must fail loudly (a clean OverflowException), not silently write garbage
+        // bytes to the live machine.
+        Assert.Throws<OverflowException>(() => FacFloat.Encode(double.PositiveInfinity));
+    }
+
+    [Fact]
+    public void Encode_NegativeInfinity_ThrowsRatherThanProducingBytes()
+    {
+        Assert.Throws<OverflowException>(() => FacFloat.Encode(double.NegativeInfinity));
+    }
+
+    [Fact]
+    public void Encode_NaN_ThrowsRatherThanProducingBytes()
+    {
+        Assert.Throws<OverflowException>(() => FacFloat.Encode(double.NaN));
+    }
+
     #endregion
 }

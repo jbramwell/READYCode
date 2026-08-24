@@ -870,19 +870,10 @@ public partial class MainWindow : Window
         }
     }
 
-    // Decodes bytes into source text, stripping a leading UTF-8 byte-order-mark if present, the
-    // same as File.ReadAllText's own encoding detection does for a file opened directly from
-    // disk. A bare Encoding.UTF8.GetString does not strip it, and a leftover BOM character
-    // corrupts a source file's very first line - e.g. breaking comment/".org" recognition for a
-    // line that should start with ";" or "*", since the line then starts with U+FEFF instead
-    // (which, unlike ordinary whitespace, string.Trim() does not remove either).
-    private static string DecodeSourceText(byte[] bytes)
-    {
-        if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
-            return Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
-
-        return Encoding.UTF8.GetString(bytes);
-    }
+    // Shared with CompareFileResolver (File Compare's own bytes-to-text resolution), which needs
+    // the exact same BOM-stripping logic but must stay free of any dependency on this WPF-hosting
+    // window - CompareFileResolver.DecodeSourceText is the one place that logic actually lives.
+    private static string DecodeSourceText(byte[] bytes) => CompareFileResolver.DecodeSourceText(bytes);
 
     // Sends a file's bytes to VICE or the C64 Ultimate, without needing it open in a tab first.
     // An .asm file is assembled fresh from its source text (mirroring MainViewModel's own
@@ -6218,18 +6209,25 @@ public partial class MainWindow : Window
         ViewModel.PersistBreakpoints();
 
         if (ViewModel.DebugSession is { } session && ReferenceEquals(ViewModel.DebugTab, tab))
+            await SyncBreakpointToLiveSessionAsync(session, basicLine, addedBreakpoint != null);
+    }
+
+    // Applies a single breakpoint add/remove to a live debug session (VICE or C64U - see
+    // IDebugSession) and reports any failure - shared by every place a breakpoint change needs to
+    // reach whichever session is currently attached: ToggleBreakpointAtDocumentLine,
+    // Breakpoint_PropertyChanged, and DeleteAllBreakpointsAsync's per-line loop.
+    private async Task SyncBreakpointToLiveSessionAsync(IDebugSession session, ushort basicLine, bool enabled)
+    {
+        try
         {
-            try
-            {
-                if (addedBreakpoint != null)
-                    await session.SetLineBreakpointAsync(basicLine);
-                else
-                    await session.RemoveBreakpointAsync(basicLine);
-            }
-            catch (Exception ex)
-            {
-                ViewModel.SetStatus($"Failed to update breakpoint on VICE: {ex.Message}", StatusType.Error);
-            }
+            if (enabled)
+                await session.SetLineBreakpointAsync(basicLine);
+            else
+                await session.RemoveBreakpointAsync(basicLine);
+        }
+        catch (Exception ex)
+        {
+            ViewModel.SetStatus($"Failed to update breakpoint on the live session: {ex.Message}", StatusType.Error);
         }
     }
 
@@ -6275,13 +6273,7 @@ public partial class MainWindow : Window
 
         if (session == null) return;
         foreach (ushort line in liveLines)
-        {
-            try { await session.RemoveBreakpointAsync(line); }
-            catch (Exception ex)
-            {
-                ViewModel.SetStatus($"Failed to remove breakpoint from the live session: {ex.Message}", StatusType.Error);
-            }
-        }
+            await SyncBreakpointToLiveSessionAsync(session, line, enabled: false);
     }
 
     // Ctrl+F10 / "Run to Cursor": resolves the caret's line to a BASIC line number and hands off
@@ -6468,17 +6460,7 @@ public partial class MainWindow : Window
         string debugTabFileKey = ViewModel.DebugTab.FilePath ?? ViewModel.DebugTab.FileName;
         if (!string.Equals(breakpoint.FilePath, debugTabFileKey, StringComparison.OrdinalIgnoreCase)) return;
 
-        try
-        {
-            if (breakpoint.IsEnabled)
-                await session.SetLineBreakpointAsync(breakpoint.LineNumber);
-            else
-                await session.RemoveBreakpointAsync(breakpoint.LineNumber);
-        }
-        catch (Exception ex)
-        {
-            ViewModel.SetStatus($"Failed to update breakpoint on VICE: {ex.Message}", StatusType.Error);
-        }
+        await SyncBreakpointToLiveSessionAsync(session, breakpoint.LineNumber, breakpoint.IsEnabled);
     }
 
     // Jumps to a GOSUB frame's return line in the debug session's own tab (a call stack is only

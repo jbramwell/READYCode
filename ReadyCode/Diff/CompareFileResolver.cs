@@ -83,14 +83,18 @@ public static class CompareFileResolver
         }
     }
 
-    #endregion
-
-    #region Private Methods
-
-    // Same BOM-stripping behavior as MainWindow.DecodeSourceText - kept as a separate copy here
-    // rather than a shared reference since that one is a private WPF-project member and this
-    // class must stay free of any dependency on the WPF-hosting window.
-    private static string DecodeSourceText(byte[] bytes)
+    /// <summary>
+    /// Decodes bytes into source text, stripping a leading UTF-8 byte-order-mark if present, the
+    /// same as <see cref="System.IO.File.ReadAllText(string)"/>'s own encoding detection does for
+    /// a file opened directly from disk. A bare <see cref="Encoding.UTF8"/>.GetString does not
+    /// strip it, and a leftover BOM character corrupts a source file's very first line - e.g.
+    /// breaking comment/".org" recognition for a line that should start with ";" or "*", since the
+    /// line then starts with U+FEFF instead (which, unlike ordinary whitespace,
+    /// <see cref="string.Trim()"/> does not remove either). Public (rather than kept as a private
+    /// member of the WPF-hosting window) so both this class and MainWindow.xaml.cs's Load/Run and
+    /// tab-opening code paths share one implementation.
+    /// </summary>
+    public static string DecodeSourceText(byte[] bytes)
     {
         if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
             return Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);

@@ -190,6 +190,22 @@ public class PrgConverterTests
         Assert.True(new PrgConverter().IsBasicProgram(withPadding));
     }
 
+    [Fact]
+    public void IsBasicProgram_SubstantialCodeAfterEndMarker_ReturnsFalse()
+    {
+        // Regression test: a BASIC "loader" stub with real machine code appended after it (e.g.
+        // "10 SYS 2064" followed by hundreds of bytes of the actual program) also ends with a
+        // legitimate 0x0000 end-of-program sentinel, by the exact same reasoning that lets a few
+        // bytes of disk-sector padding through above. But that's a fundamentally different file -
+        // TryDetectBasicStub already recognizes it as a stub, not a complete program - and treating
+        // it as one here would silently discard the appended code the next time the file is saved.
+        byte[] stub = new PrgConverter().ConvertToPrg("10 SYS 2064");
+        byte[] substantialCode = new byte[300]; // far larger than incidental sector padding
+        byte[] combined = [..stub, ..substantialCode];
+
+        Assert.False(new PrgConverter().IsBasicProgram(combined));
+    }
+
     // ── TryDetectBasicStub ───────────────────────────────────────────────────
 
     [Fact]
