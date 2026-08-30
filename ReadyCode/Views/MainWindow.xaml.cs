@@ -7106,7 +7106,15 @@ public partial class MainWindow : Window
 
         string name = lineText.Substring(start, end - start);
         string typeLabel = name[^1] switch { '%' => "Integer", '$' => "String", _ => "Float" };
-        tooltipText = $"(variable) {typeLabel} {name}";
+
+        // Pi ($FF) is the only PETSCII byte above 0x7F that char.IsLetter treats as an
+        // identifier character, so it can reach here as a "variable" name - which is fair,
+        // since Commodore BASIC has no real constants and Pi really is just a byte value like
+        // any other. But $FF is stored as raw Unicode U+00FF ('ÿ'), which is what the editor's
+        // custom PETSCII font renders as Pi - a plain-font tooltip needs the real Pi glyph
+        // substituted in instead, or it shows the misleading 'ÿ'.
+        string displayName = name.Replace((char)0xFF, 'π');
+        tooltipText = $"(variable) {typeLabel} {displayName}";
         return true;
     }
 

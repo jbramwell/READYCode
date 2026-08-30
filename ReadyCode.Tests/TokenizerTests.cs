@@ -229,6 +229,38 @@ public class TokenizerTests
         Assert.Equal(0x99, bytes[0]); // PRINT
     }
 
+    // ── Literal high-byte characters (Pi) ────────────────────────────────────
+
+    [Fact]
+    public void TokenizeLine_PiCharacterPassesThroughUnchanged()
+    {
+        // Pi is represented in source text as the raw PETSCII byte $FF (the editor's
+        // convention for out-of-ASCII-range characters, see PetsciiScreenCodeMap). It must
+        // survive tokenization as $FF - not get uppercased into an unrelated byte.
+        var bytes = Tokenize("PRINT" + (char)0xFF);
+        Assert.Equal(0x99, bytes[0]); // PRINT
+        Assert.Equal(0xFF, bytes[1]); // Pi, unchanged
+    }
+
+    [Fact]
+    public void TokenizeLine_PiCharacterIsNotCorruptedIntoClubsGraphic()
+    {
+        // Regression test: char.ToUpperInvariant($FF) maps to U+0178, which truncates to
+        // byte $78 (the clubs card-suit graphic on the C64) - not $FF.
+        var bytes = Tokenize(((char)0xFF).ToString());
+        Assert.DoesNotContain((byte)0x78, bytes);
+        Assert.Equal(0xFF, bytes[0]);
+    }
+
+    [Fact]
+    public void TokenizeLine_LowercaseAsciiLettersAreStillUppercased()
+    {
+        // Variable names must still round-trip uppercased - only non-ASCII/high-byte
+        // characters like Pi are exempt from the uppercasing.
+        var bytes = Tokenize("abc");
+        Assert.Equal([(byte)'A', (byte)'B', (byte)'C'], bytes);
+    }
+
     #endregion
 
     #region Private Methods

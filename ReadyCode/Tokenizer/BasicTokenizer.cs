@@ -113,9 +113,15 @@ public class BasicTokenizer
                 }
                 else
                 {
-                    // Literal character (variable name letter, digit, punctuation …).
-                    // Uppercase so variable names survive the round-trip.
-                    tokens.Add((byte)char.ToUpperInvariant(line[pos]));
+                    // Literal character (variable name letter, digit, punctuation …). Only
+                    // ASCII letters get uppercased, so variable names survive the round-trip -
+                    // raw PETSCII bytes above 0x7F (e.g. Pi, $FF) must pass through unchanged.
+                    // char.ToUpperInvariant on those maps to an unrelated Unicode codepoint
+                    // (e.g. $FF 'ÿ' -> U+0178 'Ÿ'), which truncates to a different, wrong byte
+                    // once cast - for Pi specifically, that corrupts it into $78, the clubs
+                    // card-suit graphic, instead of preserving Pi's own byte value.
+                    char c = line[pos];
+                    tokens.Add((byte)(c is >= 'a' and <= 'z' ? char.ToUpperInvariant(c) : c));
                     pos++;
                 }
             }
