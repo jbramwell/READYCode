@@ -7588,6 +7588,7 @@ public partial class MainWindow : Window
         Editor.FontSize   = ViewModel.Settings.EditorFontSize;
         Editor.WordWrap   = ViewModel.Settings.WordWrap;
         HexEditor.HexFontSize = ViewModel.Settings.EditorFontSize;
+        CompareControl.EditorFontSize = ViewModel.Settings.EditorFontSize;
         _lineNumberColorizer.LineNumberBrush       = (Brush)FindResource("ThemeEditorLineNumberFg");
         _lineNumberColorizer.ActiveLineNumberBrush = (Brush)FindResource("ThemeEditorFg");
         _keywordColorizer.KeywordBrush          = (Brush)FindResource("ThemeEditorKeywordFg");

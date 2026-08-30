@@ -158,7 +158,7 @@
 
                 <avalonEdit:TextEditor x:Name="LeftEditor" Grid.Row="1" Grid.Column="1"
                          IsReadOnly="True" WordWrap="False" ShowLineNumbers="True"
-                         FontFamily="Consolas" FontSize="14" Padding="6"
+                         FontFamily="Consolas" Padding="6"
                          Background="{DynamicResource ThemeEditorBg}"
                          Foreground="{DynamicResource ThemeSettingsLabelFg}"
                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Hidden"/>
@@ -168,7 +168,7 @@
 
                 <avalonEdit:TextEditor x:Name="RightEditor" Grid.Row="1" Grid.Column="3"
                          IsReadOnly="True" WordWrap="False" ShowLineNumbers="True"
-                         FontFamily="Consolas" FontSize="14" Padding="6"
+                         FontFamily="Consolas" Padding="6"
                          Background="{DynamicResource ThemeEditorBg}"
                          Foreground="{DynamicResource ThemeSettingsLabelFg}"
                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Hidden"/>
@@ -194,7 +194,7 @@
                     <Border Grid.Column="1" Background="{DynamicResource ThemeEditorBg}"/>
                     <avalonEdit:TextEditor x:Name="UnifiedEditor" Grid.Column="0"
                              IsReadOnly="True" WordWrap="False" ShowLineNumbers="False"
-                             FontFamily="Consolas" FontSize="14" Padding="6"
+                             FontFamily="Consolas" Padding="6"
                              Background="{DynamicResource ThemeEditorBg}"
                              Foreground="{DynamicResource ThemeSettingsLabelFg}"
                              HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Hidden"/>

@@ -56,6 +56,25 @@ public partial class FileCompareControl : UserControl
 
     #endregion
 
+    #region Public Properties
+
+    /// <summary>
+    /// Gets or sets the font size used by all three diff panes (Left/Right/Unified), kept in
+    /// sync with <c>Settings.EditorFontSize</c> so the compare view matches the main code editor.
+    /// </summary>
+    public double EditorFontSize
+    {
+        get => LeftEditor.FontSize;
+        set
+        {
+            LeftEditor.FontSize = value;
+            RightEditor.FontSize = value;
+            UnifiedEditor.FontSize = value;
+        }
+    }
+
+    #endregion
+
     #region Constructors
 
     /// <summary>
