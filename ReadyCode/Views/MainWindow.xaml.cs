@@ -291,7 +291,13 @@ public partial class MainWindow : Window
         _findUpdateTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _findUpdateTimer.Tick += (_, _) => { _findUpdateTimer.Stop(); UpdateFindMatches(); };
 
-        FindBar.CloseRequested      += (_, _) => { _findUpdateTimer.Stop(); _findHighlightColorizer.Clear(); Editor.TextArea.TextView.Redraw(); Editor.Focus(); };
+        FindBar.CloseRequested      += (_, _) =>
+        {
+            _findUpdateTimer.Stop();
+            _findHighlightColorizer.Clear();
+            RedrawMatches(_findMatches);
+            Editor.Focus();
+        };
         FindBar.SearchChanged       += (_, _) => UpdateFindMatches();
         FindBar.FindNextRequested   += (_, _) => FindNext();
         FindBar.FindPreviousRequested += (_, _) => FindPrev();
@@ -300,10 +306,23 @@ public partial class MainWindow : Window
 
         Editor.TextArea.Caret.PositionChanged += (_, _) =>
         {
-            _lineNumberColorizer.ActiveDocumentLineNumber =
-                Editor.Document.GetLineByOffset(Editor.CaretOffset).LineNumber;
+            // Bail out immediately when the caret is still on the same line (e.g. just moving a
+            // column) - nothing here would change, so even reaching InvalidateLayer/Redraw is
+            // wasted work.
+            int newLine = Editor.Document.GetLineByOffset(Editor.CaretOffset).LineNumber;
+            int oldLine = _lineNumberColorizer.ActiveDocumentLineNumber;
+            if (newLine == oldLine) return;
+
+            _lineNumberColorizer.ActiveDocumentLineNumber = newLine;
             Editor.TextArea.TextView.InvalidateLayer(KnownLayer.Background);
-            Editor.TextArea.TextView.Redraw();
+
+            if (oldLine >= 1 && oldLine <= Editor.Document.LineCount)
+            {
+                var previousLine = Editor.Document.GetLineByNumber(oldLine);
+                Editor.TextArea.TextView.Redraw(previousLine.Offset, previousLine.Length);
+            }
+            var currentLine = Editor.Document.GetLineByNumber(newLine);
+            Editor.TextArea.TextView.Redraw(currentLine.Offset, currentLine.Length);
         };
         // AvalonEdit's built-in control-character boxes (e.g. "DC1", "GS") would otherwise
         // render before our generator gets a chance to show the actual C64 ROM glyph
@@ -2002,6 +2021,14 @@ public partial class MainWindow : Window
             Editor.CaretOffset = Math.Min(tab.CaretOffset, tab.Document.TextLength);
             Editor.ScrollToVerticalOffset(tab.ScrollOffsetY);
             Editor.Focus();
+
+            // The Find bar doesn't close when switching tabs, but _findMatches holds offsets
+            // computed against whichever document was active when the search last ran - stale
+            // offsets applied to this tab's (unrelated) document land on arbitrary text instead
+            // of an actual match. Re-running the search against the newly bound document keeps
+            // them in sync, same as FindBar.SearchChanged already does while typing.
+            if (FindBar.Visibility == Visibility.Visible)
+                UpdateFindMatches();
 
             if (IsCodeFoldingEnabled(tab.Language))
             {
@@ -3927,13 +3954,14 @@ public partial class MainWindow : Window
 
     private void UpdateFindMatches()
     {
+        var previousMatches = _findMatches.Count > 0 ? _findMatches.ToArray() : null;
         _findMatches.Clear();
         string searchText = FindBar.SearchText;
 
         if (string.IsNullOrEmpty(searchText))
         {
             _findHighlightColorizer.Clear();
-            Editor.TextArea.TextView.Redraw();
+            if (previousMatches != null) RedrawMatches(previousMatches);
             FindBar.SetMatchCount(0, 0);
             return;
         }
@@ -3942,8 +3970,24 @@ public partial class MainWindow : Window
 
         _findMatchIndex = FindNearestMatchIndex(Editor.CaretOffset);
         _findHighlightColorizer.SetMatches(Editor.Document, _findMatches, _findMatchIndex);
-        Editor.TextArea.TextView.Redraw();
+        if (previousMatches != null) RedrawMatches(previousMatches);
+        RedrawMatches(_findMatches);
         FindBar.SetMatchCount(_findMatchIndex + 1, _findMatches.Count);
+    }
+
+    // Redraws only the visual lines overlapping the given match segments, rather than
+    // invalidating the entire document's cached visual-line set (TextEditor.TextArea.TextView
+    // .Redraw() with no arguments). For a large document, that blanket invalidation forces
+    // AvalonEdit to reconstruct every currently-visible line simultaneously on the next layout
+    // pass instead of the usual one-or-two-at-a-time incremental construction normal scrolling
+    // does - repeating it on every keystroke/navigation/close was corrupting the rendering
+    // (lines showing collapsed/overlapping) once combined with further scrolling. Off-screen
+    // matches are cheap no-ops here since there's no cached visual line to touch yet - they'll
+    // colorize correctly whenever they're actually scrolled into view.
+    private void RedrawMatches(IEnumerable<(int Offset, int Length)> matches)
+    {
+        foreach (var (offset, length) in matches)
+            Editor.TextArea.TextView.Redraw(offset, length);
     }
 
     private int FindNearestMatchIndex(int caretOffset)
@@ -3973,9 +4017,50 @@ public partial class MainWindow : Window
         if (_findMatchIndex < 0 || _findMatchIndex >= _findMatches.Count) return;
         var (offset, length) = _findMatches[_findMatchIndex];
         Editor.Select(offset, length);
-        Editor.ScrollToLine(Editor.Document.GetLineByOffset(offset).LineNumber);
+
+        // Editor.Select() moves the caret, which fires Editor_CaretPositionChanged ->
+        // UpdateGhostText - if the match happens to be a complete keyword/function name (e.g.
+        // "SIN"), that finds a real completion ("SIN()") and shows non-empty ghost text ("()")
+        // positioned at the caret. Ghost text only makes sense while actively typing, not after
+        // jumping here via Find, and rendering it forces GhostTextRenderer.OnRender to query the
+        // TextView's layout for this line while Find's own highlight/keyword colorizers are
+        // simultaneously acting on the exact same span - confirmed via logging that this
+        // combination touched off a runaway TextView.VisualLinesChanged loop (1600+ firings)
+        // that starved rendering and corrupted the view. A search term that isn't a keyword
+        // (e.g. a variable name) never triggers this, since ClearGhostText's empty-ghost-text
+        // path is a no-op that never queries the layout at all.
+        ClearGhostText();
+
+        // Update the highlighter's state BEFORE revealing the line, so BringCaretToView's own
+        // construction of the target line already reflects the new "current match" color -
+        // deliberately NOT redrawing that same range again afterward. Confirmed via logging that
+        // doing so - Redraw()-ing the exact segment BringCaretToView just built, which the caret
+        // also sits at the edge of - touched off a runaway reconstruction loop for that one line
+        // (rebuilt continuously, tens of thousands of times a second) that starved the TextView
+        // and corrupted rendering everywhere else on screen.
         _findHighlightColorizer.SetMatches(Editor.Document, _findMatches, _findMatchIndex);
-        Editor.TextArea.TextView.Redraw();
+
+        // Deliberately not TextEditor.ScrollTo/ScrollToLine: those set the ScrollViewer's
+        // offset directly from the folding-aware height-tree's cached line heights, without
+        // constructing the visual lines being jumped over - fine for a short hop, but a long
+        // jump (a match far outside the current viewport) can leave that skipped range with
+        // stale/uncomputed height data, corrupting the view (lines rendering collapsed/blank)
+        // until it's scrolled through normally. BringCaretToView instead goes through the same
+        // caret-follows-viewport path as ordinary keyboard/mouse scrolling (which already
+        // reveals distant content correctly) - it explicitly constructs the target visual line
+        // before asking the TextView to make it visible.
+        Editor.TextArea.Caret.BringCaretToView();
+
+        // Redraw every OTHER match (a previous current match dropping back to the regular
+        // color, or leftover highlights from an earlier search) - not the one BringCaretToView
+        // just built, per above.
+        for (int i = 0; i < _findMatches.Count; i++)
+        {
+            if (i == _findMatchIndex) continue;
+            var (otherOffset, otherLength) = _findMatches[i];
+            Editor.TextArea.TextView.Redraw(otherOffset, otherLength);
+        }
+
         FindBar.SetMatchCount(_findMatchIndex + 1, _findMatches.Count);
     }
 
@@ -5564,6 +5649,20 @@ public partial class MainWindow : Window
         {
             ClearGhostText();
             return;
+        }
+
+        // Only suggest when the caret is at the true end of the identifier being typed - if a
+        // word character immediately follows (e.g. clicking between "PR" and "INT" in "PRINT"),
+        // a completion here would show suggested text overlapping what's already there.
+        int caretOffset = Editor.CaretOffset;
+        if (caretOffset < Editor.Document.TextLength)
+        {
+            char next = Editor.Document.GetCharAt(caretOffset);
+            if (char.IsLetterOrDigit(next) || next == '$' || next == '#')
+            {
+                ClearGhostText();
+                return;
+            }
         }
 
         var matches = GetCompletionMatches(word);

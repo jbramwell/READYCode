@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Media;
+using System.Windows.Threading;
 using ICSharpCode.AvalonEdit.Editing;
 using ICSharpCode.AvalonEdit.Rendering;
 
@@ -42,9 +43,19 @@ public sealed class GhostTextRenderer : Adorner
         _textArea       = textArea;
         IsHitTestVisible = false;
 
-        // Re-draw whenever AvalonEdit rebuilds visual lines or the user scrolls.
-        textArea.TextView.VisualLinesChanged  += (_, _) => InvalidateVisual();
-        textArea.TextView.ScrollOffsetChanged += (_, _) => InvalidateVisual();
+        // Re-draw whenever AvalonEdit rebuilds visual lines or the user scrolls - deferred to a
+        // later dispatcher pass rather than an inline InvalidateVisual(). OnRender below queries
+        // the TextView's own live layout (GetTextLine/GetVisualXPosition/TranslatePoint) to
+        // position the ghost text; doing that synchronously from within the very event that
+        // means the TextView's layout just changed is reentrant, and combined with Find's own
+        // colorizers touching the same line, was confirmed (via diagnostic logging) to touch off
+        // a runaway TextView.VisualLinesChanged loop that corrupted rendering across the whole
+        // editor. Posting the invalidation to run after the current layout pass settles avoids
+        // that reentrancy - same reasoning as FileCompareControl's deferred viewport updates.
+        textArea.TextView.VisualLinesChanged  += (_, _) =>
+            textArea.Dispatcher.BeginInvoke(DispatcherPriority.Background, InvalidateVisual);
+        textArea.TextView.ScrollOffsetChanged += (_, _) =>
+            textArea.Dispatcher.BeginInvoke(DispatcherPriority.Background, InvalidateVisual);
     }
 
     #endregion
