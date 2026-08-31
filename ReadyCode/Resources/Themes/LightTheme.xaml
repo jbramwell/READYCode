@@ -55,7 +55,7 @@
     <SolidColorBrush x:Key="ThemeBadgeDiskFg" Color="#000000"/>
     <SolidColorBrush x:Key="ThemeBadgeMlBg"   Color="#F7DACE"/>
     <SolidColorBrush x:Key="ThemeBadgeMlFg"   Color="#000000"/>
-    <SolidColorBrush x:Key="ThemeBadgePrgBg"  Color="#28B08E"/>
+    <SolidColorBrush x:Key="ThemeBadgePrgBg"  Color="#92D8C7"/>
     <SolidColorBrush x:Key="ThemeBadgePrgFg"  Color="#000000"/>
     <SolidColorBrush x:Key="ThemeBadgeAsmBg"  Color="#8F709E"/>
     <SolidColorBrush x:Key="ThemeBadgeAsmFg"  Color="#000000"/>

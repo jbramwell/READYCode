@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
 using ICSharpCode.AvalonEdit.Document;
+using ReadyCode.Diagnostics;
 using ReadyCode.Diff;
 
 namespace ReadyCode.Models;
@@ -187,6 +188,14 @@ public class EditorTab : INotifyPropertyChanged
     /// switching away and back preserves fold state. In-memory only for the session, not persisted.
     /// </summary>
     public HashSet<int> CollapsedFoldStartOffsets { get; } = new();
+
+    /// <summary>
+    /// Gets or sets this tab's most recently computed diagnostics (squiggle-worthy problems).
+    /// Recomputed whenever this tab is active and its document changes, or once right after it's
+    /// first opened - stays valid while backgrounded, since <see cref="Document"/> can't change
+    /// while this tab isn't the one loaded into the editor. Feeds the cross-tab Errors panel.
+    /// </summary>
+    public IReadOnlyList<EditorDiagnostic> Diagnostics { get; set; } = Array.Empty<EditorDiagnostic>();
 
     #endregion
 

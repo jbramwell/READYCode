@@ -16,6 +16,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.CodeCompletion;
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Folding;
@@ -239,8 +240,8 @@ public partial class MainWindow : Window
                 ApplyVariableExplorerVisibility();
             if (e.PropertyName == nameof(MainViewModel.DebugCurrentDocumentLine))
                 ApplyDebugCurrentLine();
-            if (e.PropertyName == nameof(MainViewModel.IsDebugPanelOpen))
-                ApplyDebugPanelOpenState();
+            if (e.PropertyName is nameof(MainViewModel.IsDebugPanelActive) or nameof(MainViewModel.IsErrorsPanelActive))
+                ApplyBottomPanelOpenState();
         };
 
         _breakpointMargin.BreakpointToggleRequested += (_, documentLine) => ToggleBreakpointAtDocumentLine(documentLine);
@@ -404,8 +405,9 @@ public partial class MainWindow : Window
         ApplyVariableExplorerVisibility();
 
         ActivateDebugPanelTab(ViewModel.Settings.ActiveDebugPanelTab);
-        if (ViewModel.IsDebugPanelOpen)
-            ApplyDebugPanelOpenState();
+        ActivateBottomPanelTab(ViewModel.Settings.ActiveBottomPanelTab);
+        if (ViewModel.Settings.IsBottomPanelOpen)
+            ApplyBottomPanelOpenState();
 
         if (ViewModel.Project.IsOpen && Directory.Exists(ViewModel.Project.RootPath))
         {
@@ -1729,6 +1731,7 @@ public partial class MainWindow : Window
                 ViewModel.IsModified = false;
                 TrackRecentFile(filePath);
                 ViewModel.SetStatus("File saved.");
+                ActivateErrorsPanelIfDiagnostics(ViewModel.ActiveTab!);
             }
             else
             {
@@ -1738,6 +1741,7 @@ public partial class MainWindow : Window
                 ViewModel.IsModified = false;
                 TrackRecentFile(filePath);
                 ViewModel.SetStatus($"File saved: {prgData.Length:N0} tokenized bytes.");
+                ActivateErrorsPanelIfDiagnostics(ViewModel.ActiveTab!);
             }
         }
         catch (Exception ex)
@@ -1816,6 +1820,7 @@ public partial class MainWindow : Window
                 TrackRecentFile(tab.FilePath);
                 RefreshExplorerForSavedFile(tab.FilePath);
                 ViewModel.SetStatus("File saved.");
+                ActivateErrorsPanelIfDiagnostics(tab);
             }
             else
             {
@@ -1826,6 +1831,7 @@ public partial class MainWindow : Window
                 TrackRecentFile(tab.FilePath);
                 RefreshExplorerForSavedFile(tab.FilePath);
                 ViewModel.SetStatus($"File saved: {prgData.Length:N0} tokenized bytes.");
+                ActivateErrorsPanelIfDiagnostics(tab);
             }
             return true;
         }
@@ -2254,6 +2260,13 @@ public partial class MainWindow : Window
 
         int idx = ViewModel.OpenTabs.IndexOf(tab);
         ViewModel.OpenTabs.Remove(tab);
+
+        // ActivateTab(tab) below already refreshes the Errors panel for the *new* active tab
+        // (via RunDocumentAnalysis -> RunDiagnostics), but ActivateTab(null) - the last tab
+        // closing - doesn't run diagnostics at all, which would otherwise leave this closed
+        // tab's rows stranded in the list. Covers both branches unconditionally rather than
+        // duplicating the null-check.
+        RefreshErrorsPanel();
 
         if (ViewModel.OpenTabs.Count == 0)
         {
@@ -4050,6 +4063,17 @@ public partial class MainWindow : Window
         // reveals distant content correctly) - it explicitly constructs the target visual line
         // before asking the TextView to make it visible.
         Editor.TextArea.Caret.BringCaretToView();
+
+        // AvalonEdit's height-tree only learns a line's TRUE rendered height (this app's
+        // LineSpacingElementGenerator adds +4px per line beyond AvalonEdit's own internal
+        // DefaultLineHeight estimate) once that line has actually been measured - for a match
+        // far below the current viewport, the extent BringCaretToView just computed from is
+        // still using the placeholder estimate for every unvisited line in between, so it
+        // undershoots. The layout pass that call just triggered is what measures (and corrects
+        // the height-tree for) the target line, so calling it again - deferred until after that
+        // pass has actually run - lands exactly right. Automates what would otherwise need a
+        // second Enter press to reach the match.
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => Editor.TextArea.Caret.BringCaretToView());
 
         // Redraw every OTHER match (a previous current match dropping back to the regular
         // color, or leftover highlights from an earlier search) - not the one BringCaretToView
@@ -6415,26 +6439,66 @@ public partial class MainWindow : Window
         Editor.TextArea.TextView.Redraw();
     }
 
-    // Toggles the bottom debug panel's row height open/closed, mirroring how the left/right
-    // panel columns are toggled (see e.g. ActivateRightPanel/CloseRightPanel).
-    private void ApplyDebugPanelOpenState()
+    // Toggles the bottom panel's row height open/closed, mirroring how the left/right panel
+    // columns are toggled (see e.g. ActivateRightPanel/CloseRightPanel).
+    private void ApplyBottomPanelOpenState()
     {
-        if (ViewModel.IsDebugPanelOpen)
+        if (ViewModel.Settings.IsBottomPanelOpen)
         {
-            DebugPanelRow.Height = new GridLength(ViewModel.Settings.DebugPanelHeight);
-            DebugPanelSplitterRow.Height = new GridLength(4);
+            BottomPanelRow.Height = new GridLength(ViewModel.Settings.BottomPanelHeight);
+            BottomPanelSplitterRow.Height = new GridLength(4);
         }
         else
         {
-            if (DebugPanelRow.Height.Value > 0)
-                ViewModel.Settings.DebugPanelHeight = DebugPanelRow.Height.Value;
-            DebugPanelRow.Height = new GridLength(0);
-            DebugPanelSplitterRow.Height = new GridLength(0);
+            if (BottomPanelRow.Height.Value > 0)
+                ViewModel.Settings.BottomPanelHeight = BottomPanelRow.Height.Value;
+            BottomPanelRow.Height = new GridLength(0);
+            BottomPanelSplitterRow.Height = new GridLength(0);
         }
     }
 
-    // The debug panel's three tabs (Variables/Breakpoints/Call Stack), paired with the content
-    // element each one shows - mirrors RightPanelToggles' shape for the same reasons.
+    // The outer bottom-panel tabs (Debug/Errors), paired with the content element each shows.
+    private IEnumerable<(ToggleButton Toggle, UIElement Content, string Key)> BottomPanelTabs => new (ToggleButton, UIElement, string)[]
+    {
+        (BottomPanelDebugTabToggle,  DebugPanelContent,  "Debug"),
+        (BottomPanelErrorsTabToggle, ErrorsPanelContent, "Errors"),
+    };
+
+    private void ActivateBottomPanelTab(string key)
+    {
+        var target = BottomPanelTabs.FirstOrDefault(t => t.Key == key);
+        if (target.Toggle == null) target = BottomPanelTabs.First();
+
+        foreach (var (toggle, content, _) in BottomPanelTabs)
+        {
+            bool isTarget = ReferenceEquals(toggle, target.Toggle);
+            toggle.IsChecked = isTarget;
+            content.Visibility = isTarget ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        ViewModel.Settings.ActiveBottomPanelTab = target.Key;
+    }
+
+    private void BottomPanelTab_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is ToggleButton { Tag: string key })
+            ActivateBottomPanelTab(key);
+    }
+
+    // Unconditional close regardless of which outer tab (Debug/Errors) is currently showing -
+    // unlike IsDebugPanelActive/IsErrorsPanelActive's setters, which only close if their own tab
+    // is the one active. Writes straight to Settings (not through either of those two properties)
+    // so this always closes the panel, then saves immediately to match how every other
+    // settings-backed panel toggle in this app persists on change.
+    private void CloseBottomPanel_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.Settings.IsBottomPanelOpen = false;
+        ViewModel.Settings.Save();
+        ApplyBottomPanelOpenState();
+    }
+
+    // The debug panel's three inner tabs (Variables/Breakpoints/Call Stack), paired with the
+    // content element each one shows - mirrors RightPanelToggles' shape for the same reasons.
     private IEnumerable<(ToggleButton Toggle, UIElement Content, string Key)> DebugPanelTabs => new (ToggleButton, UIElement, string)[]
     {
         (DebugVariablesTabToggle,   DebugVariablesGrid,   "Variables"),
@@ -6462,8 +6526,6 @@ public partial class MainWindow : Window
         if (sender is ToggleButton { Tag: string key })
             ActivateDebugPanelTab(key);
     }
-
-    private void CloseDebugPanel_Click(object sender, RoutedEventArgs e) => ViewModel.IsDebugPanelOpen = false;
 
     // Jumps to a breakpoint's line in its file, if that file is already open in a tab - doesn't
     // open it from disk if it isn't, keeping this a pure navigation shortcut rather than a
@@ -6575,6 +6637,19 @@ public partial class MainWindow : Window
         MoveCaretToDocumentLine(documentLine);
     }
 
+    // Jumps to an Errors-tab row's location, activating its (possibly inactive) tab first - same
+    // "jump to a place in a possibly-inactive tab" shape as DebugCallStackList_MouseDoubleClick
+    // above, just off a row's own Tab/Line instead of the debug tab/call-stack frame.
+    private void ErrorsGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (ErrorsGrid.SelectedItem is not ErrorListRow row) return;
+
+        if (!ReferenceEquals(ViewModel.ActiveTab, row.Tab))
+            ActivateTab(row.Tab);
+
+        MoveCaretToDocumentLine(row.Line);
+    }
+
     // Re-analyzes the active document and refreshes the squiggle underlines: for BASIC, undefined
     // GOTO/GOSUB/THEN targets, unmatched FOR/NEXT, unterminated strings, and duplicate line
     // numbers; for assembly, whatever Asm6502Assembler reports as errors.
@@ -6586,6 +6661,121 @@ public partial class MainWindow : Window
             : Array.Empty<EditorDiagnostic>();
         _errorSquiggleRenderer.SetDiagnostics(_currentDiagnostics);
         Editor.TextArea.TextView.Redraw();
+
+        // Stash onto the tab so it survives being backgrounded (see EditorTab.Diagnostics), and
+        // refresh the cross-tab Errors panel to match - every debounced re-analysis and every
+        // tab activation both flow through here, so this is the one place that needs to know.
+        if (ViewModel.ActiveTab != null) ViewModel.ActiveTab.Diagnostics = _currentDiagnostics;
+        RefreshErrorsPanel();
+    }
+
+    // Rebuilds the Errors panel's row list from every open tab's cached Diagnostics (not just
+    // the active tab) - the reason EditorTab.Diagnostics exists at all. Gated on EnableLinting
+    // directly here (rather than relying on every open tab's Diagnostics having already been
+    // cleared) so toggling linting off immediately empties the panel even for background tabs
+    // that haven't been reactivated since.
+    private void RefreshErrorsPanel()
+    {
+        ViewModel.ErrorListRows.Clear();
+
+        if (ViewModel.Settings.EnableLinting)
+        {
+            foreach (var tab in ViewModel.OpenTabs)
+            {
+                foreach (var diag in tab.Diagnostics)
+                {
+                    var documentLine = tab.Document.GetLineByOffset(Math.Min(diag.Offset, tab.Document.TextLength));
+
+                    // BasicDiagnostics only ever raises a diagnostic on a line that already
+                    // parsed a leading line number (see AnalyzeLine's early-out), so this
+                    // succeeds for every BASIC row; null for an assembly tab, which has no
+                    // BASIC line numbering at all.
+                    int? basicLineNumber = null;
+                    if (tab.Language == EditorLanguage.Basic &&
+                        BasicDiagnostics.TryParseLineNumber(tab.Document.GetText(documentLine), out int n, out _, out _, out _))
+                        basicLineNumber = n;
+
+                    ViewModel.ErrorListRows.Add(new ErrorListRow
+                    {
+                        Message = diag.Message,
+                        FileName = tab.FileName,
+                        FilePath = tab.FilePath,
+                        Line = documentLine.LineNumber,
+                        BasicLineNumber = basicLineNumber,
+                        Tab = tab,
+                        Offset = diag.Offset,
+                    });
+                }
+            }
+        }
+
+        bool lintingOff = !ViewModel.Settings.EnableLinting;
+        ErrorsEmptyStateText.Text = lintingOff
+            ? "Linting is disabled - enable it in Settings to see errors here."
+            : "No issues found.";
+        ErrorsEmptyStateText.Visibility = ViewModel.ErrorListRows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // Auto-activates the Errors panel (opening it if needed) after a tokenize/save/deploy
+    // action, if the affected tab has any diagnostic - deliberately NOT wired into the
+    // debounce-timer live-typing path (RunDocumentAnalysis), so squiggles/Errors-tab contents
+    // stay continuously current while typing without ever yanking focus away from the editor
+    // mid-edit. Applied to every successful Save (not just the PrgConverter-tokenized branch)
+    // and every C64U/VICE Load/Run, since an assembly error blocking a deploy deserves the same
+    // visibility as a BASIC tokenizer gap - see §6.3/§10.3.
+    private void ActivateErrorsPanelIfDiagnostics(EditorTab tab)
+    {
+        // A background tab's Diagnostics can't be stale (its Document can't change while it
+        // isn't the one loaded into the editor - see EditorTab.Diagnostics) - only the active
+        // tab needs a fresh pass, to cover the case of saving within the 300ms debounce window.
+        if (ReferenceEquals(tab, ViewModel.ActiveTab))
+            RunDiagnostics();
+        if (tab.Diagnostics.Count > 0)
+            ViewModel.IsErrorsPanelActive = true;
+    }
+
+    private void ErrorsSeverityToggle_Click(object sender, RoutedEventArgs e) => ApplyErrorsFilter();
+
+    private void ErrorsSearchBox_TextChanged(object sender, TextChangedEventArgs e) => ApplyErrorsFilter();
+
+    // Applies the Errors tab's severity-toggle and search-box state as a live filter over the
+    // same default CollectionView ErrorsGrid's ItemsSource binding already uses (rather than
+    // introducing a second, separately-filtered list) - the first use of ICollectionView.Filter
+    // in this app; nothing else here has needed a client-side collection filter before.
+    // WPF raises SelectionChanged synchronously the moment InitializeComponent() assigns
+    // ErrorsScopeCombo's XAML-declared SelectedIndex="0" - before InitializeComponent finishes
+    // parsing the rest of the tree, so later-declared fields this handler touches
+    // (ErrorsSeverityErrorToggle, ErrorsSearchBox) are still null, crashing with a
+    // NullReferenceException before the window ever opens. IsLoaded is false for that
+    // startup-driven firing (it only becomes true once the whole window has loaded), so this
+    // guard skips it - harmlessly, since the CollectionView's Filter being unset already shows
+    // everything, exactly matching what applying the default Open-Files/Errors-shown/no-search
+    // state would produce anyway.
+    private void ErrorsScopeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        ApplyErrorsFilter();
+    }
+
+    private void ApplyErrorsFilter()
+    {
+        bool showErrors = ErrorsSeverityErrorToggle.IsChecked == true;
+        string search = ErrorsSearchBox.Text;
+        bool activeTabOnly = ErrorsScopeCombo.SelectedItem is ComboBoxItem { Content: "Active Tab" };
+
+        // ActiveTab is read fresh inside the predicate (not captured here) so switching tabs
+        // while this scope is selected keeps filtering correctly - RefreshErrorsPanel's
+        // Clear()+re-Add() on every tab activation re-runs this Filter for every row against
+        // whatever tab is active by then, with no extra wiring needed for that case.
+        CollectionViewSource.GetDefaultView(ViewModel.ErrorListRows).Filter = obj =>
+        {
+            if (obj is not ErrorListRow row) return false;
+            if (!showErrors) return false; // no other severity exists today - see §10.2
+            if (activeTabOnly && !ReferenceEquals(row.Tab, ViewModel.ActiveTab)) return false;
+            return string.IsNullOrWhiteSpace(search)
+                || row.Message.Contains(search, StringComparison.OrdinalIgnoreCase)
+                || row.FileName.Contains(search, StringComparison.OrdinalIgnoreCase);
+        };
     }
 
     // Recomputes fold regions on the current (not reinstalled) manager. Deliberately doesn't
@@ -6945,7 +7135,7 @@ public partial class MainWindow : Window
     // unquoted value in a DATA statement's argument list (those are literals, not references).
     private void Editor_MouseHover(object sender, MouseEventArgs e)
     {
-        var position = Editor.GetPositionFromPoint(e.GetPosition(Editor));
+        var position = GetHoverPosition(e.GetPosition(Editor));
         if (position == null) { CloseHoverToolTip(); return; }
 
         var line = Editor.Document.GetLineByNumber(position.Value.Line);
@@ -6974,6 +7164,43 @@ public partial class MainWindow : Window
             IsOpen = true
         };
         e.Handled = true;
+    }
+
+    // TextEditor.GetPositionFromPoint reports the NEAREST character boundary to the point - WPF's
+    // own GetCharacterHitFromDistance rounds to whichever half of a glyph the point falls in, so
+    // boundary B's catchment zone spans from the MIDDLE of the character before it to the middle
+    // of the character after it. That's exactly the right behavior for caret placement (a click
+    // should snap to the nearest boundary), but wrong for "which character glyph is the mouse
+    // actually over" - what word-hover detection needs, which wants floor semantics: always the
+    // character whose own box contains the point, regardless of which half. Confirmed by report:
+    // the tooltip triggered ~half a character early approaching a word from the left, and ~half a
+    // character late approaching from the right - exactly the signature of this boundary-vs-floor
+    // mismatch. Re-querying at a point shifted left by half a character's width converts one into
+    // the other (for this app's always-monospace code editors): floor(X) == nearest(X -
+    // halfCharWidth). Measuring via two GetVisualPosition calls' difference rather than any
+    // hardcoded font metric keeps this correct for both the BASIC (Pet Me 64) and assembly fonts.
+    private TextViewPosition? GetHoverPosition(Point mousePoint)
+    {
+        var initial = Editor.GetPositionFromPoint(mousePoint);
+        if (initial == null) return null;
+
+        try
+        {
+            var textView = Editor.TextArea.TextView;
+            var here = textView.GetVisualPosition(initial.Value, VisualYPosition.LineTop);
+            var next = textView.GetVisualPosition(
+                new TextViewPosition(initial.Value.Line, initial.Value.Column + 1), VisualYPosition.LineTop);
+            double charWidth = next.X - here.X;
+            if (charWidth <= 0) return initial;
+
+            return Editor.GetPositionFromPoint(new Point(mousePoint.X - charWidth / 2, mousePoint.Y)) ?? initial;
+        }
+        catch
+        {
+            // Best-effort correction only - any failure just falls back to the unadjusted
+            // (nearest-boundary) position rather than breaking hover entirely.
+            return initial;
+        }
     }
 
     // A squiggle's message takes priority over the keyword/variable tooltip when the mouse is
@@ -7324,6 +7551,14 @@ public partial class MainWindow : Window
 
     private void Editor_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // Ctrl+End: AvalonEdit's own built-in handling already moves the caret to the document
+        // end, but the scroll can undershoot on the first press for the same height-tree-staleness
+        // reason NavigateToCurrentMatch's own deferred BringCaretToView() call works around - see
+        // the comment there. Not marking this Handled; AvalonEdit's default processing still runs
+        // normally, this just schedules the same corrective follow-up after its layout pass lands.
+        if (e.Key == Key.End && Keyboard.Modifiers == ModifierKeys.Control)
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => Editor.TextArea.Caret.BringCaretToView());
+
         // Assembly auto-indent: handled up front and returns, rather than falling through to the
         // BASIC-specific line-number logic below (_leadingLineNumberPattern wouldn't match an
         // assembly line anyway, but this keeps the two languages' Enter handling clearly separate).

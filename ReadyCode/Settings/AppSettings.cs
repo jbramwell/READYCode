@@ -183,14 +183,19 @@ public class AppSettings
     public bool ShowVariableExplorer { get; set; } = true;
 
     /// <summary>
-    /// Whether the bottom debug panel (Variables/Breakpoints/Call Stack) is open.
+    /// Whether the bottom panel (Debug/Errors) is open.
     /// </summary>
-    public bool IsDebugPanelOpen { get; set; } = false;
+    public bool IsBottomPanelOpen { get; set; } = false;
 
     /// <summary>
-    /// Remembers the height of the bottom debug panel.
+    /// Remembers the height of the bottom panel.
     /// </summary>
-    public double DebugPanelHeight { get; set; } = 200;
+    public double BottomPanelHeight { get; set; } = 200;
+
+    /// <summary>
+    /// Remembers which outer bottom-panel tab was last active: "Debug" or "Errors".
+    /// </summary>
+    public string ActiveBottomPanelTab { get; set; } = "Debug";
 
     /// <summary>
     /// Remembers which debug-panel tab was last active: "Variables", "Breakpoints", or "CallStack".

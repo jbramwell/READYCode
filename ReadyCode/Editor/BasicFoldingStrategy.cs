@@ -90,15 +90,29 @@ public class BasicFoldingStrategy
             {
                 string trimmed = stmt.TrimStart();
 
-                if (BasicDiagnostics._forRegex.IsMatch(trimmed))
+                // A FOR/NEXT can start either at the very beginning of the statement, or right
+                // after a "THEN" within it (e.g. "IF X THEN FOR I=1 TO 10") - same reasoning,
+                // and same FindThenEnd helper, as BasicDiagnostics.AnalyzeForNext's identical
+                // fix. Without this, a FOR embedded after THEN is never pushed, and its NEXT
+                // then pops whatever unrelated, still-open FOR line is actually on top instead -
+                // producing a fold spanning way more code than the real loop.
+                string candidate = trimmed;
+                int thenEnd = BasicDiagnostics.FindThenEnd(trimmed);
+                if (thenEnd >= 0)
+                {
+                    string afterThen = trimmed[thenEnd..].TrimStart();
+                    if (afterThen.Length > 0) candidate = afterThen;
+                }
+
+                if (BasicDiagnostics._forRegex.IsMatch(candidate))
                 {
                     forLineIndexes.Push(i);
                     continue;
                 }
 
                 int closeCount;
-                if (BasicDiagnostics._bareNextRegex.IsMatch(trimmed)) closeCount = 1;
-                else if (BasicDiagnostics._nextVarsRegex.IsMatch(trimmed)) closeCount = trimmed[4..].Split(',').Length;
+                if (BasicDiagnostics._bareNextRegex.IsMatch(candidate)) closeCount = 1;
+                else if (BasicDiagnostics._nextVarsRegex.IsMatch(candidate)) closeCount = candidate[4..].Split(',').Length;
                 else continue;
 
                 for (int v = 0; v < closeCount && forLineIndexes.Count > 0; v++)

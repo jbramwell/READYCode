@@ -210,17 +210,52 @@ public class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Gets or sets whether the bottom debug panel (Variables/Breakpoints/Call Stack) is open.
-    /// Changes are persisted to settings immediately.
+    /// Gets or sets whether the bottom panel is open with its Debug (Variables/Breakpoints/Call
+    /// Stack) tab active. Setting true opens the panel and switches to Debug; setting false
+    /// closes the panel, but only if Debug was the tab actually showing - unchecking the menu
+    /// item for a tab that isn't currently visible is a no-op, matching how a checkbox for
+    /// something not in view should behave. Changes are persisted to settings immediately.
     /// </summary>
-    public bool IsDebugPanelOpen
+    public bool IsDebugPanelActive
     {
-        get => Settings.IsDebugPanelOpen;
+        get => Settings.IsBottomPanelOpen && Settings.ActiveBottomPanelTab == "Debug";
         set
         {
-            if (Settings.IsDebugPanelOpen == value) return;
-            Settings.IsDebugPanelOpen = value;
+            if (value)
+            {
+                Settings.ActiveBottomPanelTab = "Debug";
+                Settings.IsBottomPanelOpen = true;
+            }
+            else if (IsDebugPanelActive)
+            {
+                Settings.IsBottomPanelOpen = false;
+            }
             OnPropertyChanged();
+            OnPropertyChanged(nameof(IsErrorsPanelActive));
+            Settings.Save();
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets whether the bottom panel is open with its Errors tab active. Mirrors
+    /// <see cref="IsDebugPanelActive"/> exactly, for the Errors tab instead of Debug.
+    /// </summary>
+    public bool IsErrorsPanelActive
+    {
+        get => Settings.IsBottomPanelOpen && Settings.ActiveBottomPanelTab == "Errors";
+        set
+        {
+            if (value)
+            {
+                Settings.ActiveBottomPanelTab = "Errors";
+                Settings.IsBottomPanelOpen = true;
+            }
+            else if (IsErrorsPanelActive)
+            {
+                Settings.IsBottomPanelOpen = false;
+            }
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsDebugPanelActive));
             Settings.Save();
         }
     }
@@ -569,6 +604,13 @@ public class MainViewModel : INotifyPropertyChanged
     /// Gets the collection of currently open editor tabs.
     /// </summary>
     public ObservableCollection<EditorTab> OpenTabs { get; } = new();
+
+    /// <summary>
+    /// Gets the rows shown in the Errors panel's grid - one per diagnostic across every open
+    /// tab. Rebuilt by <c>MainWindow.RefreshErrorsPanel</c>, not mutated directly by anything
+    /// else.
+    /// </summary>
+    public ObservableCollection<ErrorListRow> ErrorListRows { get; } = new();
 
     /// <summary>
     /// Gets or sets the currently active editor tab.
@@ -1241,6 +1283,18 @@ public class MainViewModel : INotifyPropertyChanged
     // Gates Print/Print Preview, which only need an open tab regardless of its content.
     private bool HasActiveTab() => ActiveTab != null;
 
+    // Auto-activates the Errors panel (opening it if needed) if the active tab has any
+    // diagnostic, after a tokenize-triggering deploy action (Transfer/Run to C64U or VICE) -
+    // mirrors MainWindow.ActivateErrorsPanelIfDiagnostics's Save-time check. ActiveTab.Diagnostics
+    // is kept fresh by the ~300ms live-typing debounce (see EditorTab.Diagnostics) - there's no
+    // Editor control reachable from here to force an immediate re-analysis the way the Save path
+    // does, but the debounce window is short enough not to matter in practice for a deploy click.
+    private void ActivateErrorsPanelIfDiagnostics()
+    {
+        if (ActiveTab != null && ActiveTab.Diagnostics.Count > 0)
+            IsErrorsPanelActive = true;
+    }
+
     // Transfers the current code to the C64 Ultimate.
     // Shows status messages and errors in the status bar.
     private async Task TransferCurrentProgramAsync()
@@ -1269,6 +1323,7 @@ public class MainViewModel : INotifyPropertyChanged
             await client.LoadPrgAsync(Settings.C64UUrl, prgData!);
 
             SetStatus("Program transferred to C64 Ultimate successfully.");
+            ActivateErrorsPanelIfDiagnostics();
         }
         catch (Exception ex)
         {
@@ -1324,6 +1379,7 @@ public class MainViewModel : INotifyPropertyChanged
 
                 SetStatus("Program transferred and running on the C64 Ultimate.", StatusType.Info);
             }
+            ActivateErrorsPanelIfDiagnostics();
         }
         catch (Exception ex)
         {
@@ -1359,6 +1415,7 @@ public class MainViewModel : INotifyPropertyChanged
             await client.TransferAsync(Settings.ViceEmulatorPath, prgData!, ActiveTab!.FileName, Settings.ViceBringToForeground);
 
             SetStatus("Program transferred to VICE. Type RUN in the emulator to start it.");
+            ActivateErrorsPanelIfDiagnostics();
         }
         catch (Exception ex)
         {
@@ -1413,6 +1470,7 @@ public class MainViewModel : INotifyPropertyChanged
 
                 SetStatus("Program transferred and running on VICE.", StatusType.Info);
             }
+            ActivateErrorsPanelIfDiagnostics();
         }
         catch (Exception ex)
         {

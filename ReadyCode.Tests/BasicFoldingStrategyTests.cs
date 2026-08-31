@@ -68,6 +68,22 @@ public class BasicFoldingStrategyTests
         Assert.Empty(Analyze("10 FOR I=1 TO 5"));
     }
 
+    [Fact]
+    public void CreateNewFoldings_ForEmbeddedAfterThen_DoesNotStealTheOuterLoopsFold()
+    {
+        // Regression test: a FOR right after THEN (no colon, so not its own statement) was never
+        // being pushed, so its own same-line NEXT popped the outer, still-open FOR T line
+        // instead - producing a bogus fold spanning from FOR T all the way to that inner NEXT
+        // (line 20), rather than the correct fold from FOR T to its real NEXT T (line 30). The
+        // inner FOR Z/NEXT Z pair, both on line 20, correctly produces no fold of its own (i >
+        // forIndex requires two different lines - nothing to hide on a single line).
+        var foldings = Analyze("10 FOR T=0 TO 19\n20 IF X THEN FOR Z=1 TO 4:PRINT Z:NEXT Z\n30 NEXT T");
+
+        var f = Assert.Single(foldings);
+        Assert.Equal(16, f.StartOffset);
+        Assert.Equal(67, f.EndOffset);
+    }
+
     // ── REM blocks ────────────────────────────────────────────────────────────
 
     [Fact]

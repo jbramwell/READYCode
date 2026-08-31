@@ -52,9 +52,10 @@ public static class BasicDiagnostics
         var declaredLines  = new Dictionary<int, List<(int Offset, int Length)>>();
         var pendingTargets = new List<(int Number, int Offset, int Length)>();
         var forStack       = new Stack<(string Variable, int Offset)>();
+        var tokenizer      = new BasicTokenizer();
 
         foreach (var (line, lineOffset) in EnumerateLines(source))
-            AnalyzeLine(line, lineOffset, declaredLines, pendingTargets, forStack, diagnostics);
+            AnalyzeLine(line, lineOffset, tokenizer, declaredLines, pendingTargets, forStack, diagnostics);
 
         // Targets can be forward references, so they're only resolvable once every declared
         // line number on the whole document is known.
@@ -158,7 +159,7 @@ public static class BasicDiagnostics
     #region Private Methods
 
     private static void AnalyzeLine(
-        string line, int lineOffset,
+        string line, int lineOffset, BasicTokenizer tokenizer,
         Dictionary<int, List<(int Offset, int Length)>> declaredLines,
         List<(int Number, int Offset, int Length)> pendingTargets,
         Stack<(string Variable, int Offset)> forStack,
@@ -167,12 +168,29 @@ public static class BasicDiagnostics
         if (!TryParseLineNumber(line, out int lineNumber, out int numOffset, out int numLength, out int codeStart))
             return; // no leading line number - not a program line, nothing to analyze
 
+        // PrgConverter.ParseLineNumberAndCode parses the line number into a ushort and silently
+        // drops the whole line from the saved/deployed .prg when it doesn't fit - flag that here
+        // too, with the same bound, so the live squiggle/Errors-tab view agrees with what
+        // actually reaches the .prg instead of only finding out at save/deploy time.
+        if (lineNumber > ushort.MaxValue)
+            diagnostics.Add(new EditorDiagnostic(lineOffset + numOffset, numLength,
+                $"Line number {lineNumber} is out of range (must be 0-65535)."));
+
         if (!declaredLines.TryGetValue(lineNumber, out var occurrences))
             declaredLines[lineNumber] = occurrences = new List<(int, int)>();
         occurrences.Add((lineOffset + numOffset, numLength));
 
         string code = line[codeStart..];
         int codeOffset = lineOffset + codeStart;
+
+        // PrgConverter.ConvertToPrg also silently drops the whole line if BasicTokenizer can't
+        // tokenize it (rare - the tokenizer is deliberately permissive - but not impossible).
+        // Same reasoning as the line-number check above: surface it before Save/Deploy, not only
+        // after.
+        var tokenResult = tokenizer.TokenizeLine(code);
+        if (!tokenResult.Success)
+            diagnostics.Add(new EditorDiagnostic(codeOffset, Math.Max(code.Length, 1),
+                tokenResult.ErrorMessage ?? "Tokenization failed."));
 
         // REM makes the rest of the physical line a comment - not split into statements, and
         // not scanned for GOTO/FOR/NEXT targets, matching CodePrettifier.SpaceKeywords' handling.
@@ -198,32 +216,52 @@ public static class BasicDiagnostics
         string trimmed       = stmt.TrimStart();
         int    trimmedOffset = stmtOffset + (stmt.Length - trimmed.Length);
 
-        var forMatch = _forRegex.Match(trimmed);
+        // A FOR/NEXT can start either at the very beginning of the statement, or immediately
+        // after a "THEN" within it - "IF X THEN FOR I=1 TO 10" and "IF X THEN NEXT" are both
+        // valid, legal BASIC, and the whole IF...THEN clause is one statement here since
+        // SplitStatements only splits on colons (same reason AnalyzeTargetsAndStrings' own THEN
+        // scan looks anywhere in the statement rather than just at its start). Without this, a
+        // FOR embedded after THEN never gets pushed, and its matching NEXT then pops whatever
+        // unrelated loop is actually on top of the stack instead.
+        string candidate       = trimmed;
+        int    candidateOffset = trimmedOffset;
+        int    thenEnd         = FindThenEnd(trimmed);
+        if (thenEnd >= 0)
+        {
+            string afterThen = trimmed[thenEnd..].TrimStart();
+            if (afterThen.Length > 0)
+            {
+                candidate       = afterThen;
+                candidateOffset = trimmedOffset + (trimmed.Length - afterThen.Length);
+            }
+        }
+
+        var forMatch = _forRegex.Match(candidate);
         if (forMatch.Success)
         {
-            forStack.Push((forMatch.Groups[1].Value.ToUpperInvariant(), trimmedOffset));
+            forStack.Push((forMatch.Groups[1].Value.ToUpperInvariant(), candidateOffset));
             return;
         }
 
-        if (_bareNextRegex.IsMatch(trimmed))
+        if (_bareNextRegex.IsMatch(candidate))
         {
             if (forStack.Count > 0) forStack.Pop();
-            else diagnostics.Add(new EditorDiagnostic(trimmedOffset, 4, "NEXT without a matching FOR."));
+            else diagnostics.Add(new EditorDiagnostic(candidateOffset, 4, "NEXT without a matching FOR."));
             return;
         }
 
-        if (_nextVarsRegex.IsMatch(trimmed))
+        if (_nextVarsRegex.IsMatch(candidate))
         {
             // NEXT var[,var...] must close its FOR loops in reverse order, same variable each
             // time (e.g. "FOR X ... NEXT Y" is a mistake, not just "some loop closed").
-            foreach (Match varMatch in _variableRegex.Matches(trimmed, 4))
+            foreach (Match varMatch in _variableRegex.Matches(candidate, 4))
             {
                 string varName   = varMatch.Value.ToUpperInvariant();
-                int    varOffset = trimmedOffset + varMatch.Index;
+                int    varOffset = candidateOffset + varMatch.Index;
 
                 if (forStack.Count == 0)
                 {
-                    diagnostics.Add(new EditorDiagnostic(trimmedOffset, 4, "NEXT without a matching FOR."));
+                    diagnostics.Add(new EditorDiagnostic(candidateOffset, 4, "NEXT without a matching FOR."));
                     break;
                 }
 
@@ -233,6 +271,38 @@ public static class BasicDiagnostics
                         $"NEXT {varName} does not match FOR {forVariable}."));
             }
         }
+    }
+
+    // Finds the offset just past a top-level (not inside a string) "THEN" keyword in `text`, or
+    // -1 if none exists. A statement has at most one THEN (an IF's own), so the first match found
+    // while skipping string contents is the right one. Same keyword-boundary + inString-toggle
+    // scan as AnalyzeTargetsAndStrings below, kept separate since that method needs to keep
+    // scanning the rest of the statement afterward and this only needs THEN's own end position.
+    // Internal (not private): reused by BasicFoldingStrategy for the same "FOR/NEXT embedded
+    // after THEN" reason _forRegex/_bareNextRegex/_nextVarsRegex already are.
+    internal static int FindThenEnd(string text)
+    {
+        bool inString = false;
+        int i = 0;
+        while (i < text.Length)
+        {
+            char c = text[i];
+            if (c == '"') { inString = !inString; i++; continue; }
+            if (inString) { i++; continue; }
+
+            if (char.IsLetter(c))
+            {
+                if (BasicTokens.TryMatchKeyword(text, i, BasicTokens.WordKeywordsLongestFirst, out string keyword))
+                {
+                    if (string.Equals(keyword, "THEN", StringComparison.OrdinalIgnoreCase))
+                        return i + keyword.Length;
+                    i += keyword.Length;
+                    continue;
+                }
+            }
+            i++;
+        }
+        return -1;
     }
 
     // Scans a statement (already REM-truncated by the caller) for GOTO/GOSUB/THEN targets and an
@@ -266,20 +336,24 @@ public static class BasicDiagnostics
                 if (!BasicTokens.TryMatchKeyword(stmt, i, BasicTokens.WordKeywordsLongestFirst, out string keyword))
                 { i++; continue; }
 
-                bool isTarget =
+                bool isThen =
+                    string.Equals(keyword, "THEN",  StringComparison.OrdinalIgnoreCase);
+                bool isTarget = isThen ||
                     string.Equals(keyword, "GOTO",  StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(keyword, "THEN",  StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(keyword, "GOSUB", StringComparison.OrdinalIgnoreCase);
 
+                int keywordStart = i;
                 i += keyword.Length;
                 if (!isTarget) continue;
 
+                bool foundAnyTarget = false;
                 while (true)
                 {
                     while (i < stmt.Length && stmt[i] == ' ') i++;
                     int numStart = i;
                     while (i < stmt.Length && char.IsDigit(stmt[i])) i++;
                     if (i == numStart) break; // not followed by a number - no target list here
+                    foundAnyTarget = true;
 
                     if (int.TryParse(stmt.AsSpan(numStart, i - numStart), out int target))
                         pendingTargets.Add((target, stmtOffset + numStart, i - numStart));
@@ -287,6 +361,28 @@ public static class BasicDiagnostics
                     while (i < stmt.Length && stmt[i] == ' ') i++;
                     if (i < stmt.Length && stmt[i] == ',') { i++; continue; }
                     break;
+                }
+
+                // GOTO/GOSUB always need a numeric target - real hardware doesn't support a
+                // computed jump. THEN is the one exception: it may instead be followed by an
+                // ordinary statement (a keyword, e.g. "THEN PRINT...", or a variable name for
+                // implicit LET, e.g. "THEN X=1") rather than a line number, so it's only an
+                // error there if what follows isn't even the start of a valid statement (a
+                // string literal, bare unassigned text, stray punctuation, or nothing at all
+                // before end of line).
+                if (!foundAnyTarget)
+                {
+                    // The loop above broke on its very first iteration (no target found), so i
+                    // is still sitting exactly where it left it: right after the keyword and any
+                    // following spaces, having advanced past zero digits.
+                    bool validThenStatement = isThen && i < stmt.Length && IsValidThenConsequent(stmt, i);
+
+                    if (!validThenStatement)
+                    {
+                        string expected = isThen ? "a line number or a statement" : "a line number";
+                        diagnostics.Add(new EditorDiagnostic(stmtOffset + keywordStart, keyword.Length,
+                            $"{keyword} must be followed by {expected}."));
+                    }
                 }
                 continue;
             }
@@ -296,6 +392,21 @@ public static class BasicDiagnostics
 
         if (inString)
             diagnostics.Add(new EditorDiagnostic(stmtOffset + quoteStart, stmt.Length - quoteStart, "Unterminated string literal."));
+    }
+
+    // Determines whether stmt[pos..] looks like the start of a genuine BASIC statement, for
+    // classifying "THEN <this>" - either a recognized keyword (e.g. "PRINT", "GOTO"), or an
+    // implicit LET (e.g. "X=1", "A$(1)=5"). Deliberately doesn't fully parse the assignment
+    // target (which could be an arbitrarily complex array-subscript expression) - just checks
+    // that the text starts with a letter (every valid target does) and that an '=' appears
+    // somewhere later in the statement, which bare unassigned text (e.g. "HA HA HA", a common
+    // way missing quotes around a string end up looking) never has.
+    private static bool IsValidThenConsequent(string stmt, int pos)
+    {
+        if (BasicTokens.TryMatchKeyword(stmt, pos, BasicTokens.WordKeywordsLongestFirst, out _))
+            return true;
+
+        return char.IsLetter(stmt[pos]) && stmt.AsSpan(pos).Contains('=');
     }
 
     #endregion
