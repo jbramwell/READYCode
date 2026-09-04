@@ -1,6 +1,6 @@
 ﻿<Project Sdk="WixToolset.Sdk/7.0.0">
   <PropertyGroup>
-    <InstallerVersion>2.2.0.0</InstallerVersion>
+    <InstallerVersion>2.3.0.0</InstallerVersion>
     <DefineConstants>InstallerVersion=$(InstallerVersion)</DefineConstants>
   </PropertyGroup>
   <PropertyGroup>

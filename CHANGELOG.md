@@ -1,5 +1,22 @@
 # Change Log
 
+## [v2.3.0] - 2026-09-04
+
+### New Features
+
+- **Errors panel** - a new VS-style Errors tab alongside the existing Debug panel (Variables/Breakpoints/Call Stack), listing every current diagnostic across all open tabs with double-click-to-jump; toggled via a new `View > E_rrors Panel` menu item with persisted open/closed state. The BASIC tokenizer's previously-silent malformed-line drops now also surface as squiggles and Errors-tab rows instead of failing invisibly
+
+### Improvements
+
+- The File Compare tab's diff panes now follow the editor font size set in the Settings dialog instead of a fixed size
+- Minor light theme color tweak to the PRG file-type badge
+- Improved scroll-to-search-result accuracy and keyword/variable hover tooltip positioning/priority
+
+### Bug Fixes
+
+- Fixed a bug where code editor text would visually "bunch up"
+- Fixed the Pi character (and other raw PETSCII bytes above `$7F`) getting corrupted during tokenizing
+
 ## [v2.2.0] - 2026-08-24
 
 ### New Features
