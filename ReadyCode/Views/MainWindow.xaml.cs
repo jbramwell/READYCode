@@ -8064,6 +8064,14 @@ public partial class MainWindow : Window
         Editor.CaretOffset = newOffset;
         Editor.Select(newOffset, 0);
         Editor.Focus();
+
+        // Moving the caret above fires Editor_CaretPositionChanged -> UpdateGhostText, which can
+        // show a spurious keyword-completion suggestion after a picker-inserted PETSCII byte
+        // (raw high bytes satisfy char.IsLetterOrDigit for some Unicode categories, so
+        // GetWordBeforeCaret can sweep them into a "word" that coincidentally matches one).
+        // Ghost text only makes sense while actively typing - see the identical fix/reasoning in
+        // NavigateToCurrentMatch.
+        ClearGhostText();
     }
 
     // The Variables grid's value edit box shows PUA-substituted display text (see
