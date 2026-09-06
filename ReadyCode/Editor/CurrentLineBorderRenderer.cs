@@ -70,18 +70,41 @@ public sealed class CurrentLineBorderRenderer : IBackgroundRenderer
             if (vl.FirstDocumentLine.LineNumber > caretLine.LineNumber) break;
             if (vl.LastDocumentLine.LineNumber  < caretLine.LineNumber) continue;
 
-            // VisualTop is document-relative; subtract scroll to get viewport Y.
-            double top    = vl.VisualTop - textView.ScrollOffset.Y;
-            double bottom = top + vl.Height;
-            double width  = textView.ActualWidth;
+            double top, bottom;
+            if (vl.TextLines.Count == 1)
+            {
+                // AvalonEdit's own Caret.CalcCaretRectangle() positions the caret using
+                // VisualYPosition.TextTop/TextBottom, not LineTop/LineBottom - decompiled and
+                // confirmed via ICSharpCode.AvalonEdit.Editing.Caret. TextTop/TextBottom are
+                // baseline-anchored (TextTop = LineTop + (thisLine.Baseline - DefaultBaseline);
+                // TextBottom = TextTop + DefaultLineHeight), which differs from LineTop/LineBottom
+                // (LineTop; LineTop + thisLine.Height) whenever a line's own baseline/height isn't
+                // exactly the "default" ('x'-measured) one - true for a genuinely empty line with
+                // the "Pet Me 64" custom font, which used to leave the border a couple of pixels
+                // short of the caret until the first character was typed. Matching the caret's own
+                // formula exactly (rather than an approximation of it) guarantees they always agree.
+                var textLine = vl.TextLines[0];
+                top    = vl.GetTextLineVisualYPosition(textLine, VisualYPosition.TextTop) - textView.ScrollOffset.Y;
+                bottom = vl.GetTextLineVisualYPosition(textLine, VisualYPosition.TextBottom) - textView.ScrollOffset.Y;
+            }
+            else
+            {
+                // A wrapped current line spans multiple rows - keep the border around the whole
+                // logical line (VisualTop is document-relative; subtract scroll for viewport Y)
+                // rather than collapsing it to just the caret's own row.
+                top    = vl.VisualTop - textView.ScrollOffset.Y;
+                bottom = top + vl.Height;
+            }
+            double width = textView.ActualWidth;
 
-            // +0.5 / -0.5 snaps to pixel centres for a crisp 1px hairline.
+            // +0.5 / -0.5 snaps to pixel centres for a crisp 1px hairline. The top line gets an
+            // extra 2px of padding above the text so it doesn't sit flush against it.
             drawingContext.DrawLine(_pen,
-                new Point(0, top    + 0.5),
-                new Point(width, top    + 0.5));
+                new Point(0, top - 2.5),
+                new Point(width, top - 2.5));
             drawingContext.DrawLine(_pen,
-                new Point(0, bottom - 0.5),
-                new Point(width, bottom - 0.5));
+                new Point(0, bottom + 0.5),
+                new Point(width, bottom + 0.5));
 
             break;
         }

@@ -635,6 +635,15 @@ public partial class MainWindow : Window
             tab.Kind = C64UFileKind.Asm;
             tab.DisplayName = "Untitled.asm";
         }
+        else
+        {
+            // A new BASIC tab defaults to the tokenized .prg format - the same target
+            // SaveTabWithDialog/FileSaveAs_Click already default to (DefaultExt = ".prg") - so
+            // it renders with the C64 font/PETSCII glyph substitution from the start rather than
+            // only after the user actually saves it.
+            tab.Kind = C64UFileKind.Prg;
+            tab.DisplayName = "Untitled.prg";
+        }
 
         ViewModel.OpenTabs.Add(tab);
         ActivateTab(tab);

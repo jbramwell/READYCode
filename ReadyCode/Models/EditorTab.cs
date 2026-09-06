@@ -82,7 +82,7 @@ public class EditorTab : INotifyPropertyChanged
     /// <summary>
     /// Gets or sets this tab's file kind, as classified by <see cref="FileClassifier"/> when the
     /// tab was opened. Defaults to <see cref="C64UFileKind.Bas"/> for tabs with no backing file
-    /// (a blank new tab, or an imported text file).
+    /// and no explicit kind of their own (e.g. a reopened closed tab that was never saved).
     /// </summary>
     public C64UFileKind Kind { get; set; } = C64UFileKind.Bas;
 
