@@ -1690,6 +1690,7 @@ public partial class MainWindow : Window
             {
                 ViewModel.ActiveTab.Language = LanguageClassifier.Classify(ViewModel.CurrentFilePath!);
                 ViewModel.ActiveTab.Kind = FileClassifier.Classify(ViewModel.CurrentFilePath!, isFolder: false);
+                ApplyLineTransformersForLanguage(ViewModel.ActiveTab.Language, ViewModel.ActiveTab.Kind);
 
                 // Saving a disassembly listing turns it into an ordinary editable .asm file from
                 // now on - re-disassembling in place isn't offered (see EditorTab.IsDisassemblyMode).
@@ -1793,6 +1794,8 @@ public partial class MainWindow : Window
             tab.FilePath = dialog.FileName;
             tab.Language = LanguageClassifier.Classify(tab.FilePath);
             tab.Kind = FileClassifier.Classify(tab.FilePath, isFolder: false);
+            if (ReferenceEquals(tab, ViewModel.ActiveTab))
+                ApplyLineTransformersForLanguage(tab.Language, tab.Kind);
 
             // Saving a disassembly listing turns it into an ordinary editable .asm file from now
             // on. Only touch the shared toolbar/Editor UI if this tab actually is the one
@@ -2289,7 +2292,11 @@ public partial class MainWindow : Window
         _closedTabHistory.RemoveAt(_closedTabHistory.Count - 1);
 
         var tab = new EditorTab { FilePath = snapshot.FilePath };
-        if (snapshot.FilePath != null) tab.Language = LanguageClassifier.Classify(snapshot.FilePath);
+        if (snapshot.FilePath != null)
+        {
+            tab.Language = LanguageClassifier.Classify(snapshot.FilePath);
+            tab.Kind = FileClassifier.Classify(snapshot.FilePath, isFolder: false);
+        }
         tab.Document.Text = snapshot.Text;
         tab.CaretOffset = Math.Min(snapshot.CaretOffset, tab.Document.TextLength);
         tab.ScrollOffsetY = snapshot.ScrollOffsetY;
