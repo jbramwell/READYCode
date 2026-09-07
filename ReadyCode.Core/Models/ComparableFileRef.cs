@@ -73,19 +73,6 @@ public sealed class ComparableFileRef
     #region Public Methods
 
     /// <summary>
-    /// Creates a <see cref="ComparableFileRef"/> snapshot of a local Folder Explorer file.
-    /// </summary>
-    public static ComparableFileRef FromLocal(FileTreeItem item) => new()
-    {
-        Name = item.Name,
-        FullPath = item.FullPath,
-        Kind = item.Kind,
-        Source = ComparableFileSource.Local,
-        VirtualContent = item.Content,
-        VirtualSourcePath = item.SourcePath,
-    };
-
-    /// <summary>
     /// Creates a <see cref="ComparableFileRef"/> snapshot of a C64 Ultimate FTP Explorer file.
     /// </summary>
     public static ComparableFileRef FromC64U(C64UFileItem item) => new()
