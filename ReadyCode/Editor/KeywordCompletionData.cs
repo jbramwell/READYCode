@@ -34,18 +34,21 @@ public sealed class EditorSegment(int offset, int length) : ISegment
 }
 
 /// <summary>
-/// A single keyword/mnemonic completion list entry, shared by the BASIC and Assembly completion
-/// providers. The snippet string uses '|' to mark where the caret lands after insertion.
+/// AvalonEdit <see cref="ICompletionData"/> adapter over a <see cref="KeywordCompletionItem"/>,
+/// shared by the BASIC and Assembly completion providers.
 /// </summary>
 public class KeywordCompletionData : ICompletionData
 {
-    #region Private Fields
-
-    private readonly string _snippet;
-
-    #endregion
-
     #region Constructors
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="KeywordCompletionData"/> class.
+    /// </summary>
+    /// <param name="item">The editor-independent completion entry to present.</param>
+    public KeywordCompletionData(KeywordCompletionItem item)
+    {
+        Item = item;
+    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="KeywordCompletionData"/> class.
@@ -55,16 +58,18 @@ public class KeywordCompletionData : ICompletionData
     /// <param name="description">The description shown for this entry.</param>
     /// <param name="category">The reference-panel category this keyword is grouped under.</param>
     public KeywordCompletionData(string text, string snippet, string description, string category)
+        : this(new KeywordCompletionItem(text, snippet, description, category))
     {
-        Text = text;
-        _snippet = snippet;
-        Description = description;
-        Category = category;
     }
 
     #endregion
 
     #region Public Properties
+
+    /// <summary>
+    /// Gets the underlying editor-independent completion entry.
+    /// </summary>
+    public KeywordCompletionItem Item { get; }
 
     /// <summary>
     /// Gets the icon shown next to the entry in the completion list. Always null; no icons are used.
@@ -74,7 +79,7 @@ public class KeywordCompletionData : ICompletionData
     /// <summary>
     /// Gets the keyword text inserted when this entry is selected.
     /// </summary>
-    public string Text { get; }
+    public string Text => Item.Text;
 
     /// <summary>
     /// Gets the content displayed in the completion list (same as <see cref="Text"/>).
@@ -84,12 +89,12 @@ public class KeywordCompletionData : ICompletionData
     /// <summary>
     /// Gets the description shown for this entry.
     /// </summary>
-    public object Description { get; }
+    public object Description => Item.Description;
 
     /// <summary>
     /// Gets the reference-panel category this keyword is grouped under (e.g. "Math Functions").
     /// </summary>
-    public string Category { get; }
+    public string Category => Item.Category;
 
     /// <summary>
     /// Gets the sort priority used by the completion window. Always zero.
@@ -97,7 +102,7 @@ public class KeywordCompletionData : ICompletionData
     public double Priority => 0;
 
     /// <summary>Snippet text with the '|' cursor marker removed.</summary>
-    public string Snippet => _snippet.Replace("|", "");
+    public string Snippet => Item.InsertText;
 
     #endregion
 
@@ -111,12 +116,8 @@ public class KeywordCompletionData : ICompletionData
     /// <param name="insertionRequestEventArgs">The event that triggered the insertion request.</param>
     public void Complete(TextArea textArea, ISegment completionSegment, EventArgs insertionRequestEventArgs)
     {
-        int cursorMark = _snippet.IndexOf('|');
-        string insertText = _snippet.Replace("|", "");
-
-        textArea.Document.Replace(completionSegment, insertText);
-
-        textArea.Caret.Offset = completionSegment.Offset + (cursorMark >= 0 ? cursorMark : insertText.Length);
+        textArea.Document.Replace(completionSegment, Item.InsertText);
+        textArea.Caret.Offset = completionSegment.Offset + Item.CaretOffset;
     }
 
     #endregion

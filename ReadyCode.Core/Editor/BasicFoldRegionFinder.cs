@@ -1,0 +1,154 @@
+// Copyright (c) 2026 Moonspace Labs, LLC
+// Licensed under the MIT License. See LICENSE in the project root for license information.
+
+using ReadyCode.Diagnostics;
+using ReadyCode.Prettify;
+
+namespace ReadyCode.Editor;
+
+/// <summary>
+/// Computes collapsible fold regions for C64 BASIC source: FOR...NEXT blocks and runs of
+/// consecutive REM comment lines. Free of any editor-control types so it lives in the
+/// cross-platform core; each UI's folding strategy adapts the result to its editor.
+/// </summary>
+public static class BasicFoldRegionFinder
+{
+    #region Public Methods
+
+    /// <summary>
+    /// Computes every fold region in <paramref name="text"/>, sorted by start offset.
+    /// </summary>
+    /// <param name="text">The full BASIC source text.</param>
+    public static List<FoldRegion> Find(string text) => Find(SourceLine.Split(text));
+
+    /// <summary>
+    /// Computes every fold region across <paramref name="sourceLines"/>, sorted by start offset.
+    /// </summary>
+    /// <param name="sourceLines">The document's lines, in order.</param>
+    public static List<FoldRegion> Find(IReadOnlyList<SourceLine> sourceLines)
+    {
+        var lines = new List<LineInfo>(sourceLines.Count);
+
+        foreach (var line in sourceLines)
+        {
+            string text = line.Text;
+            if (!BasicDiagnostics.TryParseLineNumber(text, out int number, out _, out _, out int codeStart))
+            {
+                lines.Add(new LineInfo(line.EndOffset, null, string.Empty, string.Empty));
+                continue;
+            }
+
+            string code = text[codeStart..];
+            string activeCode = code[..BasicDiagnostics.FindTopLevelRemStart(code)];
+            lines.Add(new LineInfo(line.EndOffset, number, code, activeCode));
+        }
+
+        var foldings = new List<FoldRegion>();
+        AddForNextFoldings(lines, foldings);
+        AddRemBlockFoldings(lines, foldings);
+
+        foldings.Sort((a, b) => a.StartOffset.CompareTo(b.StartOffset));
+        return foldings;
+    }
+
+    #endregion
+
+    #region Private Methods
+
+    // Per-line data shared across the fold passes below: the line's end offset, the leading
+    // BASIC line number (or null for a non-program line), the raw code after it, and that code
+    // with anything from a top-level REM onward stripped off (REM comments aren't scanned for
+    // FOR/NEXT keywords).
+    private readonly record struct LineInfo(int EndOffset, int? Number, string Code, string ActiveCode);
+
+    // Tracks open FOR loops (by line index) across the whole document; a NEXT closes the
+    // innermost one(s), regardless of variable name - unlike BasicDiagnostics.AnalyzeForNext,
+    // folding only cares about structural nesting, not correctness, so no variable-name matching
+    // is needed here. "NEXT X,Y" closes as many loops as it lists variables (same as
+    // CodePrettifier.ProcessStatements' varCount handling) - popping just once per NEXT statement
+    // here would strand an entry on the stack, which then gets wrongly paired with some unrelated
+    // NEXT much later in the file, producing a bogus fold spanning everything in between.
+    private static void AddForNextFoldings(List<LineInfo> lines, List<FoldRegion> foldings)
+    {
+        var forLineIndexes = new Stack<int>();
+
+        // Multiple FOR loops opened on the same source line, closed by a compound "NEXT ...,..."
+        // landing on the same later line, would otherwise produce several folds with the exact
+        // same start/end offsets - overlapping FoldingSections that can't be independently
+        // toggled (unfolding the visible one leaves the identical one underneath still folded,
+        // so the text never reappears). One fold per unique span only.
+        var emittedSpans = new HashSet<(int Start, int End)>();
+
+        for (int i = 0; i < lines.Count; i++)
+        {
+            if (lines[i].Number == null) continue;
+
+            foreach (var stmt in CodePrettifier.SplitStatements(lines[i].ActiveCode))
+            {
+                string trimmed = stmt.TrimStart();
+
+                // A FOR/NEXT can start either at the very beginning of the statement, or right
+                // after a "THEN" within it (e.g. "IF X THEN FOR I=1 TO 10") - same reasoning,
+                // and same FindThenEnd helper, as BasicDiagnostics.AnalyzeForNext's identical
+                // fix. Without this, a FOR embedded after THEN is never pushed, and its NEXT
+                // then pops whatever unrelated, still-open FOR line is actually on top instead -
+                // producing a fold spanning way more code than the real loop.
+                string candidate = trimmed;
+                int thenEnd = BasicDiagnostics.FindThenEnd(trimmed);
+                if (thenEnd >= 0)
+                {
+                    string afterThen = trimmed[thenEnd..].TrimStart();
+                    if (afterThen.Length > 0) candidate = afterThen;
+                }
+
+                if (BasicDiagnostics._forRegex.IsMatch(candidate))
+                {
+                    forLineIndexes.Push(i);
+                    continue;
+                }
+
+                int closeCount;
+                if (BasicDiagnostics._bareNextRegex.IsMatch(candidate)) closeCount = 1;
+                else if (BasicDiagnostics._nextVarsRegex.IsMatch(candidate)) closeCount = candidate[4..].Split(',').Length;
+                else continue;
+
+                for (int v = 0; v < closeCount && forLineIndexes.Count > 0; v++)
+                {
+                    int forIndex = forLineIndexes.Pop();
+                    if (i > forIndex && emittedSpans.Add((forIndex, i)))
+                        foldings.Add(new FoldRegion(lines[forIndex].EndOffset, lines[i].EndOffset));
+                }
+            }
+        }
+    }
+
+    // Folds runs of 2+ consecutive full-line REM statements into one block - a single standalone
+    // REM line has nothing to hide, and a trailing inline comment (e.g. "X=1:REM note") isn't a
+    // full-line REM, so it never starts or extends a run.
+    private static void AddRemBlockFoldings(List<LineInfo> lines, List<FoldRegion> foldings)
+    {
+        int runStart = -1;
+
+        for (int i = 0; i <= lines.Count; i++)
+        {
+            bool isFullRemLine = i < lines.Count && lines[i].Number != null && IsFullRemLine(lines[i]);
+            if (isFullRemLine)
+            {
+                if (runStart < 0) runStart = i;
+                continue;
+            }
+
+            if (runStart >= 0 && i - runStart >= 2)
+                foldings.Add(new FoldRegion(lines[runStart].EndOffset, lines[i - 1].EndOffset));
+            runStart = -1;
+        }
+    }
+
+    // A line's code is entirely one REM statement (not a trailing inline comment) exactly when
+    // REM-truncation stripped everything (ActiveCode empty) from genuinely non-empty code - a
+    // bare "100" line with no code at all is also "empty after truncation" but never REM at all,
+    // hence the Code.Length check.
+    private static bool IsFullRemLine(LineInfo info) => info.Code.Length > 0 && info.ActiveCode.Length == 0;
+
+    #endregion
+}

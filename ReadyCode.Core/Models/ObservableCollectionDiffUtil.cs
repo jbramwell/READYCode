@@ -7,12 +7,12 @@ namespace ReadyCode.Models;
 
 /// <summary>
 /// Updates an <see cref="ObservableCollection{T}"/> to match a freshly-loaded list via targeted
-/// Add/Remove/Move instead of a full Clear+repopulate. Shared by <see cref="FileTreeItem"/> and
-/// <see cref="C64UFileItem"/>'s tree-refresh logic, so a refresh that only actually changed one
-/// entry doesn't force the bound TreeView to re-virtualize every row and lose per-row UI state
-/// (expanded/rename/drop-target flags) on entries that didn't change.
+/// Add/Remove/Move instead of a full Clear+repopulate. Shared by each front end's local file-tree
+/// model and <see cref="C64UFileItem"/>'s tree-refresh logic, so a refresh that only actually
+/// changed one entry doesn't force the bound TreeView to re-virtualize every row and lose per-row
+/// UI state (expanded/rename/drop-target flags) on entries that didn't change.
 /// </summary>
-internal static class ObservableCollectionDiffUtil
+public static class ObservableCollectionDiffUtil
 {
     #region Internal Methods
 
@@ -23,7 +23,7 @@ internal static class ObservableCollectionDiffUtil
     /// (and therefore their UI state); items with a key not present in <paramref name="desired"/>
     /// are removed; genuinely new keys are inserted.
     /// </summary>
-    internal static void Apply<T>(ObservableCollection<T> current, IReadOnlyList<T> desired,
+    public static void Apply<T>(ObservableCollection<T> current, IReadOnlyList<T> desired,
         Func<T, string> keySelector)
     {
         var desiredKeys = new HashSet<string>(desired.Count, StringComparer.OrdinalIgnoreCase);
