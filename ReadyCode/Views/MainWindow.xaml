@@ -1092,6 +1092,7 @@
     <Window.InputBindings>
         <!-- File Menu -->
         <KeyBinding Key="N" Modifiers="Ctrl" Command="{Binding FileNewCommand}"/>
+        <KeyBinding Key="N" Modifiers="Ctrl+Shift" Command="{Binding FileNewBasCommand}"/>
         <KeyBinding Key="N" Modifiers="Ctrl+Alt" Command="{Binding FileNewAsmCommand}"/>
         <KeyBinding Key="O" Modifiers="Ctrl" Command="{Binding FileOpenCommand}"/>
         <KeyBinding Key="S" Modifiers="Ctrl" Command="{Binding FileSaveCommand}"/>
@@ -1215,8 +1216,9 @@
             <MenuItem Header="_File">
                 <MenuItem Header="_New">
                     <MenuItem.Icon><TextBlock Text="&#xE7C3;" Style="{StaticResource MenuItemIconText}"/></MenuItem.Icon>
-                    <MenuItem Header="_Program File"  Command="{Binding FileNewCommand}"    InputGestureText="Ctrl+N"/>
-                    <MenuItem Header="_Assembly File" Command="{Binding FileNewAsmCommand}" InputGestureText="Ctrl+Alt+N"/>
+                    <MenuItem Header="_Program File (.prg)"  Command="{Binding FileNewCommand}"    InputGestureText="Ctrl+N"/>
+                    <MenuItem Header="_BASIC File (.bas)"    Command="{Binding FileNewBasCommand}" InputGestureText="Ctrl+Shift+N"/>
+                    <MenuItem Header="_Assembly File (.asm)" Command="{Binding FileNewAsmCommand}" InputGestureText="Ctrl+Alt+N"/>
                 </MenuItem>
                 <Separator/>
                 <MenuItem Header="_Open File..."    Command="{Binding FileOpenCommand}"         InputGestureText="Ctrl+O">

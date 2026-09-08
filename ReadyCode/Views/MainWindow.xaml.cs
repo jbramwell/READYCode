@@ -178,6 +178,7 @@ public partial class MainWindow : Window
 
         // Initialize commands
         FileNewCommand = new RelayCommand(_ => FileNew_Click(this, new RoutedEventArgs()));
+        FileNewBasCommand = new RelayCommand(_ => FileNewBas_Click(this, new RoutedEventArgs()));
         FileNewAsmCommand = new RelayCommand(_ => FileNewAsm_Click(this, new RoutedEventArgs()));
         FileOpenCommand = new RelayCommand(_ => FileOpen_Click(this, new RoutedEventArgs()));
         FileSaveCommand = new RelayCommand(_ => FileSave_Click(this, new RoutedEventArgs()));
@@ -445,8 +446,10 @@ public partial class MainWindow : Window
     public MainViewModel ViewModel { get; } = new();
 
     // Command properties
-    /// <summary>Gets the command that creates a new BASIC tab.</summary>
+    /// <summary>Gets the command that creates a new BASIC tab (tokenized .prg format).</summary>
     public ICommand FileNewCommand { get; }
+    /// <summary>Gets the command that creates a new untokenized BASIC (.bas) tab.</summary>
+    public ICommand FileNewBasCommand { get; }
     /// <summary>Gets the command that creates a new assembly tab.</summary>
     public ICommand FileNewAsmCommand { get; }
     /// <summary>Gets the command that opens a file.</summary>
@@ -623,27 +626,23 @@ public partial class MainWindow : Window
 
     #region File Operations
 
-    private void FileNew_Click(object sender, RoutedEventArgs e) => CreateNewTab(EditorLanguage.Basic);
+    // A new BASIC tab defaults to the tokenized .prg format - the same target
+    // SaveTabWithDialog/FileSaveAs_Click already default to (DefaultExt = ".prg") - so it
+    // renders with the C64 font/PETSCII glyph substitution from the start rather than only
+    // after the user actually saves it. File > New > BASIC File (.bas) opts into the
+    // untokenized plain-text format instead, for a user who specifically wants that.
+    private void FileNew_Click(object sender, RoutedEventArgs e) =>
+        CreateNewTab(EditorLanguage.Basic, C64UFileKind.Prg, "Untitled.prg");
 
-    private void FileNewAsm_Click(object sender, RoutedEventArgs e) => CreateNewTab(EditorLanguage.Asm);
+    private void FileNewBas_Click(object sender, RoutedEventArgs e) =>
+        CreateNewTab(EditorLanguage.Basic, C64UFileKind.Bas, "Untitled.bas");
 
-    private void CreateNewTab(EditorLanguage language)
+    private void FileNewAsm_Click(object sender, RoutedEventArgs e) =>
+        CreateNewTab(EditorLanguage.Asm, C64UFileKind.Asm, "Untitled.asm");
+
+    private void CreateNewTab(EditorLanguage language, C64UFileKind kind, string displayName)
     {
-        var tab = new EditorTab { Language = language };
-        if (language == EditorLanguage.Asm)
-        {
-            tab.Kind = C64UFileKind.Asm;
-            tab.DisplayName = "Untitled.asm";
-        }
-        else
-        {
-            // A new BASIC tab defaults to the tokenized .prg format - the same target
-            // SaveTabWithDialog/FileSaveAs_Click already default to (DefaultExt = ".prg") - so
-            // it renders with the C64 font/PETSCII glyph substitution from the start rather than
-            // only after the user actually saves it.
-            tab.Kind = C64UFileKind.Prg;
-            tab.DisplayName = "Untitled.prg";
-        }
+        var tab = new EditorTab { Language = language, Kind = kind, DisplayName = displayName };
 
         ViewModel.OpenTabs.Add(tab);
         ActivateTab(tab);
@@ -1679,14 +1678,12 @@ public partial class MainWindow : Window
 
     private void FileSaveAs_Click(object sender, RoutedEventArgs e)
     {
-        bool isAsm = ViewModel.ActiveTab?.Language == EditorLanguage.Asm;
+        var (filter, defaultExt) = GetSaveFilterFor(ViewModel.ActiveTab);
         var dialog = new SaveFileDialog
         {
-            Filter = isAsm
-                ? "6502 Assembly (*.asm;*.s)|*.asm;*.s|All Files (*.*)|*.*"
-                : "Commodore 64 Programs (*.prg)|*.prg|BASIC Source (*.bas)|*.bas|All Files (*.*)|*.*",
+            Filter = filter,
             Title = "Save File As",
-            DefaultExt = isAsm ? ".asm" : ".prg",
+            DefaultExt = defaultExt,
             AddExtension = true
         };
         if (!string.IsNullOrEmpty(ViewModel.CurrentFilePath))
@@ -1783,20 +1780,33 @@ public partial class MainWindow : Window
         RefreshAfterCreate(dir, filePath);
     }
 
+    // Picks a Save/Save As dialog's file-type filter and default extension for a tab, keyed off
+    // its Kind rather than just Language - a Basic-language tab can be either the tokenized .prg
+    // format or the untokenized .bas format (see EditorTab.Kind), and the dialog should default
+    // to whichever one the tab already is instead of always assuming .prg.
+    private static (string Filter, string DefaultExt) GetSaveFilterFor(EditorTab? tab)
+    {
+        if (tab?.Language == EditorLanguage.Asm)
+            return ("6502 Assembly (*.asm;*.s)|*.asm;*.s|All Files (*.*)|*.*", ".asm");
+
+        if (tab?.Kind == C64UFileKind.Bas)
+            return ("BASIC Source (*.bas)|*.bas|Commodore 64 Programs (*.prg)|*.prg|All Files (*.*)|*.*", ".bas");
+
+        return ("Commodore 64 Programs (*.prg)|*.prg|BASIC Source (*.bas)|*.bas|All Files (*.*)|*.*", ".prg");
+    }
+
     // Saves a tab (possibly not the active one); prompts for path if untitled.
     // Returns false if the user cancels.
     private bool SaveTabWithDialog(EditorTab tab)
     {
-        bool isAsm = tab.Language == EditorLanguage.Asm;
         if (string.IsNullOrEmpty(tab.FilePath))
         {
+            var (filter, defaultExt) = GetSaveFilterFor(tab);
             var dialog = new SaveFileDialog
             {
-                Filter = isAsm
-                    ? "6502 Assembly (*.asm;*.s)|*.asm;*.s|All Files (*.*)|*.*"
-                    : "Commodore 64 Programs (*.prg)|*.prg|BASIC Source (*.bas)|*.bas|All Files (*.*)|*.*",
+                Filter = filter,
                 Title = "Save File",
-                DefaultExt = isAsm ? ".asm" : ".prg",
+                DefaultExt = defaultExt,
                 AddExtension = true
             };
             if (dialog.ShowDialog() != true) return false;
