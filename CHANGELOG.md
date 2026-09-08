@@ -1,5 +1,21 @@
 # Change Log
 
+## [v2.3.2] - 2026-09-08
+
+### New Features
+
+- **File > New > BASIC File (.bas)** - a new menu item and `Ctrl+Shift+N` shortcut for creating a blank, untokenized `.bas` file directly, instead of having to Save As a `.prg` file and rename it. A new `.prg` file (`Ctrl+N`) now also renders with the C64 font and PETSCII glyph substitution from the moment it's created, and the Save dialog for a new `.bas` file now defaults to the `.bas` extension instead of always assuming `.prg`
+
+### Improvements
+
+- The About dialog now also shows the "Build" portion of the version number
+
+### Bug Fixes
+
+- Fixed PETSCII characters inserted from the side panel rendering in the wrong font (or not at all) - most noticeable after using Save As to turn a new file into a `.prg`, or after Reopen Closed Tab, both of which left the editor's font/PETSCII-substitution mode stuck on its previous setting
+- Fixed a spurious "ghost text" autocomplete suggestion sometimes appearing after inserting a PETSCII character from the side panel
+- Better aligned the current line's top/bottom highlight border with the caret, especially on an empty line
+
 ## [v2.3.0] - 2026-09-04
 
 ### New Features
