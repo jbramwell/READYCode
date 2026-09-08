@@ -20,7 +20,7 @@ public partial class AboutWindow : Window
     public AboutWindow()
     {
         var ver = Assembly.GetExecutingAssembly().GetName().Version;
-        AppTitle = ver != null ? $"READYCode v{ver.Major}.{ver.Minor}" : "READYCode";
+        AppTitle = ver != null ? $"READYCode v{ver.Major}.{ver.Minor}.{ver.Build}" : "READYCode";
 
         Opacity = 0;
         InitializeComponent();
