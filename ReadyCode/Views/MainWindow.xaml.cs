@@ -61,12 +61,6 @@ public partial class MainWindow : Window
 
     private static readonly Regex _leadingLineNumberPattern = new(@"^(\s*)(\d+)", RegexOptions.Compiled);
 
-    // The editor's default BASIC font (also set as Editor.FontFamily's XAML default) and the
-    // font assembly tabs switch to instead - Pet Me 64 renders PETSCII glyphs BASIC relies on,
-    // but has no useful bearing on plain 6502 assembly text.
-    private static readonly FontFamily _basicEditorFont = new(new Uri("pack://application:,,,/ReadyCode;component/Assets/Fonts/"), "./#Pet Me 64");
-    private static readonly FontFamily _asmEditorFont = new("Consolas");
-
     private readonly BasicKeywordColorizer _keywordColorizer = new();
     private readonly LineNumberColorizer _lineNumberColorizer = new();
     private readonly NumberLiteralColorizer _numberLiteralColorizer = new();
@@ -237,6 +231,8 @@ public partial class MainWindow : Window
         {
             if (e.PropertyName is nameof(MainViewModel.ShowColumnGuide) or nameof(MainViewModel.WordWrap))
                 ApplyEditorAppearance();
+            if (e.PropertyName == nameof(MainViewModel.UsePetsciiFont))
+                ApplyPetsciiFontSetting();
             if (e.PropertyName == nameof(MainViewModel.ShowVariableExplorer))
                 ApplyVariableExplorerVisibility();
             if (e.PropertyName == nameof(MainViewModel.DebugCurrentDocumentLine))
@@ -2154,10 +2150,11 @@ public partial class MainWindow : Window
 
         // A .bas file is plain ASCII source - unlike a detokenized .prg, which is styled to look
         // like what actually ends up on a real C64 screen once tokenized/transferred, and needs
-        // the PETSCII-glyph font/substitution to do that. BASIC syntax coloring (the transformers
-        // above) still applies either way; only the font and glyph handling change.
+        // PETSCII-glyph substitution to do that. BASIC syntax coloring (the transformers above)
+        // still applies either way; only the glyph substitution changes. The font itself follows
+        // the user's PETSCII/Consolas setting uniformly across languages/kinds.
         bool isAsciiStyled = isAsm || kind == C64UFileKind.Bas;
-        Editor.FontFamily = isAsciiStyled ? _asmEditorFont : _basicEditorFont;
+        Editor.FontFamily = EditorFonts.ResolvePetsciiSlot(ViewModel.Settings);
         _petsciiGlyphGenerator.IsAsmMode = isAsciiStyled;
         Editor.TextArea.TextView.Redraw();
         VariablesPanel.Visibility = isAsm ? Visibility.Collapsed : Visibility.Visible;
@@ -5639,6 +5636,7 @@ public partial class MainWindow : Window
             ApplyCodeAnalysisSettings();
             UpdateScreenPositionStatus();
             ViewModel.RefreshMenuVisibility();
+            ViewModel.RefreshUsePetsciiFont();
         }
     }
 
@@ -5808,7 +5806,7 @@ public partial class MainWindow : Window
     {
         PetsciiTablePanel.Children.Clear();
 
-        var petMe64  = _basicEditorFont;
+        var petMe64  = EditorFonts.Petscii;
         var segoeUi  = new FontFamily("Segoe UI");
 
         Brush R(string key) => (Brush)FindResource(key);
@@ -7949,6 +7947,7 @@ public partial class MainWindow : Window
         Editor.WordWrap   = ViewModel.Settings.WordWrap;
         HexEditor.HexFontSize = ViewModel.Settings.EditorFontSize;
         CompareControl.EditorFontSize = ViewModel.Settings.EditorFontSize;
+        ApplyPetsciiFontSetting();
         _lineNumberColorizer.LineNumberBrush       = (Brush)FindResource("ThemeEditorLineNumberFg");
         _lineNumberColorizer.ActiveLineNumberBrush = (Brush)FindResource("ThemeEditorFg");
         _keywordColorizer.KeywordBrush          = (Brush)FindResource("ThemeEditorKeywordFg");
@@ -7980,6 +7979,17 @@ public partial class MainWindow : Window
         Editor.Options.ShowColumnRuler = true;
         Editor.TextArea.TextView.ColumnRulerPen = new Pen((Brush)FindResource("ThemeEditorGuideLineFg"), 1);
         UpdateColumnRulerPosition();
+    }
+
+    // Applies the PETSCII/Consolas font setting to the compare view and the active tab's editor.
+    // Split out from ApplyEditorAppearance() so the status bar toggle (which can fire many times
+    // in quick succession) doesn't pay for that method's much heavier theme/keyword-panel rebuilds
+    // on every click - those are unaffected by this setting and don't need to be redone here.
+    private void ApplyPetsciiFontSetting()
+    {
+        FontFamily font = EditorFonts.ResolvePetsciiSlot(ViewModel.Settings);
+        CompareControl.PetsciiFontFamily = font;
+        Editor.FontFamily = font;
     }
 
     // The column guide's target column is per-language (BASIC and assembly have their own
@@ -8026,29 +8036,8 @@ public partial class MainWindow : Window
     /// </summary>
     private void UpdateScreenPositionStatus()
     {
-        int wrapColumn = Math.Max(1, ActiveColumnGuideColumn());
-        int caretIndex = Editor.CaretOffset;
-
-        int row = 1;
-        int col = 1;
-
-        for (int i = 0; i < caretIndex && i < Editor.Text.Length; i++)
-        {
-            if (Editor.Text[i] == '\n')
-            {
-                row++;
-                col = 1;
-            }
-            else
-            {
-                col++;
-                if (col > wrapColumn)
-                {
-                    row++;
-                    col = 1;
-                }
-            }
-        }
+        int row = Editor.TextArea.Caret.Line;
+        int col = Editor.TextArea.Caret.Column;
 
         ViewModel.ScreenPositionText = $"Col: {col}, Row {row}";
     }

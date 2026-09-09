@@ -35,6 +35,7 @@ public class SettingsViewModel : INotifyPropertyChanged
     private bool _autoNumberLines;
     private string _autoNumberIncrementText;
     private string _editorFontSizeText;
+    private string _petsciiFontFamily;
     private bool _restoreOpenTabsOnStartup;
     private string _theme;
     private bool _showOverflowLine;
@@ -61,6 +62,7 @@ public class SettingsViewModel : INotifyPropertyChanged
     {
         _restoreOpenTabsOnStartup = settings.RestoreOpenTabsOnStartup;
         _theme = settings.Theme;
+        _petsciiFontFamily = settings.PetsciiFontFamily;
         _basicColumnGuideText = settings.BasicColumnGuideColumn.ToString();
         _asmColumnGuideText = settings.AsmColumnGuideColumn.ToString();
         _asmMnemonicIndentColumnText = settings.AsmMnemonicIndentColumn.ToString();
@@ -171,6 +173,37 @@ public class SettingsViewModel : INotifyPropertyChanged
             OnPropertyChanged();
             OnPropertyChanged(nameof(IsLightTheme));
             OnPropertyChanged(nameof(IsDarkTheme));
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets whether the PETSCII (Pet Me 64) font is selected for BASIC/PETSCII-styled
+    /// content.
+    /// </summary>
+    public bool IsPetsciiFont
+    {
+        get => _petsciiFontFamily != "Consolas";
+        set
+        {
+            if (!value) return;
+            _petsciiFontFamily = "Petscii";
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsConsolasFont));
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets whether Consolas is selected for BASIC/PETSCII-styled content.
+    /// </summary>
+    public bool IsConsolasFont
+    {
+        get => _petsciiFontFamily == "Consolas";
+        set
+        {
+            if (!value) return;
+            _petsciiFontFamily = "Consolas";
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsPetsciiFont));
         }
     }
 
@@ -536,6 +569,7 @@ public class SettingsViewModel : INotifyPropertyChanged
         settings.AutoNumberLines = AutoNumberLines;
         settings.AutoNumberIncrement = int.Parse(AutoNumberIncrementText);
         settings.EditorFontSize = int.Parse(EditorFontSizeText);
+        settings.PetsciiFontFamily = _petsciiFontFamily;
         settings.ShowColumnGuide = ShowOverflowLine;
         settings.MinifyOnTransfer = MinifyOnTransfer;
         settings.MinifyRemoveWhitespace = MinifyRemoveWhitespace;

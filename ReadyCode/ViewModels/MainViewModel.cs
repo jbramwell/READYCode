@@ -508,6 +508,24 @@ public class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Gets or sets whether BASIC/PETSCII-styled content uses the PETSCII font (Pet Me 64)
+    /// rather than Consolas. Backs both the Settings dialog's Font choice and the status bar's
+    /// quick toggle. Changes are persisted to settings immediately.
+    /// </summary>
+    public bool UsePetsciiFont
+    {
+        get => Settings.PetsciiFontFamily != "Consolas";
+        set
+        {
+            string newValue = value ? "Petscii" : "Consolas";
+            if (Settings.PetsciiFontFamily == newValue) return;
+            Settings.PetsciiFontFamily = newValue;
+            OnPropertyChanged();
+            Settings.Save();
+        }
+    }
+
+    /// <summary>
     /// Gets or sets whether the C64U menu is shown in the main menu bar.
     /// </summary>
     public bool ShowC64UMenu
@@ -536,12 +554,6 @@ public class MainViewModel : INotifyPropertyChanged
             Settings.Save();
         }
     }
-
-    /// <summary>
-    /// Gets the text shown in the status bar for the current file: either its file path,
-    /// or "New File" if there is none.
-    /// </summary>
-    public string FileStatusText => string.IsNullOrEmpty(CurrentFilePath) ? "New File" : CurrentFilePath;
 
     /// <summary>
     /// Gets or sets the text shown in the status bar for the document's total line count.
@@ -938,6 +950,14 @@ public class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Re-raises the property-changed notification for <see cref="UsePetsciiFont"/>. Call after
+    /// settings are written directly to <see cref="Settings"/> (bypassing the
+    /// <see cref="UsePetsciiFont"/> setter) so the status bar toggle refreshes to match the
+    /// Settings dialog's Font choice.
+    /// </summary>
+    public void RefreshUsePetsciiFont() => OnPropertyChanged(nameof(UsePetsciiFont));
+
+    /// <summary>
     /// Loads the folder explorer tree from the given folder path, replacing any existing items.
     /// </summary>
     /// <param name="folderPath">The folder to load.</param>
@@ -1248,7 +1268,6 @@ public class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CurrentFilePath));
         OnPropertyChanged(nameof(IsModified));
         OnPropertyChanged(nameof(Title));
-        OnPropertyChanged(nameof(FileStatusText));
     }
 
     // Prints the active tab's source code. Shows a status message if there is nothing to print.
@@ -1261,7 +1280,7 @@ public class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        _printer.Print((Window)Application.Current.MainWindow, text, ActiveTab!.FileName, ActiveTab.Language);
+        _printer.Print((Window)Application.Current.MainWindow, text, ActiveTab!.FileName, ActiveTab.Language, Settings);
     }
 
     // Shows a print preview of the active tab's source code. Shows a status message if there is nothing to print.
@@ -1274,7 +1293,7 @@ public class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        _printer.PrintPreview((Window)Application.Current.MainWindow, text, ActiveTab!.FileName, ActiveTab.Language);
+        _printer.PrintPreview((Window)Application.Current.MainWindow, text, ActiveTab!.FileName, ActiveTab.Language, Settings);
     }
 
     // Gates Transfer/Run: both need an open tab with at least one character typed into it.

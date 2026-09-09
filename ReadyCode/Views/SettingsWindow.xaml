@@ -443,6 +443,24 @@
                             <TextBlock Style="{StaticResource SectionBreadcrumb}"
                                        Text="Text Editor  ›  General"/>
 
+                            <Border Style="{StaticResource SettingRow}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SettingLabel}"
+                                               Text="Font"/>
+                                    <TextBlock Style="{StaticResource SettingDesc}"
+                                               Text="Font used throughout the code editor, Print/Print Preview, and File Compare."/>
+                                    <RadioButton Content="Petscii (Pet Me 64) - renders PETSCII graphics characters correctly"
+                                                 GroupName="EditorFont"
+                                                 IsChecked="{Binding IsPetsciiFont}"
+                                                 FontSize="12"
+                                                 Margin="0,0,0,6"/>
+                                    <RadioButton Content="Consolas - more legible, but PETSCII graphics characters won't render correctly"
+                                                 GroupName="EditorFont"
+                                                 IsChecked="{Binding IsConsolasFont}"
+                                                 FontSize="12"/>
+                                </StackPanel>
+                            </Border>
+
                             <Border Style="{StaticResource SettingRowLast}">
                                 <StackPanel>
                                     <TextBlock Style="{StaticResource SettingLabel}"

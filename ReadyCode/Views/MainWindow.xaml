@@ -152,6 +152,40 @@
             </Setter>
         </Style>
 
+        <!-- Status bar PETSCII/Consolas font toggle - a small inline glyph+label toggle sized for
+             the 24px-tall status bar (ActivityBarButton's 40x40 template and ErrorsSeverityToggle's
+             chip padding above are both the wrong shape here). IsChecked doesn't change the
+             button's own background - only hover does - it swaps which label is shown instead. -->
+        <Style x:Key="StatusBarFontToggle" TargetType="ToggleButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeStatusBarFg}"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" Padding="5,0,5,0">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock x:Name="glyph" Text="&#xE8D2;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                           Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBlock x:Name="label" Text="PETSCII" FontSize="11"
+                                           Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="False">
+                                <Setter TargetName="label" Property="Text" Value="Consolas"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource ThemeMenuItemHoverBg}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Column headers shared by every panel DataGrid (Errors, Debug Variables/Breakpoints).
              Without an explicit style, DataGridColumnHeader falls back to the OS default chrome,
              which paints a fixed light background/gray text regardless of app theme - unreadable
@@ -1414,16 +1448,19 @@
         <StatusBar DockPanel.Dock="Bottom" Background="{DynamicResource ThemeStatusBarBg}" Foreground="{DynamicResource ThemeStatusBarFg}" Height="24"
                    Visibility="{Binding ViewModel.ShowStatusBar, Converter={StaticResource BoolToVisibility}}">
             <StatusBarItem Margin="5,0,0,0">
-                <TextBlock Text="{Binding ViewModel.FileStatusText}" FontSize="11"/>
-            </StatusBarItem>
-            <Separator/>
-            <StatusBarItem Margin="5,0,0,0">
                 <TextBlock Text="{Binding ViewModel.LineCountText}" FontSize="11"/>
             </StatusBarItem>
             <Separator/>
 
             <StatusBarItem HorizontalAlignment="Right" Margin="0,0,10,0">
                 <TextBlock Text="{Binding ViewModel.ScreenPositionText}" FontSize="11"/>
+            </StatusBarItem>
+            <Separator/>
+            <StatusBarItem Margin="5,0,0,0">
+                <ToggleButton x:Name="PetsciiFontToggle"
+                              Style="{StaticResource StatusBarFontToggle}"
+                              IsChecked="{Binding ViewModel.UsePetsciiFont, Mode=TwoWay}"
+                              ToolTip="Switch between the PETSCII font (renders PETSCII graphics characters correctly) and Consolas (more legible, but PETSCII graphics characters won't render correctly) for the editor, Print/Print Preview, and File Compare."/>
             </StatusBarItem>
             <Separator/>
             <StatusBarItem HorizontalAlignment="Stretch" HorizontalContentAlignment="Left">
