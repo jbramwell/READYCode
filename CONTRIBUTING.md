@@ -16,7 +16,25 @@ dotnet test ReadyCode.Tests/ReadyCode.Tests.csproj
 
 (Building/testing via `ReadyCode.sln` instead also works, but additionally tries to build
 `ReadyCode.Packaging`, a `.wapproj` that only builds inside Visual Studio - see the README's Build
-section for details.)
+section for details. `ReadyCode.slnf` is a solution filter that leaves out that project and the WiX
+installer; off Windows, add `-p:EnableWindowsTargeting=true` and it builds there too.)
+
+### ReadyCode.Core
+
+`ReadyCode.Core` is the UI-framework-free library the application is built on: the tokenizer, the
+assembler, diagnostics, minify/prettify, the diff engine, the debugger, and the VICE and C64
+Ultimate clients. `ReadyCode.Tests` targets it directly, so both build and run on Windows, macOS,
+and Linux.
+
+The conventions below apply to it as well. Two things worth knowing before working in it:
+
+- **New non-UI logic belongs in `ReadyCode.Core`.** It must not reference WPF, AvalonEdit, or any
+  other UI toolkit; where the analysis it does needs an editor concept, it works over a neutral
+  model (`SourceLine`, `FoldRegion`, `KeywordCompletionItem`) that the WPF layer adapts to
+  AvalonEdit's types in `ReadyCode/Editor/`.
+- **Keep the Windows build honest from other platforms.** The WPF project compiles anywhere with
+  `-p:EnableWindowsTargeting=true`, so a change to the core can be checked against it without a
+  Windows machine.
 
 ## Reporting bugs / proposing features
 
@@ -56,7 +74,7 @@ style in a new file:
 
 - **Reuse existing helpers before adding new ones.** A few examples worth knowing about before you
   duplicate them:
-  - `PetsciiScreenCodeMap` (in `Tokenizer/`) is the single source of truth for PETSCII byte -> C64
+  - `PetsciiScreenCodeMap` (in `ReadyCode.Core/Tokenizer/`) is the single source of truth for PETSCII byte -> C64
     character-ROM screen code, used by both the editor's live renderer (`PetsciiGlyphGenerator`) and by
     printing (`Printing/SourcePrinter.cs`). If you touch PETSCII rendering, both call sites should stay
     in sync.
@@ -72,7 +90,8 @@ style in a new file:
 
 ## Before opening a PR
 
-1. `dotnet build ReadyCode/ReadyCode.csproj -c Debug` - must build with no new warnings.
+1. `dotnet build ReadyCode/ReadyCode.csproj -c Debug` - must build with no new warnings. If you
+   touched `ReadyCode.Core`, `dotnet build ReadyCode.slnf` as well, so the tests are built too.
 2. `dotnet test ReadyCode.Tests/ReadyCode.Tests.csproj` - must pass. Add tests under
    `ReadyCode.Tests/` for new pure-logic code (tokenizer, minify, prettify, and similar are good
    candidates; UI/AvalonEdit-coupled code is harder to unit test and isn't currently covered - manual
