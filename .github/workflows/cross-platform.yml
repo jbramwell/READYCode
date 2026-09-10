@@ -1,0 +1,44 @@
+name: Cross-platform build and test
+
+# Covers the parts of the repository that build outside Windows: the shared ReadyCode.Core library
+# and the test suite over it. The WPF application is compiled (not run) here too, so a change to the
+# core that breaks the Windows front end shows up without waiting for a Windows build.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest ]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build - shared core library
+        run: dotnet build ReadyCode.Core/ReadyCode.Core.csproj -c Release -warnaserror
+
+      - name: Build - tests
+        run: dotnet build ReadyCode.Tests/ReadyCode.Tests.csproj -c Release -warnaserror
+
+      # The WPF app can't run here, but compiling it catches changes to ReadyCode.Core that would
+      # break the Windows front end. Debug only: its Release configuration is a self-contained
+      # win-x64 publish, which needs the Windows runtime packs.
+      - name: Compile-check the WPF front end
+        run: dotnet build ReadyCode/ReadyCode.csproj -c Debug -warnaserror -p:EnableWindowsTargeting=true
+
+      - name: Test - shared core logic
+        run: dotnet test ReadyCode.Tests/ReadyCode.Tests.csproj -c Release --no-build

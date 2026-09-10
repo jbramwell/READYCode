@@ -145,32 +145,50 @@ lend itself to pure MVVM. Commands are implemented with a small custom `RelayCom
 wrapping an `Action` + an optional `CanExecute` predicate, wired into WPF's `CommandManager` so menu
 items enable/disable automatically).
 
+Everything that doesn't need a UI toolkit - the tokenizer, the assembler, diagnostics, minify and
+prettify, the diff engine, the debugger, and the VICE and C64 Ultimate clients - lives in
+`ReadyCode.Core`, a plain `net8.0` class library that the WPF application references. It builds and
+its tests run on Windows, macOS, and Linux, which keeps that logic unit-testable without a window
+and lets other front ends share it.
+
 ```text
 ReadyCode.sln
-├── ReadyCode/                  # The WPF application
+├── ReadyCode/                  # The WPF application (Windows)
 │   ├── Views/                  # MainWindow + dialogs (About, Settings, Go to Line, Licenses, ...)
 │   ├── ViewModels/              # MainViewModel and small per-dialog view models
-│   ├── Models/                  # EditorTab (one per open tab), FileTreeItem (local Explorer tree
-│   │                            #   node), C64UFileItem (C64U Explorer tree node) - both share the
-│   │                            #   same file-kind/badge/icon and virtual (inside-a-.d64) entry model
+│   ├── Models/                  # EditorTab (one per open tab) and FileTreeItem (local Explorer
+│   │                            #   tree node), which shares its file-kind/badge/icon and virtual
+│   │                            #   (inside-a-.d64) entry model with the core's C64UFileItem
 │   ├── Editor/                  # AvalonEdit extensions: keyword/comment/find colorizers,
 │   │                            #   PetsciiGlyphGenerator (PETSCII -> C64 ROM glyph at render time),
-│   │                            #   ghost-text completion, current-line highlighting
+│   │                            #   ghost-text completion, current-line highlighting, and thin
+│   │                            #   adapters over the core's folding and completion analysis
+│   ├── Printing/                 # Print / Print Preview (FlowDocument over the XPS pipeline)
+│   ├── Converters/                # WPF value converters used by bindings in MainWindow.xaml
+│   │                            #   (e.g. cross-referencing a tree item's path against drive-mount
+│   │                            #   state to highlight what's mounted on Drive A/B)
+│   ├── Resources/Themes/         # Light/Dark/C64 ResourceDictionaries
+│   └── Assets/                   # App icon/logo, the embedded "Pet Me 64" font + its license
+├── ReadyCode.Core/             # UI-framework-free class library (net8.0), referenced by the app
 │   ├── Tokenizer/                # BASIC keyword table, the BASIC <-> tokenized .prg converter
 │   │                            #   (including BASIC-vs-machine-language detection), and the
 │   │                            #   PETSCII byte -> C64 screen-code map (shared by the editor's
 │   │                            #   renderer and by printing)
+│   ├── Assembler/                # 6502 assembler, disassembler, and opcode table
+│   ├── Diagnostics/              # BASIC and assembly analyzers behind the Errors panel
 │   ├── Minify/, Prettify/        # BASIC source-to-source transforms
-│   ├── Printing/                 # Print / Print Preview (FlowDocument over the XPS pipeline)
+│   ├── Formatting/               # Assembly source formatter
+│   ├── Editor/                   # Toolkit-neutral editor analysis: fold-region finders over a
+│   │                            #   SourceLine model, and the keyword completion providers
 │   ├── C64U/                     # REST client for the C64 Ultimate's local HTTP API, an FTP client
 │   │                            #   (FluentFTP) for its file service, and a .d64/.d81 disk image parser
-│   ├── Converters/                # WPF value converters used by bindings in MainWindow.xaml
-│   │                            #   (e.g. cross-referencing a tree item's path against drive-mount
-│   │                            #   state to highlight what's mounted on Drive A/B)
+│   ├── Vice/, Debugger/          # VICE binary monitor client and the BASIC debugger built on it
+│   ├── Diff/, Search/            # File compare engine and project-wide search
+│   ├── Models/                   # Plain model types (C64UFileItem, VariableInfo, ...)
 │   ├── Settings/                 # JSON-persisted user preferences (C64U URL, wrap column, etc.)
-│   ├── Resources/Themes/         # Light/Dark/C64 ResourceDictionaries
-│   └── Assets/                   # App icon/logo, the embedded "Pet Me 64" font + its license
-├── ReadyCode.Tests/             # xUnit tests for Tokenizer/Minify/Prettify
+│   ├── Sid/                      # SID note frequency table used by the Music Notes panel
+│   └── Assets/Data/              # The embedded SID note table
+├── ReadyCode.Tests/             # xUnit tests over ReadyCode.Core - run on any OS
 └── ReadyCode.Packaging/         # MSIX packaging project (.wapproj) for Store submission -
                                   #   requires Visual Studio's packaging tooling, see note below
 ```
@@ -215,6 +233,10 @@ Explorer (parsing bytes read straight from disk).
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
 - Visual Studio 2022+ **or** VS Code with the C# Dev Kit extension
 
+> Windows is required to build and run the application itself, which is built on WPF.
+> `ReadyCode.Core` and `ReadyCode.Tests` need only the .NET 8 SDK, so that half of the repository
+> builds and its tests run on macOS and Linux as well.
+
 ### Clone
 
 ```bash
@@ -252,6 +274,14 @@ dotnet test ReadyCode.Tests/ReadyCode.Tests.csproj
 (Running `dotnet test` from the repo root works too - it picks up the test project fine - but, like
 the solution-wide build, it will also print the same `ReadyCode.Packaging` error along the way. The
 test results themselves aren't affected by it.)
+
+The tests cover `ReadyCode.Core` and reference only that project, so they run on any operating
+system with the .NET 8 SDK installed. To check from a non-Windows machine that a core change hasn't
+broken the Windows front end, compile it without running it:
+
+```bash
+dotnet build ReadyCode/ReadyCode.csproj -c Debug -p:EnableWindowsTargeting=true
+```
 
 ### Dependencies
 
