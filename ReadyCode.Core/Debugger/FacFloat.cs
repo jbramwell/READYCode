@@ -39,6 +39,12 @@ public static class FacFloat
         if (value == 0.0)
             return (0, 0, 0, 0, 0);
 
+        // Checked up front rather than relying on the arithmetic below to overflow: casting NaN
+        // to int yields int.MinValue on x64 but 0 on ARM64 (Apple Silicon), so without this the
+        // range check at the end only fires on some CPUs.
+        if (double.IsNaN(value) || double.IsInfinity(value))
+            throw new OverflowException($"The value {value} is outside the range a C64 BASIC float can represent.");
+
         bool negative = value < 0;
         double absValue = Math.Abs(value);
 

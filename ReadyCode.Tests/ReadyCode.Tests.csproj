@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
+    <!-- Lets the tests run on a newer installed runtime (e.g. .NET 10 SDK on macOS) -->
+    <RollForward>Major</RollForward>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
-    <UseWPF>false</UseWPF>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
 
@@ -20,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ReadyCode\ReadyCode.csproj" />
+    <ProjectReference Include="..\ReadyCode.Core\ReadyCode.Core.csproj" />
   </ItemGroup>
 
 </Project>

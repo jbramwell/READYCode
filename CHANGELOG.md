@@ -1,5 +1,25 @@
 # Change Log
 
+## [Unreleased]
+
+### Improvements
+
+- **`ReadyCode.Core`** - the editor's non-UI logic (tokenizer, assembler and disassembler,
+  diagnostics, minify/prettify, the diff engine, the BASIC debugger, and the VICE and C64 Ultimate
+  clients) now lives in a `net8.0` class library the Windows application references, rather than
+  inside the WPF project. Behavior is unchanged; the library and its tests build and run on Windows,
+  macOS, and Linux, so that logic can be exercised without a Windows machine and shared with future
+  front ends
+- **Cross-platform CI** - a GitHub Actions workflow that builds the shared library and its tests on
+  Ubuntu and macOS and compile-checks the WPF application on both, so a change to the core can't
+  silently break the Windows build
+
+### Bug Fixes
+
+- Fixed `FacFloat.Encode` silently accepting `NaN` on ARM64 (Apple Silicon): casting `NaN` to `int`
+  yields `0` there rather than `int.MinValue` as on x64, so the range check that was meant to reject
+  it never fired. `NaN` and infinity are now rejected explicitly
+
 ## [v2.3.2] - 2026-09-08
 
 ### New Features

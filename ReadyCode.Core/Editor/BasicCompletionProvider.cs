@@ -16,7 +16,7 @@ public static class BasicCompletionProvider
     /// <summary>
     /// Gets the full list of completion entries for the C64 BASIC V2 keyword set.
     /// </summary>
-    public static readonly IReadOnlyList<KeywordCompletionData> AllItems = Build();
+    public static readonly IReadOnlyList<KeywordCompletionItem> AllItems = Build();
 
     /// <summary>
     /// Gets the display order for keyword categories (e.g. for the "BASIC Keywords" reference panel).
@@ -42,7 +42,7 @@ public static class BasicCompletionProvider
     /// Returns all items whose Text starts with <paramref name="prefix"/> (case-insensitive),
     /// sorted alphabetically so the first entry is always the predictable ghost-text suggestion.
     /// </summary>
-    public static List<KeywordCompletionData> GetMatches(string prefix)
+    public static List<KeywordCompletionItem> GetMatches(string prefix)
     {
         if (string.IsNullOrEmpty(prefix)) return [];
         return [.. AllItems
@@ -57,11 +57,11 @@ public static class BasicCompletionProvider
     // Built from BasicTokens.Keywords, the single source of truth for keyword metadata, so
     // completion can never drift out of sync with the token table. Keywords with no completion
     // metadata (the single-character operators) are excluded.
-    private static KeywordCompletionData[] Build() =>
+    private static KeywordCompletionItem[] Build() =>
     [
         .. BasicTokens.Keywords
             .Where(kv => kv.Value.Snippet != null)
-            .Select(kv => new KeywordCompletionData(kv.Key, kv.Value.Snippet!, kv.Value.Description!, kv.Value.Category!))
+            .Select(kv => new KeywordCompletionItem(kv.Key, kv.Value.Snippet!, kv.Value.Description!, kv.Value.Category!))
     ];
 
     #endregion

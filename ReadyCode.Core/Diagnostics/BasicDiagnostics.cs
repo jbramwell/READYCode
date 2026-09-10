@@ -85,7 +85,7 @@ public static class BasicDiagnostics
     /// but keeps the raw offset/length (SplitBasicLine's zero-stripped string return can't place
     /// a squiggle - or a fold boundary - precisely). Reused by <c>BasicFoldingStrategy</c>.
     /// </summary>
-    internal static bool TryParseLineNumber(string line, out int number, out int offset, out int length, out int codeStart)
+    public static bool TryParseLineNumber(string line, out int number, out int offset, out int length, out int codeStart)
     {
         number = 0; offset = 0; length = 0; codeStart = 0;
 

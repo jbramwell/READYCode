@@ -16,7 +16,7 @@ public static class AsmCompletionProvider
     /// <summary>
     /// Gets the full list of completion entries for the 6502 mnemonic set.
     /// </summary>
-    public static readonly IReadOnlyList<KeywordCompletionData> AllItems = Build();
+    public static readonly IReadOnlyList<KeywordCompletionItem> AllItems = Build();
 
     /// <summary>
     /// Gets the display order for mnemonic categories.
@@ -46,7 +46,7 @@ public static class AsmCompletionProvider
     /// Returns all items whose Text starts with <paramref name="prefix"/> (case-insensitive),
     /// sorted alphabetically so the first entry is always the predictable ghost-text suggestion.
     /// </summary>
-    public static List<KeywordCompletionData> GetMatches(string prefix)
+    public static List<KeywordCompletionItem> GetMatches(string prefix)
     {
         if (string.IsNullOrEmpty(prefix)) return [];
         return [.. AllItems
@@ -60,12 +60,12 @@ public static class AsmCompletionProvider
 
     // Built from AsmTokens.Mnemonics and AsmTokens.Directives, the single source of truth for
     // mnemonic/directive metadata, so completion can never drift out of sync with those tables.
-    private static KeywordCompletionData[] Build() =>
+    private static KeywordCompletionItem[] Build() =>
     [
         .. AsmTokens.Mnemonics
-            .Select(kv => new KeywordCompletionData(kv.Key, kv.Value.Snippet, kv.Value.Description, kv.Value.Category)),
+            .Select(kv => new KeywordCompletionItem(kv.Key, kv.Value.Snippet, kv.Value.Description, kv.Value.Category)),
         .. AsmTokens.Directives
-            .Select(kv => new KeywordCompletionData(kv.Key, kv.Value.Snippet, kv.Value.Description, kv.Value.Category)),
+            .Select(kv => new KeywordCompletionItem(kv.Key, kv.Value.Snippet, kv.Value.Description, kv.Value.Category)),
     ];
 
     #endregion

@@ -1,15 +1,14 @@
 // Copyright (c) 2026 Moonspace Labs, LLC
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
-using ICSharpCode.AvalonEdit.Document;
-using ICSharpCode.AvalonEdit.Folding;
 using ReadyCode.Editor;
 using Xunit;
 
 namespace ReadyCode.Tests;
 
 /// <summary>
-/// Tests for <see cref="BasicFoldingStrategy"/>.
+/// Tests for <see cref="BasicFoldRegionFinder"/> (the editor-independent core of the WPF
+/// <c>BasicFoldingStrategy</c>).
 /// </summary>
 public class BasicFoldingStrategyTests
 {
@@ -116,12 +115,36 @@ public class BasicFoldingStrategyTests
         Assert.Empty(Analyze("10 PRINT \"FOR X\""));
     }
 
+    // ── Line splitting (mirrors AvalonEdit's TextDocument offsets) ────────────
+
+    [Fact]
+    public void CreateNewFoldings_CrLfLineEndings_ProduceSameOffsetsAsTextDocument()
+    {
+        // With "\r\n" delimiters each line's EndOffset excludes the delimiter, and the second
+        // line starts two characters after the first line's end - exactly what AvalonEdit's
+        // DocumentLine.EndOffset reports for the same text.
+        var foldings = Analyze("10 FOR I=1 TO 5\r\n20 NEXT I");
+
+        var f = Assert.Single(foldings);
+        Assert.Equal(15, f.StartOffset);
+        Assert.Equal(26, f.EndOffset);
+    }
+
+    [Fact]
+    public void SourceLine_Split_HandlesEveryDelimiterAndTrailingNewline()
+    {
+        var lines = SourceLine.Split("A\r\nBB\nC\rDDD\n");
+
+        Assert.Equal(new[] { "A", "BB", "C", "DDD", "" }, lines.Select(l => l.Text));
+        Assert.Equal(new[] { 0, 3, 6, 8, 12 }, lines.Select(l => l.Offset));
+        Assert.Equal(new[] { 1, 5, 7, 11, 12 }, lines.Select(l => l.EndOffset));
+    }
+
     #endregion
 
     #region Private Methods
 
-    private static List<NewFolding> Analyze(string source) =>
-        new BasicFoldingStrategy().CreateNewFoldings(new TextDocument(source)).ToList();
+    private static List<FoldRegion> Analyze(string source) => BasicFoldRegionFinder.Find(source);
 
     #endregion
 }

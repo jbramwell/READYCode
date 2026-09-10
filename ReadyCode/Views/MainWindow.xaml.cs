@@ -5037,7 +5037,7 @@ public partial class MainWindow : Window
 
         ComparableFileRef? clicked = clickedItem switch
         {
-            FileTreeItem local => ComparableFileRef.FromLocal(local),
+            FileTreeItem local => local.ToComparableFileRef(),
             C64UFileItem remote => ComparableFileRef.FromC64U(remote),
             _ => null,
         };
@@ -5074,7 +5074,7 @@ public partial class MainWindow : Window
     }
 
     private static ComparableFileRef? GetClickedComparableFile(object sender) =>
-        GetContextItem(sender) is { } local ? ComparableFileRef.FromLocal(local)
+        GetContextItem(sender) is { } local ? local.ToComparableFileRef()
         : GetC64UContextItem(sender) is { } remote ? ComparableFileRef.FromC64U(remote)
         : null;
 
@@ -5785,16 +5785,19 @@ public partial class MainWindow : Window
     // Returns completion entries matching prefix from whichever provider matches the active
     // tab's language, so ghost text/Ctrl+Space never mixes BASIC keywords and assembly mnemonics.
     private List<KeywordCompletionData> GetCompletionMatches(string prefix) =>
-        ViewModel.ActiveTab?.Language == EditorLanguage.Asm
+        (ViewModel.ActiveTab?.Language == EditorLanguage.Asm
             ? AsmCompletionProvider.GetMatches(prefix)
-            : BasicCompletionProvider.GetMatches(prefix);
+            : BasicCompletionProvider.GetMatches(prefix))
+            .Select(i => new KeywordCompletionData(i)).ToList();
 
     // Returns every completion entry for the active tab's language, alphabetically - used for
     // the Ctrl+Space "no prefix typed yet" fallback.
     private List<KeywordCompletionData> GetAllCompletionItems() =>
-        ViewModel.ActiveTab?.Language == EditorLanguage.Asm
-            ? [.. AsmCompletionProvider.AllItems.OrderBy(i => i.Text, StringComparer.OrdinalIgnoreCase)]
-            : [.. BasicCompletionProvider.AllItems.OrderBy(i => i.Text, StringComparer.OrdinalIgnoreCase)];
+        (ViewModel.ActiveTab?.Language == EditorLanguage.Asm
+            ? AsmCompletionProvider.AllItems
+            : BasicCompletionProvider.AllItems)
+            .OrderBy(i => i.Text, StringComparer.OrdinalIgnoreCase)
+            .Select(i => new KeywordCompletionData(i)).ToList();
 
     /// <summary>
     /// Populates the PETSCII Reference panel with three groups of character cells:
@@ -6046,7 +6049,7 @@ public partial class MainWindow : Window
 
     // Renders a reference panel (BASIC Keywords or ASM Mnemonics) as a series of category
     // headers followed by name/description rows, shared by both languages' completion tables.
-    private void BuildKeywordsList(StackPanel targetPanel, IReadOnlyList<KeywordCompletionData> allItems, IReadOnlyList<string> categoryOrder)
+    private void BuildKeywordsList(StackPanel targetPanel, IReadOnlyList<KeywordCompletionItem> allItems, IReadOnlyList<string> categoryOrder)
     {
         targetPanel.Children.Clear();
 
@@ -6086,7 +6089,7 @@ public partial class MainWindow : Window
 
                 row.Children.Add(new TextBlock
                 {
-                    Text = item.Description?.ToString() ?? string.Empty,
+                    Text = item.Description,
                     FontSize = 9,
                     TextWrapping = TextWrapping.Wrap,
                     Foreground = descFg,
