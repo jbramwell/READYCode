@@ -19,12 +19,12 @@ public class CompareFileResolverTests
     // ── Resolve: Bas/Asm passthrough ────────────────────────────────────────
 
     [Fact]
-    public void Resolve_BasFile_ReturnsTextAsciiStyledNoWarning()
+    public void Resolve_BasFile_ReturnsTextPetsciiStyledNoWarning()
     {
         var resolved = CompareFileResolver.Resolve("GAME.BAS", Encoding.UTF8.GetBytes("10 PRINT \"HI\""), C64UFileKind.Bas);
 
         Assert.Equal("10 PRINT \"HI\"", resolved.Text);
-        Assert.True(resolved.IsAsciiStyled);
+        Assert.False(resolved.IsAsciiStyled);
         Assert.Null(resolved.Warning);
     }
 
@@ -111,10 +111,14 @@ public class CompareFileResolverTests
     [InlineData(C64UFileKind.Asm, C64UFileKind.Asm, true)]
     [InlineData(C64UFileKind.Prg, C64UFileKind.Prg, true)]
     [InlineData(C64UFileKind.Ml, C64UFileKind.Ml, true)]
-    [InlineData(C64UFileKind.Bas, C64UFileKind.Prg, false)]
-    [InlineData(C64UFileKind.Prg, C64UFileKind.Ml, false)]
+    [InlineData(C64UFileKind.Bas, C64UFileKind.Prg, true)]
+    [InlineData(C64UFileKind.Bas, C64UFileKind.Asm, true)]
+    [InlineData(C64UFileKind.Prg, C64UFileKind.Ml, true)]
+    [InlineData(C64UFileKind.Asm, C64UFileKind.Ml, true)]
     [InlineData(C64UFileKind.Other, C64UFileKind.Other, false)]
     [InlineData(C64UFileKind.Folder, C64UFileKind.Folder, false)]
+    [InlineData(C64UFileKind.Bas, C64UFileKind.Folder, false)]
+    [InlineData(C64UFileKind.Bas, C64UFileKind.Other, false)]
     public void CanCompare_MatchesExpectedPairs(C64UFileKind leftKind, C64UFileKind rightKind, bool expected)
     {
         var left = MakeRef("A", leftKind);

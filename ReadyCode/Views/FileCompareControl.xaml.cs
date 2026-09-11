@@ -25,8 +25,6 @@ public partial class FileCompareControl : UserControl
 {
     #region Private Fields
 
-    private FontFamily _petsciiFontFamily = EditorFonts.Petscii;
-
     private readonly DiffLineColorizer _leftColorizer = new() { Role = DiffPaneRole.Old };
     private readonly DiffLineColorizer _rightColorizer = new() { Role = DiffPaneRole.New };
     private readonly DiffLineColorizer _unifiedColorizer = new() { Role = DiffPaneRole.Unified };
@@ -68,22 +66,6 @@ public partial class FileCompareControl : UserControl
             LeftEditor.FontSize = value;
             RightEditor.FontSize = value;
             UnifiedEditor.FontSize = value;
-        }
-    }
-
-    /// <summary>
-    /// Gets or sets the font used by all three diff panes (Left/Right/Unified), kept in sync
-    /// with the app-wide PETSCII/Consolas font setting. Re-applies immediately to an
-    /// already-loaded comparison so the setting can change while a compare view is still open.
-    /// </summary>
-    public FontFamily PetsciiFontFamily
-    {
-        get => _petsciiFontFamily;
-        set
-        {
-            if (_petsciiFontFamily == value) return;
-            _petsciiFontFamily = value;
-            ApplyFonts();
         }
     }
 
@@ -244,19 +226,6 @@ public partial class FileCompareControl : UserControl
         });
     }
 
-    // Extracted from Render() so PetsciiFontFamily's setter can re-apply fonts to whatever
-    // result is already loaded without re-running the rest of Render()'s diff layout. All three
-    // panes follow the same setting uniformly, regardless of LeftIsAsciiStyled/RightIsAsciiStyled
-    // (which still gates PETSCII glyph substitution below - a separate concern from the font).
-    private void ApplyFonts()
-    {
-        if (_result == null) return;
-
-        LeftEditor.FontFamily = _petsciiFontFamily;
-        RightEditor.FontFamily = _petsciiFontFamily;
-        UnifiedEditor.FontFamily = _petsciiFontFamily;
-    }
-
     private void Render()
     {
         if (_result == null) return;
@@ -276,7 +245,15 @@ public partial class FileCompareControl : UserControl
         RightWarningText.Visibility = hasRightWarning ? Visibility.Visible : Visibility.Collapsed;
         RightWarningText.Text = _result.RightWarning;
 
-        ApplyFonts();
+        // Any two comparable kinds can be compared now (not just matching ones), so the two
+        // sides' styling can genuinely differ - the unified pane (which mixes both files' lines
+        // in one editor, and can only have one font) simply follows the left side's as a
+        // deliberate simplification; the split view above always styles each side correctly.
+        var leftFont = _result.LeftIsAsciiStyled ? EditorFonts.Consolas : EditorFonts.Petscii;
+        var rightFont = _result.RightIsAsciiStyled ? EditorFonts.Consolas : EditorFonts.Petscii;
+        LeftEditor.FontFamily = leftFont;
+        RightEditor.FontFamily = rightFont;
+        UnifiedEditor.FontFamily = leftFont;
 
         // IsAsmMode = true skips PETSCII substitution entirely (assembly/plain source must never
         // be reinterpreted as PETSCII bytes) - the same predicate that already picks the font.

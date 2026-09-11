@@ -3,14 +3,13 @@
 
 using System;
 using System.Windows.Media;
-using ReadyCode.Settings;
 
 namespace ReadyCode.Editor;
 
 /// <summary>
-/// Centralizes the two fonts used for BASIC/PETSCII-styled content (the code editor,
-/// Print/Print Preview, and File Compare), so all three consumers resolve the user's
-/// PETSCII/Consolas font setting the same way instead of each loading their own copy.
+/// Centralizes the two fonts used for BASIC/PETSCII-styled content and assembly/plain-ASCII
+/// content (the code editor, Print/Print Preview, and File Compare), so all consumers load the
+/// same instances instead of each constructing their own copy.
 /// </summary>
 public static class EditorFonts
 {
@@ -18,14 +17,9 @@ public static class EditorFonts
         new(new Uri("pack://application:,,,/ReadyCode;component/Assets/Fonts/"), "./#Pet Me 64");
     private static readonly FontFamily _consolas = new("Consolas");
 
-    /// <summary>The embedded Pet Me 64 PETSCII font, always used by the PETSCII Reference panel.</summary>
+    /// <summary>The embedded Pet Me 64 PETSCII font, used for BASIC (.bas and .prg alike).</summary>
     public static FontFamily Petscii => _petscii;
 
-    /// <summary>
-    /// Resolves the user's PETSCII-slot font choice from <paramref name="settings"/> -
-    /// <see cref="Consolas"/> when <c>PetsciiFontFamily == "Consolas"</c>, otherwise
-    /// <see cref="Petscii"/>.
-    /// </summary>
-    public static FontFamily ResolvePetsciiSlot(AppSettings settings) =>
-        settings.PetsciiFontFamily == "Consolas" ? _consolas : _petscii;
+    /// <summary>Standard monospace font, used for assembly (.asm/.s) and disassembled machine code.</summary>
+    public static FontFamily Consolas => _consolas;
 }

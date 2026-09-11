@@ -19,14 +19,14 @@ public static class CompareFileResolver
     #region Public Methods
 
     /// <summary>
-    /// Determines whether two files are eligible to be compared with each other - they must
-    /// share the same <see cref="C64UFileKind"/> (so, for example, ".asm" and ".s" can be
-    /// compared with each other since both classify as <see cref="C64UFileKind.Asm"/>, but a
-    /// ".bas" cannot be compared with a ".prg") and that kind must itself be one File Compare
-    /// supports (folders, disk images, and unrecognized "Other" files are never comparable).
+    /// Determines whether two files are eligible to be compared with each other - each side is
+    /// resolved to text independently (see <see cref="Resolve"/>), so any two files can be
+    /// compared as long as each one's own <see cref="C64UFileKind"/> is one File Compare knows
+    /// how to resolve to text (folders, disk images, and unrecognized "Other" files are never
+    /// comparable, on either side).
     /// </summary>
     public static bool CanCompare(ComparableFileRef left, ComparableFileRef right) =>
-        left.Kind == right.Kind && IsComparableKind(left.Kind);
+        IsComparableKind(left.Kind) && IsComparableKind(right.Kind);
 
     /// <summary>
     /// Gets whether <paramref name="kind"/> is one File Compare knows how to resolve to text.
@@ -45,6 +45,8 @@ public static class CompareFileResolver
         switch (kind)
         {
             case C64UFileKind.Bas:
+                return new Resolved(name, DecodeSourceText(bytes), IsAsciiStyled: false, Warning: null);
+
             case C64UFileKind.Asm:
                 return new Resolved(name, DecodeSourceText(bytes), IsAsciiStyled: true, Warning: null);
 
@@ -113,8 +115,8 @@ public static class CompareFileResolver
     /// </param>
     /// <param name="IsAsciiStyled">
     /// Whether this file should render in the ASCII/Consolas editor font rather than the PETSCII
-    /// font - true for everything except a detokenized BASIC .prg, which represents what would
-    /// actually appear on a real C64 screen.
+    /// font - true for assembly and disassembled machine code, false for BASIC (.bas and .prg
+    /// alike), which can contain real PETSCII control/graphics characters.
     /// </param>
     /// <param name="Warning">
     /// A message describing why <paramref name="Text"/> is empty/incomplete, or null if

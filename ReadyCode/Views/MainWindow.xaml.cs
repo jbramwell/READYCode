@@ -29,6 +29,7 @@ using ReadyCode.Diagnostics;
 using ReadyCode.Diff;
 using ReadyCode.Editor;
 using ReadyCode.Formatting;
+using ReadyCode.Interop;
 using ReadyCode.Minify;
 using ReadyCode.Models;
 using ReadyCode.Prettify;
@@ -231,15 +232,20 @@ public partial class MainWindow : Window
         {
             if (e.PropertyName is nameof(MainViewModel.ShowColumnGuide) or nameof(MainViewModel.WordWrap))
                 ApplyEditorAppearance();
-            if (e.PropertyName == nameof(MainViewModel.UsePetsciiFont))
-                ApplyPetsciiFontSetting();
             if (e.PropertyName == nameof(MainViewModel.ShowVariableExplorer))
                 ApplyVariableExplorerVisibility();
             if (e.PropertyName == nameof(MainViewModel.DebugCurrentDocumentLine))
                 ApplyDebugCurrentLine();
             if (e.PropertyName is nameof(MainViewModel.IsDebugPanelActive) or nameof(MainViewModel.IsErrorsPanelActive))
                 ApplyBottomPanelOpenState();
+            if (e.PropertyName == nameof(MainViewModel.IsUpperCaseModeActive))
+                ApplyUpperCaseMode();
         };
+
+        // WPF has no change-notification event for Caps Lock - Activated catches a
+        // toggle made while some other window had focus; Window_PreviewKeyDown catches one made
+        // via the physical key while typing here.
+        Activated += (_, _) => ViewModel.RefreshKeyboardLockStatus();
 
         _breakpointMargin.BreakpointToggleRequested += (_, documentLine) => ToggleBreakpointAtDocumentLine(documentLine);
 
@@ -278,7 +284,7 @@ public partial class MainWindow : Window
         Editor.TextArea.SelectionChanged += Editor_SelectionChanged;
         Editor.TextArea.Caret.PositionChanged += Editor_CaretPositionChanged;
 
-        ApplyLineTransformersForLanguage(EditorLanguage.Basic, C64UFileKind.Bas);
+        ApplyLineTransformersForLanguage(EditorLanguage.Basic);
         _currentLineBorderRenderer = new CurrentLineBorderRenderer(Editor);
         Editor.TextArea.TextView.BackgroundRenderers.Add(_currentLineBorderRenderer);
         _errorSquiggleRenderer = new ErrorSquiggleRenderer(Editor);
@@ -348,6 +354,7 @@ public partial class MainWindow : Window
             }
         };
         ApplyEditorAppearance();
+        ViewModel.RefreshKeyboardLockStatus();
 
         // Set DataContext for binding
         DataContext = this;
@@ -1692,7 +1699,7 @@ public partial class MainWindow : Window
             {
                 ViewModel.ActiveTab.Language = LanguageClassifier.Classify(ViewModel.CurrentFilePath!);
                 ViewModel.ActiveTab.Kind = FileClassifier.Classify(ViewModel.CurrentFilePath!, isFolder: false);
-                ApplyLineTransformersForLanguage(ViewModel.ActiveTab.Language, ViewModel.ActiveTab.Kind);
+                ApplyLineTransformersForLanguage(ViewModel.ActiveTab.Language);
 
                 // Saving a disassembly listing turns it into an ordinary editable .asm file from
                 // now on - re-disassembling in place isn't offered (see EditorTab.IsDisassemblyMode).
@@ -1810,7 +1817,7 @@ public partial class MainWindow : Window
             tab.Language = LanguageClassifier.Classify(tab.FilePath);
             tab.Kind = FileClassifier.Classify(tab.FilePath, isFolder: false);
             if (ReferenceEquals(tab, ViewModel.ActiveTab))
-                ApplyLineTransformersForLanguage(tab.Language, tab.Kind);
+                ApplyLineTransformersForLanguage(tab.Language);
 
             // Saving a disassembly listing turns it into an ordinary editable .asm file from now
             // on. Only touch the shared toolbar/Editor UI if this tab actually is the one
@@ -2041,7 +2048,7 @@ public partial class MainWindow : Window
             // counts as the visible text changing), so the guard must still be up here -
             // otherwise Editor_TextChanged marks the freshly activated tab as modified.
             Editor.Document = tab.Document;
-            ApplyLineTransformersForLanguage(tab.Language, tab.Kind);
+            ApplyLineTransformersForLanguage(tab.Language);
             Editor.CaretOffset = Math.Min(tab.CaretOffset, tab.Document.TextLength);
             Editor.ScrollToVerticalOffset(tab.ScrollOffsetY);
             Editor.Focus();
@@ -2110,7 +2117,7 @@ public partial class MainWindow : Window
     // FindHighlightColorizer is language-agnostic and stays active either way. Also shows a
     // sequential editor-line-number gutter for Asm only - BASIC already shows its own line
     // numbers as ordinary source text, so a duplicate gutter would look redundant there.
-    private void ApplyLineTransformersForLanguage(EditorLanguage language, C64UFileKind kind)
+    private void ApplyLineTransformersForLanguage(EditorLanguage language)
     {
         var transformers = Editor.TextArea.TextView.LineTransformers;
         transformers.Clear();
@@ -2148,14 +2155,12 @@ public partial class MainWindow : Window
 
         bool isAsm = language == EditorLanguage.Asm;
 
-        // A .bas file is plain ASCII source - unlike a detokenized .prg, which is styled to look
-        // like what actually ends up on a real C64 screen once tokenized/transferred, and needs
-        // PETSCII-glyph substitution to do that. BASIC syntax coloring (the transformers above)
-        // still applies either way; only the glyph substitution changes. The font itself follows
-        // the user's PETSCII/Consolas setting uniformly across languages/kinds.
-        bool isAsciiStyled = isAsm || kind == C64UFileKind.Bas;
-        Editor.FontFamily = EditorFonts.ResolvePetsciiSlot(ViewModel.Settings);
-        _petsciiGlyphGenerator.IsAsmMode = isAsciiStyled;
+        // BASIC (.bas and .prg alike) always uses the PETSCII font with glyph substitution on,
+        // since either can contain real PETSCII control/graphics characters; assembly always
+        // uses Consolas with substitution off, since assembly/plain source must never be
+        // reinterpreted as PETSCII bytes.
+        Editor.FontFamily = isAsm ? EditorFonts.Consolas : EditorFonts.Petscii;
+        _petsciiGlyphGenerator.IsAsmMode = isAsm;
         Editor.TextArea.TextView.Redraw();
         VariablesPanel.Visibility = isAsm ? Visibility.Collapsed : Visibility.Visible;
         SymbolsPanel.Visibility = isAsm ? Visibility.Visible : Visibility.Collapsed;
@@ -2191,6 +2196,17 @@ public partial class MainWindow : Window
         // ViewModel.ActiveTab's language has changed, rather than leaving the previous tab's
         // ruler position on screen until some unrelated trigger (Settings close, etc.) refreshes it.
         UpdateColumnRulerPosition();
+    }
+
+    // Applies the active tab's Upper Active/Inactive mode to the shared glyph generator and
+    // redraws - a pure re-render, since the mode only changes which glyph a byte displays as,
+    // never the byte itself (see PetsciiGlyphGenerator.IsUpperCaseModeActive). Reached via
+    // ViewModel.IsUpperCaseModeActive's PropertyChanged, which fires whenever the active tab
+    // changes or the active tab's own mode is toggled - see ShiftModeIndicator_Click.
+    private void ApplyUpperCaseMode()
+    {
+        _petsciiGlyphGenerator.IsUpperCaseModeActive = ViewModel.IsUpperCaseModeActive;
+        Editor.TextArea.TextView.Redraw();
     }
 
     // Cycles the active tab forward (right) or backward (left) through ViewModel.OpenTabs,
@@ -2468,6 +2484,10 @@ public partial class MainWindow : Window
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // Catches a Caps Lock press made via the physical key while typing here - see the
+        // Activated handler in the constructor for the toggled-while-unfocused case.
+        ViewModel.RefreshKeyboardLockStatus();
+
         // Ignore bare modifier presses — they don't break or complete a chord
         if (e.Key is Key.LeftCtrl or Key.RightCtrl or
                      Key.LeftShift or Key.RightShift or
@@ -5020,8 +5040,10 @@ public partial class MainWindow : Window
     }
 
     // Shows/hides and enables/disables "Compare file" based on whether a file is pending
-    // ("Select file for comparison") and, if so, whether the clicked item is the same
-    // C64UFileKind - "Select file for comparison" itself needs no gating, it's always available.
+    // ("Select file for comparison") and, if so, whether the clicked item is itself a
+    // comparable kind - "Select file for comparison" itself needs no gating, it's always
+    // available. Any two comparable kinds can now be compared with each other (e.g. .bas vs
+    // .prg, .bas vs .asm) - each side is resolved to text independently.
     private void UpdateCompareMenuItems(ContextMenu menu, object? clickedItem)
     {
         var compareItem = menu.Items.OfType<MenuItem>().FirstOrDefault(m => Equals(m.Header, "Compare file"));
@@ -5047,7 +5069,7 @@ public partial class MainWindow : Window
         compareItem.IsEnabled = canCompare;
         compareItem.ToolTip = canCompare
             ? null
-            : $"Can't compare '{pending.Name}' with this file - both files must be the same kind.";
+            : $"Can't compare '{pending.Name}' with this file - unsupported file type.";
     }
 
     // "Select file for comparison" - shared by every comparable-kind context menu in both
@@ -5085,7 +5107,7 @@ public partial class MainWindow : Window
     {
         if (!CompareFileResolver.CanCompare(left, right))
         {
-            MessageBox.Show("These two files can't be compared - they must be the same kind.",
+            MessageBox.Show("These two files can't be compared - one or both are an unsupported file type.",
                 "Compare Files", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -5636,7 +5658,6 @@ public partial class MainWindow : Window
             ApplyCodeAnalysisSettings();
             UpdateScreenPositionStatus();
             ViewModel.RefreshMenuVisibility();
-            ViewModel.RefreshUsePetsciiFont();
         }
     }
 
@@ -6238,6 +6259,23 @@ public partial class MainWindow : Window
     {
         UpdateScreenPositionStatus();
         UpdateGhostText();
+    }
+
+    private void CapsLockIndicator_Click(object sender, RoutedEventArgs e)
+    {
+        KeyboardLockKeys.ToggleCapsLock();
+        ViewModel.RefreshKeyboardLockStatus();
+    }
+
+    // Setting ViewModel.IsUpperCaseModeActive here is the only work needed - it writes through
+    // to ActiveTab.IsUpperCaseModeActive, whose PropertyChanged MainViewModel.
+    // OnActiveTabPropertyChanged already turns into RefreshShiftModeStatus(), which updates
+    // ViewModel.IsUpperCaseModeActive's own backing field, which the constructor's
+    // PropertyChanged handler below turns into ApplyUpperCaseMode(). The Edit menu's "Upper Case
+    // Mode" checkbox drives the exact same property via a plain TwoWay binding.
+    private void ShiftModeIndicator_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.IsUpperCaseModeActive = !ViewModel.IsUpperCaseModeActive;
     }
 
     private void Editor_TextChanged(object? sender, EventArgs e)
@@ -7580,7 +7618,13 @@ public partial class MainWindow : Window
         // reason NavigateToCurrentMatch's own deferred BringCaretToView() call works around - see
         // the comment there. Not marking this Handled; AvalonEdit's default processing still runs
         // normally, this just schedules the same corrective follow-up after its layout pass lands.
-        if (e.Key == Key.End && Keyboard.Modifiers == ModifierKeys.Control)
+        //
+        // Enter/Return: the new line the caret lands on is column 1, but if the previous line had
+        // scrolled the view far to the right (word wrap off), nothing otherwise re-scrolls back
+        // left - none of Enter's several handlers (AvalonEdit's own default newline insertion,
+        // InsertAsmNewlineWithIndent, or the BASIC auto-number/zero-pad branches further below)
+        // call BringCaretToView() themselves.
+        if ((e.Key == Key.End && Keyboard.Modifiers == ModifierKeys.Control) || e.Key == Key.Enter || e.Key == Key.Return)
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => Editor.TextArea.Caret.BringCaretToView());
 
         // Assembly auto-indent: handled up front and returns, rather than falling through to the
@@ -7828,13 +7872,14 @@ public partial class MainWindow : Window
 
     private void Editor_PreviewTextInput(object sender, TextCompositionEventArgs e)
     {
-        // C64 BASIC is upper case by default - force typed text to match. Assembly source case
-        // is significant (labels, comments) - leave it to AvalonEdit's normal input handling.
+        // C64 BASIC is upper case by default - force typed text to match, unless Shift or Caps
+        // Lock makes it "shifted" (see ApplyC64Shift). Assembly source case is significant
+        // (labels, comments) - leave it to AvalonEdit's normal input handling.
         if (ViewModel.ActiveTab?.Language == EditorLanguage.Asm) return;
 
         e.Handled = true;
 
-        string insertText = TryGetKeywordAbbreviationGlyph(e.Text) ?? e.Text.ToUpperInvariant();
+        string insertText = TryGetKeywordAbbreviationGlyph(e.Text) ?? ApplyC64Shift(e.Text);
         int start = Editor.SelectionStart;
         int length = Editor.SelectionLength;
 
@@ -7843,6 +7888,11 @@ public partial class MainWindow : Window
         int caretOffset = start + insertText.Length;
         Editor.CaretOffset = caretOffset;
         Editor.Select(caretOffset, 0);
+
+        // e.Handled = true above suppresses AvalonEdit's own TextInput handling entirely, which
+        // is what normally scrolls the caret into view after inserting typed text - without this,
+        // typing past the right edge with word wrap off never auto-scrolls horizontally.
+        Editor.TextArea.Caret.BringCaretToView();
 
         // Keep the completion popup in sync — the TextArea.TextEntered event is suppressed
         // because we set e.Handled = true, so we update the filter manually here.
@@ -7893,6 +7943,22 @@ public partial class MainWindow : Window
         }
 
         return null;
+    }
+
+    // Real C64 keyboard behavior for a letter key: unshifted (no Shift, Shift Lock/Caps Lock off)
+    // produces the normal uppercase-looking glyph (this app's default); shifted (Shift held, or
+    // Caps Lock on - a real C64's Shift Lock physically latches Shift down, unlike a PC's Caps
+    // Lock, so either one alone is enough, and there's no cancel-out when both are active at
+    // once) produces the C64 graphic character occupying that key's shifted position. Internally
+    // that graphic glyph is just the letter's lower case ASCII byte - PetsciiGlyphGenerator
+    // already renders it as the correct C64 ROM glyph, so no separate PETSCII mapping is needed
+    // here. Non-letters (digits, punctuation) are unaffected either way.
+    private static string ApplyC64Shift(string text)
+    {
+        if (text.Length != 1 || !char.IsAsciiLetter(text[0])) return text.ToUpperInvariant();
+
+        bool shifted = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) || KeyboardLockKeys.IsCapsLockOn;
+        return shifted ? char.ToLowerInvariant(text[0]).ToString() : char.ToUpperInvariant(text[0]).ToString();
     }
 
     private void Editor_Pasting(object sender, DataObjectPastingEventArgs e)
@@ -7947,7 +8013,6 @@ public partial class MainWindow : Window
         Editor.WordWrap   = ViewModel.Settings.WordWrap;
         HexEditor.HexFontSize = ViewModel.Settings.EditorFontSize;
         CompareControl.EditorFontSize = ViewModel.Settings.EditorFontSize;
-        ApplyPetsciiFontSetting();
         _lineNumberColorizer.LineNumberBrush       = (Brush)FindResource("ThemeEditorLineNumberFg");
         _lineNumberColorizer.ActiveLineNumberBrush = (Brush)FindResource("ThemeEditorFg");
         _keywordColorizer.KeywordBrush          = (Brush)FindResource("ThemeEditorKeywordFg");
@@ -7979,17 +8044,6 @@ public partial class MainWindow : Window
         Editor.Options.ShowColumnRuler = true;
         Editor.TextArea.TextView.ColumnRulerPen = new Pen((Brush)FindResource("ThemeEditorGuideLineFg"), 1);
         UpdateColumnRulerPosition();
-    }
-
-    // Applies the PETSCII/Consolas font setting to the compare view and the active tab's editor.
-    // Split out from ApplyEditorAppearance() so the status bar toggle (which can fire many times
-    // in quick succession) doesn't pay for that method's much heavier theme/keyword-panel rebuilds
-    // on every click - those are unaffected by this setting and don't need to be redone here.
-    private void ApplyPetsciiFontSetting()
-    {
-        FontFamily font = EditorFonts.ResolvePetsciiSlot(ViewModel.Settings);
-        CompareControl.PetsciiFontFamily = font;
-        Editor.FontFamily = font;
     }
 
     // The column guide's target column is per-language (BASIC and assembly have their own
@@ -8039,7 +8093,7 @@ public partial class MainWindow : Window
         int row = Editor.TextArea.Caret.Line;
         int col = Editor.TextArea.Caret.Column;
 
-        ViewModel.ScreenPositionText = $"Col: {col}, Row {row}";
+        ViewModel.ScreenPositionText = $"Col: {col}, Row: {row}";
     }
 
     #endregion

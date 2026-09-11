@@ -114,12 +114,6 @@ public class AppSettings
     public int EditorFontSize { get; set; } = 12;
 
     /// <summary>
-    /// Font used for BASIC/PETSCII-styled content (editor, Print, File Compare): "Petscii" or
-    /// "Consolas".
-    /// </summary>
-    public string PetsciiFontFamily { get; set; } = "Petscii";
-
-    /// <summary>
     /// Whether the editor wraps long lines.
     /// </summary>
     public bool WordWrap { get; set; } = false;

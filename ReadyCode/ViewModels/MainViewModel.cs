@@ -11,6 +11,7 @@ using System.Windows.Input;
 using ReadyCode.Assembler;
 using ReadyCode.C64U;
 using ReadyCode.Debugger;
+using ReadyCode.Interop;
 using ReadyCode.Minify;
 using ReadyCode.Models;
 using ReadyCode.Printing;
@@ -34,6 +35,9 @@ public class MainViewModel : INotifyPropertyChanged
 
     private string _lineCountText = "Lines: 1";
     private string _screenPositionText = "Col: 1, Row 1";
+    private bool _isCapsLockOn;
+    private bool _isUpperCaseModeActive = true;
+    private bool _isShiftModeApplicable;
     private string _statusMessage = "Ready";
     private StatusType _statusType = StatusType.Info;
     private bool _isLeftPanelOpen;
@@ -508,20 +512,72 @@ public class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Gets or sets whether BASIC/PETSCII-styled content uses the PETSCII font (Pet Me 64)
-    /// rather than Consolas. Backs both the Settings dialog's Font choice and the status bar's
-    /// quick toggle. Changes are persisted to settings immediately.
+    /// Gets whether Caps Lock is currently on, for the status bar's indicator. Reflects live OS
+    /// keyboard state - refresh with <see cref="RefreshKeyboardLockStatus"/> rather than setting
+    /// this directly.
     /// </summary>
-    public bool UsePetsciiFont
+    public bool IsCapsLockOn
     {
-        get => Settings.PetsciiFontFamily != "Consolas";
+        get => _isCapsLockOn;
+        private set
+        {
+            if (_isCapsLockOn == value) return;
+            _isCapsLockOn = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets whether the active tab's C64 keyboard emulation is in the C64's default
+    /// charset ("Upper Case Mode") - mirrors and writes through to
+    /// <see cref="EditorTab.IsUpperCaseModeActive"/>. Backs the status bar's Shift Badge
+    /// indicator; the Edit menu instead exposes this inverted, as "Lower Case Mode" (see
+    /// <see cref="IsLowerCaseModeActive"/>), so its default unchecked state matches the C64
+    /// default. The setter is a no-op while <see cref="IsShiftModeApplicable"/> is false (no
+    /// active tab, or a Hex Editor/File Compare tab). Kept in sync with the active tab
+    /// automatically - see <see cref="RefreshShiftModeStatus"/>, called whenever
+    /// <see cref="ActiveTab"/> changes or the active tab's own mode changes.
+    /// </summary>
+    public bool IsUpperCaseModeActive
+    {
+        get => _isUpperCaseModeActive;
         set
         {
-            string newValue = value ? "Petscii" : "Consolas";
-            if (Settings.PetsciiFontFamily == newValue) return;
-            Settings.PetsciiFontFamily = newValue;
+            var tab = ActiveTab;
+            if (tab == null || tab.IsHexMode || tab.IsCompareMode) return;
+            tab.IsUpperCaseModeActive = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets the inverse of <see cref="IsUpperCaseModeActive"/>, for the Edit menu's
+    /// "Lower Case Mode" checkbox - checking it switches the active tab to the C64's
+    /// upper/lowercase charset (unshifted letters type lower case); unchecked, the default,
+    /// keeps the C64's default charset. Same underlying setting as
+    /// <see cref="IsUpperCaseModeActive"/> and the status bar's Shift Badge, just phrased as its
+    /// opposite so the checkbox's unchecked state matches the out-of-the-box default.
+    /// </summary>
+    public bool IsLowerCaseModeActive
+    {
+        get => !IsUpperCaseModeActive;
+        set => IsUpperCaseModeActive = !value;
+    }
+
+    /// <summary>
+    /// Gets whether the Shift Badge's Upper Active/Inactive toggle applies to the active tab -
+    /// true only for an ordinary editable BASIC tab (.bas or a detokenized .prg); false for no
+    /// active tab, an assembly tab (.asm/.s, or a disassembled machine-language .prg - neither
+    /// ever uses PETSCII rendering, so the mode would have no visible effect), a Hex Editor tab,
+    /// or a read-only File Compare tab.
+    /// </summary>
+    public bool IsShiftModeApplicable
+    {
+        get => _isShiftModeApplicable;
+        private set
+        {
+            if (_isShiftModeApplicable == value) return;
+            _isShiftModeApplicable = value;
             OnPropertyChanged();
-            Settings.Save();
         }
     }
 
@@ -640,6 +696,7 @@ public class MainViewModel : INotifyPropertyChanged
                 _activeTab.PropertyChanged += OnActiveTabPropertyChanged;
             OnPropertyChanged();
             NotifyFileStateChanged();
+            RefreshShiftModeStatus();
         }
     }
 
@@ -950,12 +1007,35 @@ public class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Re-raises the property-changed notification for <see cref="UsePetsciiFont"/>. Call after
-    /// settings are written directly to <see cref="Settings"/> (bypassing the
-    /// <see cref="UsePetsciiFont"/> setter) so the status bar toggle refreshes to match the
-    /// Settings dialog's Font choice.
+    /// Re-reads the live OS Caps Lock state into <see cref="IsCapsLockOn"/> for the status bar's
+    /// indicator. Call on window activation, on every keypress, and immediately after clicking
+    /// the indicator, since WPF has no change-notification event for this key.
     /// </summary>
-    public void RefreshUsePetsciiFont() => OnPropertyChanged(nameof(UsePetsciiFont));
+    public void RefreshKeyboardLockStatus()
+    {
+        IsCapsLockOn = KeyboardLockKeys.IsCapsLockOn;
+    }
+
+    /// <summary>
+    /// Re-reads <see cref="IsUpperCaseModeActive"/>/<see cref="IsShiftModeApplicable"/> from the
+    /// active tab, for the status bar's Shift Badge indicator. Called automatically whenever
+    /// <see cref="ActiveTab"/> changes or the active tab's own mode changes.
+    /// </summary>
+    public void RefreshShiftModeStatus()
+    {
+        var tab = ActiveTab;
+        IsShiftModeApplicable = tab != null && !tab.IsHexMode && !tab.IsCompareMode
+            && tab.Language == EditorLanguage.Basic;
+
+        // Set the backing field directly rather than through the IsUpperCaseModeActive setter,
+        // which writes through to ActiveTab.IsUpperCaseModeActive - this method exists to read
+        // that value back out after it (or ActiveTab itself) changed, not to write it again.
+        bool newValue = tab?.IsUpperCaseModeActive ?? true;
+        if (_isUpperCaseModeActive == newValue) return;
+        _isUpperCaseModeActive = newValue;
+        OnPropertyChanged(nameof(IsUpperCaseModeActive));
+        OnPropertyChanged(nameof(IsLowerCaseModeActive));
+    }
 
     /// <summary>
     /// Loads the folder explorer tree from the given folder path, replacing any existing items.
@@ -1261,6 +1341,8 @@ public class MainViewModel : INotifyPropertyChanged
     {
         if (e.PropertyName is nameof(EditorTab.IsModified) or nameof(EditorTab.FilePath) or nameof(EditorTab.FileName))
             NotifyFileStateChanged();
+        if (e.PropertyName == nameof(EditorTab.IsUpperCaseModeActive))
+            RefreshShiftModeStatus();
     }
 
     private void NotifyFileStateChanged()
@@ -1280,7 +1362,7 @@ public class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        _printer.Print((Window)Application.Current.MainWindow, text, ActiveTab!.FileName, ActiveTab.Language, Settings);
+        _printer.Print((Window)Application.Current.MainWindow, text, ActiveTab!.FileName, ActiveTab.Language);
     }
 
     // Shows a print preview of the active tab's source code. Shows a status message if there is nothing to print.
@@ -1293,7 +1375,7 @@ public class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        _printer.PrintPreview((Window)Application.Current.MainWindow, text, ActiveTab!.FileName, ActiveTab.Language, Settings);
+        _printer.PrintPreview((Window)Application.Current.MainWindow, text, ActiveTab!.FileName, ActiveTab.Language);
     }
 
     // Gates Transfer/Run: both need an open tab with at least one character typed into it.

@@ -25,6 +25,19 @@ public class PetsciiGlyphGenerator : VisualLineElementGenerator
     /// </summary>
     public bool IsAsmMode { get; set; }
 
+    /// <summary>
+    /// Gets or sets whether the C64's default "Upper Active" charset is in effect, as opposed to
+    /// "Upper Inactive" (the upper/lowercase charset) - see the status bar's Shift Badge toggle.
+    /// The underlying byte for a given keystroke never changes between the two (see
+    /// <c>MainWindow.ApplyC64Shift</c>); only which glyph that byte displays as does, exactly like
+    /// a real C64 charset switch reinterprets existing screen memory without rewriting it. True
+    /// (the default) renders letters exactly as before: A-Z through the font's own glyph, a-z
+    /// substituted to the PETSCII graphic for that key. False swaps the two: A-Z substituted to
+    /// its lower case form and a-z to its upper case form, both via the font's own plain glyphs -
+    /// letters never need the graphic-glyph substitution in this mode.
+    /// </summary>
+    public bool IsUpperCaseModeActive { get; set; } = true;
+
     #endregion
 
     #region Public Methods
@@ -45,7 +58,7 @@ public class PetsciiGlyphGenerator : VisualLineElementGenerator
         for (int i = startOffset; i < endOffset; i++)
         {
             char c = document.GetCharAt(i);
-            if (c <= 0xFF && PetsciiScreenCodeMap.NeedsGlyphSubstitution((byte)c))
+            if (c <= 0xFF && NeedsSubstitution((byte)c))
                 return i;
         }
 
@@ -63,10 +76,23 @@ public class PetsciiGlyphGenerator : VisualLineElementGenerator
         if (ch > 0xFF)
             return null;
 
+        if (!IsUpperCaseModeActive && char.IsAsciiLetter(ch))
+        {
+            char swapped = char.IsAsciiLetterUpper(ch) ? char.ToLowerInvariant(ch) : char.ToUpperInvariant(ch);
+            return new PetsciiGlyphElement(swapped.ToString());
+        }
+
         byte screenCode = PetsciiScreenCodeMap.ToScreenCode((byte)ch);
         string glyph = ((char)(0xE000 + screenCode)).ToString();
         return new PetsciiGlyphElement(glyph);
     }
+
+    #endregion
+
+    #region Private Methods
+
+    private bool NeedsSubstitution(byte petscii) =>
+        (!IsUpperCaseModeActive && char.IsAsciiLetter((char)petscii)) || PetsciiScreenCodeMap.NeedsGlyphSubstitution(petscii);
 
     #endregion
 
