@@ -59,6 +59,7 @@
 | Editing | Undo / Redo | ✓ Done | ✓ Done |
 | Editing | Tab-based multi-file editing | ✓ Done | ✓ Done |
 | Editing | Code folding | ✓ Done | ✓ Done |
+| Editing | Lower Case mode | ✓ Done | ✓ Done |
 | Editing | Multi-cursor editing | Planned | Planned |
 | Editing | Bracket / delimiter matching | Planned | Planned |
 | Editing | Column / ruler guides | Planned | Planned |
