@@ -239,6 +239,18 @@ public class BasicDiagnosticsTests
     }
 
     [Fact]
+    public void Analyze_ForVariableLongerThanTwoChars_IsRecognizedAndMatchesItsNext()
+    {
+        // Regression test: _forRegex's captured variable name used to be capped at 1-2
+        // characters ([A-Z][A-Z0-9$]?), so a loop variable like "ADR" (real BASIC only treats
+        // the first two characters as significant, but the source syntax allows longer names)
+        // was never recognized as a FOR at all - leaving its own matching bare NEXT to falsely
+        // report "NEXT without a matching FOR."
+        string source = "2800 FOR ADR = 864 TO 1015 : READ BY : POKE ADR,BY : NEXT";
+        Assert.Empty(BasicDiagnostics.Analyze(source));
+    }
+
+    [Fact]
     public void Analyze_NextVariableNotMatchingFor_IsFlaggedAtTheNextVariable()
     {
         string source = "10 FOR X=1 TO 10\n20 NEXT Y";

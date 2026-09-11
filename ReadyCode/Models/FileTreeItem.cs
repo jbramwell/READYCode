@@ -305,18 +305,27 @@ public class FileTreeItem : INotifyPropertyChanged
             return;
         }
 
-        Children.Clear();
         try
         {
+            var desired = new List<FileTreeItem>();
             foreach (string dir in Directory.GetDirectories(FullPath)
                                             .OrderBy(d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase))
-                Children.Add(new FileTreeItem(dir, true));
+                desired.Add(new FileTreeItem(dir, true));
 
             foreach (string file in Directory.GetFiles(FullPath)
                                              .OrderBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase))
-                Children.Add(new FileTreeItem(file, false));
+                desired.Add(new FileTreeItem(file, false));
+
+            // Diffed rather than Clear()+repopulated: a refresh that only actually changed one
+            // entry shouldn't force every other row to lose its expanded/rename/drop-target
+            // state and re-virtualize in the bound TreeView. Real entries are always keyed by
+            // FullPath here, which is stable across a refresh regardless of content changes.
+            ObservableCollectionDiffUtil.Apply(Children, desired, c => c.FullPath);
         }
-        catch { /* Access denied, path too long, etc. */ }
+        catch
+        {
+            Children.Clear(); // Access denied, path too long, etc.
+        }
     }
 
     /// <summary>

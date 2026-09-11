@@ -191,6 +191,9 @@ public partial class MainWindow : Window
         EditUncommentCommand = new RelayCommand(_ => ExecuteUncommentSelection(), _ => HasNonEmptyBasicActiveTab());
         EditMakeUppercaseCommand = new RelayCommand(_ => ExecuteChangeSelectionCase(upper: true),  _ => HasNonEmptyActiveTab());
         EditMakeLowercaseCommand = new RelayCommand(_ => ExecuteChangeSelectionCase(upper: false), _ => HasNonEmptyActiveTab());
+        EditToggleLowerCaseModeCommand = new RelayCommand(
+            _ => ViewModel.IsLowerCaseModeActive = !ViewModel.IsLowerCaseModeActive,
+            _ => ViewModel.IsShiftModeApplicable);
         EditMinifyCommand    = new RelayCommand(_ => ExecuteMinifyCode(), _ => HasNonEmptyBasicActiveTab());
         EditPrettifyCommand  = new RelayCommand(_ => ExecutePrettifyCode(), _ => HasNonEmptyBasicActiveTab());
         EditRenumberCommand  = new RelayCommand(_ => ExecuteRenumberCode(), _ => HasNonEmptyBasicActiveTab());
@@ -487,6 +490,8 @@ public partial class MainWindow : Window
     public ICommand EditMakeUppercaseCommand { get; }
     /// <summary>Gets the command that converts the highlighted text to lower case.</summary>
     public ICommand EditMakeLowercaseCommand { get; }
+    /// <summary>Gets the command that toggles the active tab's C64 keyboard emulation Lower Case Mode.</summary>
+    public ICommand EditToggleLowerCaseModeCommand { get; }
     /// <summary>Gets the command that opens the Minify dialog.</summary>
     public ICommand EditMinifyCommand    { get; }
     /// <summary>Gets the command that opens the Prettify dialog.</summary>

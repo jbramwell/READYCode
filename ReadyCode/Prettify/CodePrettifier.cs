@@ -3,6 +3,7 @@
 
 using System.Text;
 using System.Text.RegularExpressions;
+using ReadyCode.Diagnostics;
 using ReadyCode.Minify;
 using ReadyCode.Tokenizer;
 
@@ -350,7 +351,9 @@ public static class CodePrettifier
             string prefix  = stmt[..indent];
 
             // FOR var = ...  →  push variable (handles both "FOR I=" and "FORI=")
-            var forMatch = Regex.Match(trimmed, @"^FOR\s*([A-Z][A-Z0-9$]?)\s*=", RegexOptions.IgnoreCase);
+            // Shares BasicDiagnostics' compiled regexes rather than re-declaring fresh,
+            // uncompiled copies of the same patterns here.
+            var forMatch = BasicDiagnostics._forRegex.Match(trimmed);
             if (forMatch.Success)
             {
                 forStack.Push(forMatch.Groups[1].Value.ToUpperInvariant());
@@ -359,7 +362,7 @@ public static class CodePrettifier
             }
 
             // NEXT with no variable  →  restore top-of-stack variable
-            if (Regex.IsMatch(trimmed, @"^NEXT\s*$", RegexOptions.IgnoreCase))
+            if (BasicDiagnostics._bareNextRegex.IsMatch(trimmed))
             {
                 result.Add(forStack.Count > 0
                     ? prefix + "NEXT " + forStack.Pop()
@@ -368,8 +371,7 @@ public static class CodePrettifier
             }
 
             // NEXT var[,var...]  →  pop one entry per variable already present (handles "NEXT I" and "NEXTI")
-            var nextVarMatch = Regex.Match(trimmed,
-                @"^NEXT\s*(?:[A-Z][A-Z0-9$]*\s*,\s*)*[A-Z][A-Z0-9$]*", RegexOptions.IgnoreCase);
+            var nextVarMatch = BasicDiagnostics._nextVarsRegex.Match(trimmed);
             if (nextVarMatch.Success)
             {
                 int varCount = trimmed[4..].Split(',').Length; // everything after "NEXT"
@@ -402,53 +404,17 @@ public static class CodePrettifier
         }, RegexOptions.IgnoreCase);
     }
 
-    private static string TransformOutsideStrings(string code, Func<string, string> transform)
-    {
-        var sb = new StringBuilder(code.Length);
-        int i  = 0;
-        while (i < code.Length)
-        {
-            if (code[i] == '"')
-            {
-                int start = i++;
-                while (i < code.Length && code[i] != '"') i++;
-                if (i < code.Length) i++;
-                sb.Append(code[start..i]);
-            }
-            else
-            {
-                int start = i;
-                while (i < code.Length && code[i] != '"') i++;
-                sb.Append(transform(code[start..i]));
-            }
-        }
-        return sb.ToString();
-    }
+    private static string TransformOutsideStrings(string code, Func<string, string> transform) =>
+        BasicLineTransformUtil.TransformOutsideStrings(code, transform);
 
-    private static string UpdateLineReferences(string code, Dictionary<int, int> mapping)
-    {
-        // No \b anchor: in minified code keywords like GOTO appear with no preceding
-        // space (e.g. "SGOTO24"), so a word boundary would silently skip them.
-        return Regex.Replace(code,
-            @"(GOTO|GOSUB|THEN|RESTORE|RUN)\s*(\d+(?:\s*,\s*\d+)*)",
-            m =>
-            {
-                string keyword = m.Groups[1].Value;
-                string nums    = Regex.Replace(m.Groups[2].Value, @"\d+", n =>
-                {
-                    if (int.TryParse(n.Value, out int old) && mapping.TryGetValue(old, out int @new))
-                        return @new.ToString(); // references are never zero-padded
-                    return n.Value;
-                });
-                return keyword + " " + nums;
-            },
-            RegexOptions.IgnoreCase);
-    }
+    private static string UpdateLineReferences(string code, Dictionary<int, int> mapping) =>
+        BasicLineTransformUtil.UpdateLineReferences(code, mapping);
 
     private static List<string> SplitLines(string source) =>
-        [.. source.Split(["\r\n", "\r", "\n"], StringSplitOptions.None)];
+        BasicLineTransformUtil.SplitLines(source);
 
-    private static string JoinLines(List<string> lines) => string.Join("\n", lines);
+    private static string JoinLines(List<string> lines) =>
+        BasicLineTransformUtil.JoinLines(lines);
 
     #endregion
 }

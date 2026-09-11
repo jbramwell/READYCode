@@ -29,9 +29,13 @@ for the C64U Explorer) them in, or on a disk image to embed them. Dropped anywhe
 they open as new tabs instead - this fallback only accepts `.prg` files, and rejects the drop entirely
 if any file in the selection isn't a `.prg`.
 
+## Comparing files
+
+Right-click a file in either Explorer and choose **Select file for comparison**, then right-click a second file and choose **Compare file** to open a diff between them in a new tab. The comparison highlights changed, added, and removed lines and, within a changed line, the specific words that differ; toggle between Split and Unified layout, or turn on Ignore Whitespace, from the toolbar above the diff. The two files do not need to be the same kind - compare a `.bas` against a `.prg`, or against `.asm`/`.s` source - each side is independently resolved to text (a `.prg` is decoded the same way Find in Files decodes one) before comparing.
+
 ## Saving, versus importing and exporting
 
-**Save** (Ctrl+S) and **Save As...** (Ctrl+Shift+S) always round-trip through the authentic file format for the type of file you have open: the real tokenized `.prg` binary for BASIC programs, plain PETSCII source text for `.bas` files, or plain assembly text for `.asm`/`.s` files. This is what keeps a saved BASIC program byte-for-byte compatible with what a real C64, or VICE, would produce - `.bas` is never tokenized, whether you're loading it, editing it, or saving it.
+**Save** (Ctrl+S) and **Save As...** (Ctrl+Shift+S) always round-trip through the authentic file format for the type of file you have open: the real tokenized `.prg` binary for BASIC programs, plain PETSCII source text for `.bas` files, or plain assembly text for `.asm`/`.s` files. This is what keeps a saved BASIC program byte-for-byte compatible with what a real C64, or VICE, would produce - `.bas` is never tokenized, whether you're loading it, editing it, or saving it. If you know from the start you want the plain-text `.bas` form rather than a tokenized `.prg`, **File > New > BASIC File** (Ctrl+Shift+N) starts you there directly, instead of creating a `.prg` tab and doing a Save As to `.bas` afterward.
 
 **File > Export...** and **File > Import...** are a separate, plain-text escape hatch: Export writes the active document out as a `.txt` file, and Import reads a `.txt` file into a new tab. Use these when you need a plain-text copy of your source, for example to share it somewhere that does not understand `.prg` files, rather than the authentic binary format.
 

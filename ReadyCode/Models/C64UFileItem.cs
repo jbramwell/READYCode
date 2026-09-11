@@ -335,9 +335,15 @@ public class C64UFileItem : INotifyPropertyChanged
             else
             {
                 var entries = await _ftpClient.ListDirectoryAsync(FullPath);
-                Children.Clear();
-                foreach (var entry in entries)
-                    Children.Add(new C64UFileItem(_ftpClient, entry.FullPath, entry.IsFolder, entry.Size));
+                var desired = entries
+                    .Select(entry => new C64UFileItem(_ftpClient, entry.FullPath, entry.IsFolder, entry.Size))
+                    .ToList();
+
+                // Diffed rather than Clear()+repopulated: a refresh that only actually changed
+                // one entry shouldn't force every other row to lose its expanded/rename/drop-
+                // target state and re-virtualize in the bound TreeView. Real entries are always
+                // keyed by FullPath here, which is stable across a refresh.
+                ObservableCollectionDiffUtil.Apply(Children, desired, c => c.FullPath);
             }
         }
         catch

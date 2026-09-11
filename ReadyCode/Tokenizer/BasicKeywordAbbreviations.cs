@@ -81,6 +81,16 @@ public static class BasicKeywordAbbreviations
     /// </summary>
     public static readonly int MaxLength = ToKeyword.Keys.Max(k => k.Length);
 
+    // Same entries as ToKeyword, longest-first (ties broken arbitrarily but deterministically)
+    // so TryMatchKeywordOrAbbreviation's greedy longest-match scan can stop at the first span
+    // match without a per-length dictionary lookup - see that method for why.
+    private static readonly (string Key, string Value)[] _abbreviationsLongestFirst =
+        ToKeyword
+            .OrderByDescending(kv => kv.Key.Length)
+            .ThenBy(kv => kv.Key, StringComparer.Ordinal)
+            .Select(kv => (kv.Key, kv.Value))
+            .ToArray();
+
     #endregion
 
     #region Public Methods
@@ -110,13 +120,16 @@ public static class BasicKeywordAbbreviations
             matchedLength = fullKeyword.Length;
         }
 
-        for (int len = MaxLength; len > matchedLength; len--)
+        // Span comparison against each abbreviation in turn, longest-first, instead of
+        // allocating a substring per candidate length to probe the dictionary with.
+        foreach (var (abbrevKey, abbrevValue) in _abbreviationsLongestFirst)
         {
-            if (position + len > text.Length) continue;
-            if (ToKeyword.TryGetValue(text.Substring(position, len), out string? abbrevKeyword))
+            if (abbrevKey.Length <= matchedLength) break; // no shorter entry can beat the current match
+            if (position + abbrevKey.Length > text.Length) continue;
+            if (text.AsSpan(position, abbrevKey.Length).Equals(abbrevKey.AsSpan(), StringComparison.Ordinal))
             {
-                keyword = abbrevKeyword;
-                matchedLength = len;
+                keyword = abbrevValue;
+                matchedLength = abbrevKey.Length;
                 break;
             }
         }

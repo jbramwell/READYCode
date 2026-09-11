@@ -25,8 +25,12 @@ public static class BasicDiagnostics
     #region Private Fields
 
     // Internal (not private): reused as-is by BasicFoldingStrategy for FOR/NEXT fold detection.
+    // The variable name is unbounded ([A-Z0-9$]*, not a single optional char) to match real BASIC
+    // syntax: only the first two characters of a variable name are significant to the C64
+    // interpreter, but the source itself allows arbitrarily long names (e.g. "ADR", "SCORE") -
+    // same reasoning _nextVarsRegex/_variableRegex below already follow.
     internal static readonly Regex _forRegex =
-        new(@"^FOR\s*([A-Z][A-Z0-9$]?)\s*=", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        new(@"^FOR\s*([A-Z][A-Z0-9$]*)\s*=", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     internal static readonly Regex _bareNextRegex =
         new(@"^NEXT\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);

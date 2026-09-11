@@ -17,7 +17,10 @@ If you would rather build from source, see the [Contributing guide](../CONTRIBUT
 
 The first time you start READYCode, it opens with an empty workspace and no folder loaded. From here you can:
 
-- Start a new BASIC program with **File > New > Program File** (Ctrl+N).
+- Start a new BASIC program with **File > New > Program File** (Ctrl+N) - saves natively as a
+  tokenized `.prg`.
+- Start a new plain-text BASIC file with **File > New > BASIC File** (Ctrl+Shift+N) - saves natively
+  as `.bas` instead, without needing a Save As.
 - Start a new assembly program with **File > New > Assembly File** (Ctrl+Alt+N).
 - Open a single file with **File > Open File...** (Ctrl+O). This works for `.prg`, `.bas`, `.asm`, `.s`, and `.txt` files.
 - Open a whole project folder with **File > Open Folder...** (Ctrl+K Ctrl+O), which populates the Explorer panel on the left.
@@ -34,7 +37,7 @@ READYCode's layout will feel familiar if you have used a modern code editor befo
 - **Editor area** - a tabbed group of open documents. Each tab shows the file name and a modified indicator (a dot) when there are unsaved changes.
 - **Secondary side bar (right edge)** - reference panels: BASIC Keywords, ASM Mnemonics, PETSCII Reference, Quick Keys, and Music Notes. Their own activity bar, on the right edge, switches between them. Toggle the panel with Ctrl+Alt+B.
 - **Variables / Symbols panel** - a small panel below the primary side bar that lists every variable in a BASIC file, or every label and constant in an assembly file, with click-to-jump navigation.
-- **Status bar** - shows things like cursor position, tokenized or assembled byte count, and connection status for C64U/VICE. Can be hidden from **Preferences > Show Status Bar**.
+- **Status bar** - shows things like cursor position, connection status for C64U/VICE, and a clickable line count that opens Code Statistics. On a BASIC tab it also shows the tokenized byte count, a Shift Badge for the active tab's [Upper/Lower Case Mode](basic-editor.md#upperlower-case-mode), and a Caps Lock indicator that reflects - and can toggle - the real Windows Caps Lock state. Can be hidden from **Preferences > Show Status Bar**.
 
 ## Program files versus assembly files
 

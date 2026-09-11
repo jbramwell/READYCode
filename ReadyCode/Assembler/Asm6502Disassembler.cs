@@ -134,7 +134,15 @@ public class Asm6502Disassembler
     private static ushort ReadWord(byte[] bytes, int offset) => (ushort)(bytes[offset] | (bytes[offset + 1] << 8));
 
     private static string FormatRawBytes(byte[] bytes, int offset, int length)
-        => string.Join(' ', bytes.Skip(offset).Take(length).Select(b => b.ToString("X2")));
+    {
+        var sb = new StringBuilder(length * 3 - 1);
+        for (int i = 0; i < length; i++)
+        {
+            if (i > 0) sb.Append(' ');
+            sb.Append(bytes[offset + i].ToString("X2"));
+        }
+        return sb.ToString();
+    }
 
     #endregion
 }

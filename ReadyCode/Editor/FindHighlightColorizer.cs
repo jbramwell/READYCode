@@ -86,12 +86,17 @@ public class FindHighlightColorizer : DocumentColorizingTransformer
         int lineStart = line.Offset;
         int lineEnd   = line.EndOffset;
 
-        for (int i = 0; i < _matches.Count; i++)
+        // _matches is offset-ordered (SetMatches copies the find scan's left-to-right results
+        // as-is), so binary-search to the first match that could overlap this line instead of
+        // scanning the whole list on every visible line, every render pass.
+        for (int i = FindFirstOverlapCandidate(lineStart); i < _matches.Count; i++)
         {
             var segment = _matches[i];
             int offset = segment.Offset;
+            if (offset >= lineEnd) break; // ascending order - nothing further can overlap either
+
             int length = segment.Length;
-            if (offset + length <= lineStart || offset >= lineEnd) continue;
+            if (offset + length <= lineStart) continue;
 
             int start = Math.Max(offset, lineStart);
             int end   = Math.Min(offset + length, lineEnd);
@@ -105,6 +110,29 @@ public class FindHighlightColorizer : DocumentColorizingTransformer
                 e.TextRunProperties.SetForegroundBrush(fg);
             });
         }
+    }
+
+    #endregion
+
+    #region Private Methods
+
+    // Finds the index of the first match whose end offset is past lineStart - i.e. the first
+    // match that could possibly overlap a line starting there. Matches before this index end at
+    // or before lineStart and, since matches are offset-ascending, can't overlap this or any
+    // later line either.
+    private int FindFirstOverlapCandidate(int lineStart)
+    {
+        int lo = 0, hi = _matches.Count;
+        while (lo < hi)
+        {
+            int mid = lo + (hi - lo) / 2;
+            var segment = _matches[mid];
+            if (segment.Offset + segment.Length <= lineStart)
+                lo = mid + 1;
+            else
+                hi = mid;
+        }
+        return lo;
     }
 
     #endregion

@@ -22,6 +22,10 @@ These abbreviations are recognized everywhere a keyword would be: by the tokeniz
 
 The C64's character set (PETSCII) does not map cleanly onto ASCII: control codes like clear-screen or cursor-down, and the graphic characters produced by holding Shift, all have specific glyphs on a real machine. READYCode renders these using the actual C64 character ROM glyphs (via an embedded "Pet Me 64" font), so a `REM` comment or `PRINT` statement containing control characters looks in the editor exactly as it would look when listed on a real C64, or on a printed page. The underlying text is never altered by this, so features like search and tokenizing keep working normally.
 
+## Upper/Lower Case Mode
+
+The C64 keyboard has two charsets: the default, where unshifted letters type as upper case and Shift or Caps Lock produces the PETSCII graphic character for that key ("Upper Active"), and an alternate one where unshifted letters type as lower case and Shift or Caps Lock gives you upper case instead ("Upper Inactive"). **Edit > Lower Case Mode** (Ctrl+Shift+L) toggles between them for the active tab; so does clicking the Shift Badge (an arrow icon) in the status bar - filled for the default Upper Active charset, outlined for Upper Inactive. The setting is per-tab and only applies to an ordinary editable BASIC tab, dimming out for a Hex Editor tab, a read-only File Compare tab, or an assembly tab, where it has no effect. The status bar also shows a Caps Lock indicator next to the Shift Badge; clicking it toggles the real Windows Caps Lock state, since Caps Lock (like Shift) affects which PETSCII character a key produces.
+
 ## The PETSCII Reference panel
 
 Open the PETSCII Reference panel from the right activity bar to browse every PETSCII control character, the sixteen color codes, and the function-key codes. Clicking an entry inserts it at the cursor, and hovering over one shows its name and PETSCII value. The **Quick Keys** panel next to it offers the same set of characters as keyboard shortcuts (Ctrl+1 through Ctrl+8 for screen controls, Ctrl+Shift+1 through Ctrl+Shift+Alt+8 for colors, Shift+F1 through Shift+F8 for function keys) and as clickable buttons, for whichever workflow you prefer.
@@ -43,6 +47,10 @@ Multi-line `REM` comment blocks and `FOR`/`NEXT` loops can be collapsed to reduc
 ## Diagnostics
 
 READYCode checks your program for common mistakes as you type and flags them with a squiggle underline, the same way a modern IDE flags a syntax error. It catches duplicate line numbers, `GOTO`/`GOSUB`/`THEN` targets that do not exist, unmatched `FOR`/`NEXT` pairs, and unterminated string literals. Hover over a squiggle to see the specific problem. This can be turned off in **Preferences > Settings... > BASIC > Code Analysis** if you would rather not see it.
+
+## The Errors panel
+
+**View > Errors Panel** opens a bottom panel listing every current diagnostic across every open tab (not just the active one), styled like a modern IDE's error list: a severity icon, description, file name, and line number per row, with a live count and a search box to filter by message or file. Double-click a row to jump straight to that file and line, opening the tab if it is not already active. The panel opens automatically - switching to its Errors tab if needed - right after a Save, or a Load/Run on the C64 Ultimate or VICE, whenever that action produced at least one diagnostic; it does not interrupt you by popping open on every keystroke while you are mid-edit. It shares the same bottom-panel space as the Debug panel (**View > Debug Panel**) - opening one switches to it without losing the other's contents, and both remember the height you last resized the panel to.
 
 ## The Variables panel
 

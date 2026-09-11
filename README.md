@@ -38,7 +38,10 @@ Full documentation, covering every feature in depth, lives in [docs/](docs/READM
   highlighting, and hover tooltips. `PRINT`'s `?` shorthand is recognized the same way.
 - **Diagnostics** - inline squiggle warnings for common mistakes as you type: duplicate line numbers,
   `GOTO`/`GOSUB`/`THEN` targets that don't exist, and unmatched `FOR`/`NEXT` pairs in BASIC; undefined
-  labels, bad addressing modes, and out-of-range branches in assembly.
+  labels, bad addressing modes, and out-of-range branches in assembly. An **Errors panel** (`View >
+  Errors Panel`) lists every current diagnostic across all open tabs, VS-Error-List style, with
+  double-click-to-jump and a search/filter box; it opens automatically after a Save, or a Load/Run on
+  the C64 Ultimate or VICE, if that action produced any diagnostics.
 - **Code folding** - collapse `REM` blocks and `FOR`/`NEXT` loops in BASIC, or runs of comment lines in
   assembly, to cut down on visual noise in longer programs.
 - **Variables / Symbols panel** - lists every variable in a BASIC program, or every label and constant
@@ -62,6 +65,11 @@ Full documentation, covering every feature in depth, lives in [docs/](docs/READM
 - **Accurate PETSCII rendering** - control and high-byte characters are remapped at render time to the
   matching C64 character-ROM glyph (via the embedded "Pet Me 64" font), without altering the
   underlying text, so existing text-based features (tokenizing, search, etc.) keep working unchanged.
+- **Upper/Lower Case Mode** - toggles a BASIC tab's C64 keyboard emulation between the default "Upper
+  Active" charset (unshifted letters render upper case; Shift/Caps Lock produces the PETSCII graphic)
+  and "Upper Inactive" (unshifted renders lower case; Shift/Caps Lock produces upper case) - `Edit >
+  Lower Case Mode` (Ctrl+Shift+L), or click the Shift Badge in the status bar. The status bar also
+  shows a Caps Lock indicator that reflects, and can toggle, the real Windows Caps Lock state.
 - **C64 Ultimate integration** - Transfer (load) or Run a program directly on a real C64 Ultimate over
   its REST API, plus machine controls (reset, reboot, pause, resume, power off) and a device info
   dialog. The Ultimate's URL is configured once in Preferences.
@@ -78,6 +86,11 @@ Full documentation, covering every feature in depth, lives in [docs/](docs/READM
   load and run programs and issue machine controls (reset, reboot, pause, resume, power off) without
   restarting the emulator each time. The emulator path and monitor host/port are configured once in
   Preferences, with an option to bring VICE to the foreground automatically when loading or running.
+- **BASIC debugger** - source-level debugging against a live C64 Ultimate or VICE session: gutter
+  breakpoints, Step Into and Run to Cursor, a current-line highlight while paused, and a Debug panel with
+  live Variables (editable), Breakpoints, and GOSUB Call Stack views. Step Over, Step Out, and the Call
+  Stack view all need to track the call stack, which isn't possible on the C64 Ultimate's REST API - a
+  limitation of the device, not VICE's richer binary monitor protocol, which supports all of it.
 - **Tokenizing / `.prg` conversion** - converts BASIC source to/from the real tokenized `.prg` binary
   format (including the `$0801` load address), compatible with VICE and other emulators, not just the
   Ultimate. The same converter can also tell a real BASIC program apart from a raw machine-language
@@ -105,6 +118,10 @@ Full documentation, covering every feature in depth, lives in [docs/](docs/READM
   and `.prg` file under an open folder (a `.prg` is decoded to text for matching and re-tokenized on
   write-back), with match-case, whole-word, and regular-expression options, a results tree grouped by
   file, and a project-wide Replace All.
+- **File Compare** - right-click two files in either Explorer (Select file for comparison, then Compare
+  file) for a line- and word-level diff, in Split or Unified view, with an Ignore Whitespace toggle.
+  Either file can be BASIC or assembly source, `.prg` (decoded to text) or already-plain-text - the two
+  sides don't need to be the same kind.
 - **Minify / Prettify** - reformat BASIC source for either compactness (token packing, optional line
   renumbering) or readability.
 - **Printing** - Print and Print Preview render the active tab through the same PETSCII-accurate
@@ -115,7 +132,9 @@ Full documentation, covering every feature in depth, lives in [docs/](docs/READM
   reopen.
 - **Code Statistics** - a dialog showing character/word/line counts for the active document, plus its
   tokenized (BASIC) or assembled (assembly) byte count.
-- **Import/Export** - read/write plain-text BASIC alongside native `.prg` files.
+- **Import/Export** - read/write plain-text BASIC alongside native `.prg` files. **File > New > BASIC
+  File** (Ctrl+Shift+N) starts a blank tab that saves natively as plain-text `.bas` from the start,
+  alongside the existing **New > Program File** (`.prg`, Ctrl+N) and **New > Assembly File** (Ctrl+Alt+N).
 
 ## Architecture overview
 

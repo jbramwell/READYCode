@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Moonspace Labs, LLC
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
-using System.Text;
 using System.Text.RegularExpressions;
 
 namespace ReadyCode.Minify;
@@ -300,28 +299,8 @@ public static class CodeMinifier
     }
 
     // Applies transform only to the segments of `code` that lie outside string literals.
-    private static string TransformOutsideStrings(string code, Func<string, string> transform)
-    {
-        var sb = new StringBuilder(code.Length);
-        int i = 0;
-        while (i < code.Length)
-        {
-            if (code[i] == '"')
-            {
-                int start = i++;
-                while (i < code.Length && code[i] != '"') i++;
-                if (i < code.Length) i++; // closing quote
-                sb.Append(code[start..i]);
-            }
-            else
-            {
-                int start = i;
-                while (i < code.Length && code[i] != '"') i++;
-                sb.Append(transform(code[start..i]));
-            }
-        }
-        return sb.ToString();
-    }
+    private static string TransformOutsideStrings(string code, Func<string, string> transform) =>
+        BasicLineTransformUtil.TransformOutsideStrings(code, transform);
 
     private static bool IsRemStatement(string code)
     {
@@ -382,30 +361,14 @@ public static class CodeMinifier
         });
     }
 
-    private static string UpdateLineReferences(string code, Dictionary<int, int> mapping)
-    {
-        // No \b anchor: in minified code keywords appear without a preceding space
-        // (e.g. "SGOTO24"), so a word boundary would silently skip them.
-        return Regex.Replace(code,
-            @"(GOTO|GOSUB|THEN|RESTORE|RUN)\s*(\d+(?:\s*,\s*\d+)*)",
-            m =>
-            {
-                string keyword = m.Groups[1].Value;
-                string nums = Regex.Replace(m.Groups[2].Value, @"\d+", n =>
-                {
-                    if (int.TryParse(n.Value, out int old) && mapping.TryGetValue(old, out int @new))
-                        return @new.ToString();
-                    return n.Value;
-                });
-                return keyword + " " + nums;
-            },
-            RegexOptions.IgnoreCase);
-    }
+    private static string UpdateLineReferences(string code, Dictionary<int, int> mapping) =>
+        BasicLineTransformUtil.UpdateLineReferences(code, mapping);
 
     private static List<string> SplitLines(string source) =>
-        [.. source.Split(["\r\n", "\r", "\n"], StringSplitOptions.None)];
+        BasicLineTransformUtil.SplitLines(source);
 
-    private static string JoinLines(List<string> lines) => string.Join("\n", lines);
+    private static string JoinLines(List<string> lines) =>
+        BasicLineTransformUtil.JoinLines(lines);
 
     #endregion
 }

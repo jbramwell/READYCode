@@ -14,10 +14,11 @@ Enter your C64 Ultimate's URL once in **Preferences > Settings... > Commodore > 
 
 ### Loading and running
 
-- **Load** (Ctrl+F5) transfers the active program to the C64 Ultimate without running it.
-- **Run** (F5) transfers it and starts it immediately.
+- **Load** transfers the active program to the C64 Ultimate without running it (no keyboard shortcut of its own - see below).
+- **Run Without Debugging** (Ctrl+F5) transfers it and starts it immediately, with no debug session attached.
+- **Start Debugging / Continue** (F5) transfers it, arms every enabled breakpoint, and starts it under the debugger - or, if a debug session is already running, resumes it. See [Debugging](debugging.md).
 
-If automatic minification is enabled in Preferences, your program is minified before it is sent, keeping your working copy untouched while sending a compact version to the machine. See [Minify and Prettify](minify-and-prettify.md).
+If automatic minification is enabled in Preferences, your program is minified before it is sent, keeping your working copy untouched while sending a compact version to the machine - except when starting a debug session, where minification and line renumbering are skipped so your breakpoints stay lined up with the source you're looking at. See [Minify and Prettify](minify-and-prettify.md).
 
 For a standalone assembly program (Assembly > Assembler's **Output** set to Standalone, or any source with its own `.org`), "starts it immediately" doesn't just mean the device's own load-and-run - there's no BASIC program in memory for that to run. Instead, READYCode loads the program without running it, waits briefly for the machine to finish resetting, then simulates typing `SYS <origin>` and Enter directly into the keyboard buffer, the same trick real loader hardware uses to launch non-BASIC code after a DMA load.
 
@@ -62,8 +63,9 @@ VICE integration works differently from the C64 Ultimate's REST API: READYCode b
 
 ### Loading and running
 
-- **Load** (Ctrl+Alt+F5) transfers the active program to VICE without running it.
-- **Run** (Alt+F5) transfers it and starts it immediately.
+- **Load** transfers the active program to VICE without running it (no keyboard shortcut of its own - see below).
+- **Run Without Debugging** (Ctrl+Alt+F5) transfers it and starts it immediately, with no debug session attached.
+- **Start Debugging / Continue** (Alt+F5) transfers it, arms every enabled breakpoint, and starts it under the debugger - or, if a debug session is already running, resumes it. See [Debugging](debugging.md).
 
 The same standalone-program problem described above for the C64 Ultimate applies to VICE too: its autostart just runs whatever BASIC program ends up in memory, and a standalone assembly program has none. READYCode works around it the same way here - loading the program without autostarting, waiting briefly, then feeding `SYS <origin>` and Enter directly into VICE's keyboard buffer through its binary monitor protocol, rather than VICE's own autostart command.
 
@@ -75,7 +77,7 @@ The VICE menu mirrors the C64U menu: Reset, Reboot, Pause, Resume, Power Off, an
 
 ## Choosing a target from the editor
 
-Right-click inside the editor to load or run on either target without using the menu bar: the context menu's Load and Run submenus list C64U and VICE side by side. The keyboard shortcuts follow the same pattern throughout the app: F5 and Ctrl+F5 target the C64 Ultimate, Alt+F5 and Ctrl+Alt+F5 target VICE.
+Right-click inside the editor to load or run on either target without using the menu bar: the context menu's Load and Run submenus list C64U and VICE side by side. The keyboard shortcuts follow the same pattern throughout the app, including [debugging](debugging.md): the unmodified/Ctrl-modified F-keys (F5, Ctrl+F5, F9, F10, F11, ...) target the C64 Ultimate, and the same keys with Alt added target VICE.
 
 The same Load and Run submenus are also available by right-clicking a `.prg`, `.asm`/`.s`, or machine-language file directly in either Explorer tree - the local Folder Explorer or the C64U Explorer - so you can send a file to hardware or an emulator without opening it first. READYCode works out on its own whether the file needs a typed `SYS` command (as described above) or can autostart normally.
 

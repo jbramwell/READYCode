@@ -77,6 +77,14 @@ public sealed class BreakpointStore
 
     private readonly ObservableCollection<Breakpoint> _breakpoints = new();
 
+    // Keyed lookup mirroring _breakpoints, so Find/Toggle/Remove/SetEnabled don't linear-scan
+    // (Toggle/Remove/SetEnabled each called Find, doubling the scan). Kept in sync by every
+    // method that adds/removes from _breakpoints - there's no other way to mutate it, since
+    // Breakpoints exposes the same ObservableCollection instance but nothing outside this class
+    // adds/removes from it directly. File paths are folded to uppercase-invariant in the key to
+    // match IsSameFile's OrdinalIgnoreCase comparison.
+    private readonly Dictionary<(string FilePath, ushort LineNumber), Breakpoint> _index = new();
+
     #endregion
 
     #region Public Properties
@@ -95,7 +103,7 @@ public sealed class BreakpointStore
     /// Gets the breakpoint at the given file/line, or null if none is set there.
     /// </summary>
     public Breakpoint? Find(string filePath, ushort lineNumber) =>
-        _breakpoints.FirstOrDefault(b => IsSameFile(b.FilePath, filePath) && b.LineNumber == lineNumber);
+        _index.TryGetValue(KeyFor(filePath, lineNumber), out var breakpoint) ? breakpoint : null;
 
     /// <summary>
     /// Gets the BASIC line numbers with an enabled breakpoint in the given file.
@@ -116,15 +124,17 @@ public sealed class BreakpointStore
     /// <returns>The breakpoint that was added, or null if one was removed instead.</returns>
     public Breakpoint? Toggle(string filePath, ushort lineNumber)
     {
-        var existing = Find(filePath, lineNumber);
-        if (existing != null)
+        var key = KeyFor(filePath, lineNumber);
+        if (_index.TryGetValue(key, out var existing))
         {
             _breakpoints.Remove(existing);
+            _index.Remove(key);
             return null;
         }
 
         var breakpoint = new Breakpoint { FilePath = filePath, LineNumber = lineNumber };
         _breakpoints.Add(breakpoint);
+        _index.Add(key, breakpoint);
         return breakpoint;
     }
 
@@ -133,9 +143,12 @@ public sealed class BreakpointStore
     /// </summary>
     public void Remove(string filePath, ushort lineNumber)
     {
-        var existing = Find(filePath, lineNumber);
-        if (existing != null)
+        var key = KeyFor(filePath, lineNumber);
+        if (_index.TryGetValue(key, out var existing))
+        {
             _breakpoints.Remove(existing);
+            _index.Remove(key);
+        }
     }
 
     /// <summary>
@@ -151,7 +164,11 @@ public sealed class BreakpointStore
     /// <summary>
     /// Removes every breakpoint, across all files.
     /// </summary>
-    public void Clear() => _breakpoints.Clear();
+    public void Clear()
+    {
+        _breakpoints.Clear();
+        _index.Clear();
+    }
 
     /// <summary>
     /// Replaces every breakpoint with the given set - used to load a project's breakpoints from
@@ -160,8 +177,12 @@ public sealed class BreakpointStore
     public void ReplaceAll(IEnumerable<Breakpoint> breakpoints)
     {
         _breakpoints.Clear();
+        _index.Clear();
         foreach (var breakpoint in breakpoints)
+        {
             _breakpoints.Add(breakpoint);
+            _index[KeyFor(breakpoint.FilePath, breakpoint.LineNumber)] = breakpoint;
+        }
     }
 
     #endregion
@@ -169,6 +190,9 @@ public sealed class BreakpointStore
     #region Private Methods
 
     private static bool IsSameFile(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+    private static (string, ushort) KeyFor(string filePath, ushort lineNumber) =>
+        (filePath.ToUpperInvariant(), lineNumber);
 
     #endregion
 }

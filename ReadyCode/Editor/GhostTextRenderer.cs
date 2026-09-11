@@ -16,13 +16,15 @@ namespace ReadyCode.Editor;
 /// position.  Adorners render above all visual-line DrawingVisual children, which guarantees
 /// the text is always visible on top of the editor content.
 /// </summary>
-public sealed class GhostTextRenderer : Adorner
+public sealed class GhostTextRenderer : Adorner, IDisposable
 {
     #region Private Fields
 
     private static readonly Brush _ghostBrush;
 
     private readonly TextArea _textArea;
+    private readonly EventHandler _visualLinesChangedHandler;
+    private readonly EventHandler _scrollOffsetChangedHandler;
 
     #endregion
 
@@ -52,10 +54,13 @@ public sealed class GhostTextRenderer : Adorner
         // a runaway TextView.VisualLinesChanged loop that corrupted rendering across the whole
         // editor. Posting the invalidation to run after the current layout pass settles avoids
         // that reentrancy - same reasoning as FileCompareControl's deferred viewport updates.
-        textArea.TextView.VisualLinesChanged  += (_, _) =>
+        _visualLinesChangedHandler = (_, _) =>
             textArea.Dispatcher.BeginInvoke(DispatcherPriority.Background, InvalidateVisual);
-        textArea.TextView.ScrollOffsetChanged += (_, _) =>
+        _scrollOffsetChangedHandler = (_, _) =>
             textArea.Dispatcher.BeginInvoke(DispatcherPriority.Background, InvalidateVisual);
+
+        textArea.TextView.VisualLinesChanged  += _visualLinesChangedHandler;
+        textArea.TextView.ScrollOffsetChanged += _scrollOffsetChangedHandler;
     }
 
     #endregion
@@ -68,6 +73,17 @@ public sealed class GhostTextRenderer : Adorner
     #endregion
 
     #region Public Methods
+
+    /// <summary>
+    /// Unhooks the <see cref="TextView"/> event subscriptions taken out in the constructor.
+    /// Currently only ever constructed once for the app's lifetime, but this keeps the class
+    /// safe to reuse/reconstruct (e.g. per-tab) without rooting a stale <see cref="TextView"/>.
+    /// </summary>
+    public void Dispose()
+    {
+        _textArea.TextView.VisualLinesChanged  -= _visualLinesChangedHandler;
+        _textArea.TextView.ScrollOffsetChanged -= _scrollOffsetChangedHandler;
+    }
 
     /// <summary>
     /// Draws the current <see cref="GhostText"/> suggestion at the caret position, if any.

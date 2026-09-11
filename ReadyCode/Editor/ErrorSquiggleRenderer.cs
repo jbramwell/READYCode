@@ -86,9 +86,15 @@ public sealed class ErrorSquiggleRenderer : IBackgroundRenderer
             int lineStart = vl.FirstDocumentLine.Offset;
             int lineEnd   = vl.LastDocumentLine.EndOffset;
 
-            foreach (var diag in _diagnostics)
+            // _diagnostics is offset-ordered (BasicDiagnostics/AsmDiagnostics both sort before
+            // returning), so binary-search to the first diagnostic that could overlap this line
+            // instead of scanning the whole list on every visible line, every render pass.
+            for (int i = FindFirstOverlapCandidate(lineStart); i < _diagnostics.Count; i++)
             {
-                if (diag.Offset + diag.Length <= lineStart || diag.Offset >= lineEnd) continue;
+                var diag = _diagnostics[i];
+                if (diag.Offset >= lineEnd) break; // ascending order - nothing further overlaps
+
+                if (diag.Offset + diag.Length <= lineStart) continue;
 
                 int start = Math.Max(diag.Offset, lineStart);
                 int end   = Math.Min(diag.Offset + diag.Length, lineEnd);
@@ -106,6 +112,25 @@ public sealed class ErrorSquiggleRenderer : IBackgroundRenderer
     #endregion
 
     #region Private Methods
+
+    // Finds the index of the first diagnostic whose end offset is past lineStart - i.e. the
+    // first diagnostic that could possibly overlap a line starting there. Diagnostics before
+    // this index end at or before lineStart and, since the list is offset-ascending, can't
+    // overlap this or any later line either.
+    private int FindFirstOverlapCandidate(int lineStart)
+    {
+        int lo = 0, hi = _diagnostics.Count;
+        while (lo < hi)
+        {
+            int mid = lo + (hi - lo) / 2;
+            var diag = _diagnostics[mid];
+            if (diag.Offset + diag.Length <= lineStart)
+                lo = mid + 1;
+            else
+                hi = mid;
+        }
+        return lo;
+    }
 
     private static double GetVisualX(VisualLine vl, TextView textView, int relativeOffset, bool isAtEndOfLine)
     {

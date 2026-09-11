@@ -1833,6 +1833,9 @@
         <KeyBinding Key="U"
                 Modifiers="Ctrl+Shift"
                 Command="{Binding EditMakeUppercaseCommand}"/>
+        <KeyBinding Key="L"
+                Modifiers="Ctrl+Shift"
+                Command="{Binding EditToggleLowerCaseModeCommand}"/>
         <KeyBinding Key="M"
                 Modifiers="Ctrl"
                 Command="{Binding EditMinifyCommand}"/>
@@ -2259,7 +2262,8 @@
                 <MenuItem Header="_Lower Case Mode"
                         IsCheckable="True"
                         IsChecked="{Binding ViewModel.IsLowerCaseModeActive, Mode=TwoWay}"
-                        IsEnabled="{Binding ViewModel.IsShiftModeApplicable}" />
+                        IsEnabled="{Binding ViewModel.IsShiftModeApplicable}"
+                        InputGestureText="Ctrl+Shift+L" />
                 <Separator/>
                 <MenuItem x:Name="MinifyMenuItem"
                         Header="Minif_y Code"

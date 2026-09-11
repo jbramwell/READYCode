@@ -6,7 +6,8 @@ A reference for every keyboard shortcut in READYCode, grouped by category. Most 
 
 | Shortcut | Action |
 | --- | --- |
-| Ctrl+N | New Program File |
+| Ctrl+N | New Program File (.prg) |
+| Ctrl+Shift+N | New BASIC File (.bas) |
 | Ctrl+Alt+N | New Assembly File |
 | Ctrl+O | Open File... |
 | Ctrl+K, Ctrl+O | Open Folder... |
@@ -30,6 +31,7 @@ A reference for every keyboard shortcut in READYCode, grouped by category. Most 
 | Ctrl+K, Ctrl+C | Comment Selection |
 | Ctrl+K, Ctrl+U | Uncomment Selection |
 | Ctrl+Shift+U | Make Uppercase |
+| Ctrl+Shift+L | Toggle Lower Case Mode (C64 keyboard emulation) |
 | Ctrl+M | Minify Code |
 | Ctrl+Shift+M | Prettify Code |
 | Ctrl+R | Renumber Code |
@@ -70,12 +72,30 @@ A reference for every keyboard shortcut in READYCode, grouped by category. Most 
 
 | Shortcut | Action |
 | --- | --- |
-| F5 | Run on C64 Ultimate |
-| Ctrl+F5 | Load on C64 Ultimate |
-| Alt+F5 | Run on VICE |
-| Ctrl+Alt+F5 | Load on VICE |
+| F5 | Start Debugging / Continue on C64 Ultimate |
+| Ctrl+F5 | Run Without Debugging on C64 Ultimate |
+| Alt+F5 | Start Debugging / Continue on VICE |
+| Ctrl+Alt+F5 | Run Without Debugging on VICE |
 
 See [Transferring to Hardware and Emulators](c64-ultimate-and-vice.md) for what these do.
+
+## Debugging
+
+| Shortcut (C64U / VICE) | Action |
+| --- | --- |
+| F5 / Alt+F5 | Start Debugging / Continue |
+| F6 / Alt+F6 | Pause |
+| Shift+F5 / Alt+Shift+F5 | Stop Debugging |
+| Ctrl+Shift+F5 / Ctrl+Alt+Shift+F5 | Restart Debugging |
+| F9 / Alt+F9 | Toggle Breakpoint |
+| Ctrl+F9 / Ctrl+Alt+F9 | Enable/Disable Breakpoint |
+| Ctrl+Shift+F9 / Ctrl+Alt+Shift+F9 | Delete All Breakpoints |
+| F10 / Alt+F10 | Step Over (VICE only) |
+| F11 / Alt+F11 | Step Into |
+| Shift+F11 / Alt+Shift+F11 | Step Out (VICE only) |
+| Ctrl+F10 / Ctrl+Alt+F10 | Run to Cursor |
+
+See [Debugging](debugging.md) for what these do.
 
 ## Inserting PETSCII characters (Quick Keys)
 

@@ -27,15 +27,6 @@ public class PrgConverter
 
     #endregion
 
-    #region Public Properties
-
-    /// <summary>
-    /// Debug information from the last conversion.
-    /// </summary>
-    public string? LastDebugInfo { get; private set; }
-
-    #endregion
-
     #region Public Methods
 
     /// <summary>
@@ -61,7 +52,6 @@ public class PrgConverter
 
         // First pass: parse and tokenize all lines
         var parsedLines = new List<(ushort lineNumber, byte[] tokens)>();
-        var debugLines = new List<string>();
 
         foreach (var line in lines)
         {
@@ -69,42 +59,25 @@ public class PrgConverter
             if (string.IsNullOrEmpty(trimmedLine))
                 continue;
 
-            debugLines.Add($"Parsing: '{trimmedLine}'");
-
             // Parse line number and code
             var parts = ParseLineNumberAndCode(trimmedLine);
             if (parts == null)
-            {
-                debugLines.Add($"  ERROR: Failed to parse line number");
                 continue;
-            }
 
             var lineNumber = parts.Value.lineNumber;
             var code = parts.Value.code;
 
             // Skip lines that have only a line number and no actual code
             if (string.IsNullOrWhiteSpace(code))
-            {
-                debugLines.Add($"  SKIP: line {lineNumber} has no code");
                 continue;
-            }
-
-            debugLines.Add($"  LineNum: {lineNumber}, Code: '{code}'");
 
             // Tokenize the code part
             var tokenResult = tokenizer.TokenizeLine(code);
             if (!tokenResult.Success)
-            {
-                debugLines.Add($"  ERROR: Tokenization failed - {tokenResult.ErrorMessage}");
                 continue;
-            }
 
-            debugLines.Add($"  OK: {tokenResult.Tokens.Length} bytes");
             parsedLines.Add((lineNumber, tokenResult.Tokens));
         }
-
-        // Store debug info for later retrieval
-        LastDebugInfo = string.Join("\n", debugLines);
 
         if (parsedLines.Count == 0)
         {
