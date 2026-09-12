@@ -1,5 +1,21 @@
 # Change Log
 
+## [v2.4.0] - 2026-09-11
+
+### New Features
+
+- **Per-tab Upper/Lower Case Mode** - toggle a BASIC tab's C64 keyboard emulation between the default "Upper Active" charset and "Upper Inactive" via `Edit > Lower Case Mode`, a new `Ctrl+Shift+L` shortcut, or by clicking the Shift Badge in the status bar; a new status bar Caps Lock indicator reflects, and can toggle, the real Windows Caps Lock state
+
+### Improvements
+
+- File Compare now allows comparing two files of different kinds (e.g. a `.bas` against a `.prg`), instead of requiring both sides to match
+- The status bar's Lines indicator is now clickable
+
+### Bug Fixes
+
+- Fixed a false "NEXT without a matching FOR" error for loop variable names 3 or more characters long
+- Fixed the editor sometimes failing to auto-scroll to keep the caret in view
+
 ## [v2.3.2] - 2026-09-08
 
 ### New Features
