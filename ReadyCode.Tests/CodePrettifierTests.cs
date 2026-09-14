@@ -49,6 +49,20 @@ public class CodePrettifierTests
     }
 
     [Fact]
+    public void AddWhitespace_DefFn_InsertsSpaceBetweenFnAndFunctionName()
+    {
+        // Unlike PEEK/LEN/etc., FN is followed by a user-defined function name, not directly by
+        // '(', so it needs a space after it just like any other keyword.
+        Assert.Equal("10 DEF FN F1(P1) = P1 * 10", CodePrettifier.AddWhitespace("10DEFFNF1(P1)=P1*10"));
+    }
+
+    [Fact]
+    public void AddWhitespace_FnCall_InsertsSpaceBetweenFnAndFunctionName()
+    {
+        Assert.Equal("10 PRINT FN F1(X)", CodePrettifier.AddWhitespace("10PRINTFNF1(X)"));
+    }
+
+    [Fact]
     public void AddWhitespace_HandlesConditional()
     {
         Assert.Equal("10 IF X > 5 AND X < 10 THEN 30", CodePrettifier.AddWhitespace("10IFX>5ANDX<10THEN30"));

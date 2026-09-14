@@ -18,11 +18,13 @@ public static class CodePrettifier
     #region Private Fields
 
     // Function/array keywords: don't add a trailing space (the '(' follows immediately).
+    // FN is deliberately excluded - unlike these, it's followed by a user-defined function name
+    // (e.g. "FN F1(X)"), not directly by '(', so it needs the normal keyword-spacing rule below.
     private static readonly HashSet<string> _functionKeywords = new(StringComparer.OrdinalIgnoreCase)
     {
         "SGN", "INT", "ABS", "USR", "FRE", "POS", "SQR", "RND", "LOG", "EXP",
         "COS", "SIN", "TAN", "ATN", "PEEK", "LEN", "STR$", "VAL", "ASC",
-        "CHR$", "LEFT$", "RIGHT$", "MID$", "FN", "TAB", "SPC",
+        "CHR$", "LEFT$", "RIGHT$", "MID$", "TAB", "SPC",
         // File-I/O: no space between keyword and file number
         "PRINT#", "INPUT#", "GET#",
     };

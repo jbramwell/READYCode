@@ -3138,7 +3138,7 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBlock x:Name="nameText"
                                             Grid.Column="0"
-                                            Text="{Binding Name}"
+                                            Text="{Binding DisplayName}"
                                                FontSize="12"
                                             Foreground="{DynamicResource ThemeFileFg}"
                                                Margin="0,1"

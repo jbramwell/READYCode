@@ -293,6 +293,76 @@ public class BasicDiagnosticsTests
         Assert.Empty(BasicDiagnostics.Analyze(source));
     }
 
+    // ── Undefined DEF FN functions ───────────────────────────────────────────
+
+    [Fact]
+    public void Analyze_CallToUndefinedFunction_IsFlaggedAtTheFunctionName()
+    {
+        string source = "10 DEF FN F1(P1)=P1*10\n20 PRINT FN F2(5)";
+        var diagnostics = BasicDiagnostics.Analyze(source);
+
+        var d = Assert.Single(diagnostics);
+        Assert.Equal("Undefined function FN F2.", d.Message);
+    }
+
+    [Fact]
+    public void Analyze_CallToDefinedFunction_IsNotFlagged()
+    {
+        string source = "10 DEF FN F1(P1)=P1*10\n20 PRINT FN F1(5)";
+        Assert.Empty(BasicDiagnostics.Analyze(source));
+    }
+
+    [Fact]
+    public void Analyze_FunctionDefinedAfterItsFirstCall_IsNotFlagged()
+    {
+        // DEF FN can be forward-referenced the same way GOTO/GOSUB targets can.
+        string source = "10 PRINT FN F1(5)\n20 DEF FN F1(P1)=P1*10";
+        Assert.Empty(BasicDiagnostics.Analyze(source));
+    }
+
+    // ── DEF FN parameter type ─────────────────────────────────────────────────
+    // Confirmed on real hardware (a C64 Ultimate): a DEF FN parameter only works as a plain float
+    // - a % or $ suffix silently fails rather than raising a hardware error, so this is flagged
+    // in the IDE instead.
+
+    [Fact]
+    public void Analyze_DefFnIntegerParameter_IsFlagged()
+    {
+        string source = "10 DEF FN SQ(X%)=X%*X%";
+        var diagnostics = BasicDiagnostics.Analyze(source);
+
+        var d = Assert.Single(diagnostics);
+        Assert.Equal("DEF FN parameter \"X%\" must be a plain float variable - % and $ suffixes aren't supported.", d.Message);
+    }
+
+    [Fact]
+    public void Analyze_DefFnStringParameter_IsFlagged()
+    {
+        string source = "10 DEF FN SQ(X$)=X$";
+        var diagnostics = BasicDiagnostics.Analyze(source);
+
+        var d = Assert.Single(diagnostics);
+        Assert.Equal("DEF FN parameter \"X$\" must be a plain float variable - % and $ suffixes aren't supported.", d.Message);
+    }
+
+    [Fact]
+    public void Analyze_DefFnFloatParameter_IsNotFlagged()
+    {
+        string source = "10 DEF FN SQ(X)=X*X";
+        Assert.Empty(BasicDiagnostics.Analyze(source));
+    }
+
+    [Fact]
+    public void Analyze_DefFnIntegerParameter_IsFlaggedAtTheParameterOffset()
+    {
+        string source = "10 DEF FN SQ(X%)=X%*X%";
+        var diagnostics = BasicDiagnostics.Analyze(source);
+
+        var d = Assert.Single(diagnostics);
+        Assert.Equal(source.IndexOf("X%", StringComparison.Ordinal), d.Offset);
+        Assert.Equal(2, d.Length);
+    }
+
     // ── Duplicate line numbers ────────────────────────────────────────────────
 
     [Fact]

@@ -15,7 +15,36 @@ namespace ReadyCode.Diagnostics;
 /// <param name="Offset">The character offset into the analyzed source where the name starts.</param>
 /// <param name="Length">The number of characters the name spans (not including any array subscript).</param>
 /// <param name="IsWrite">Whether this occurrence assigns the variable, rather than just reading it.</param>
-public readonly record struct VariableReference(string Name, int Offset, int Length, bool IsWrite);
+/// <param name="LocalToFunction">
+/// The upper-invariant name of the <c>DEF FN</c> function this occurrence is scoped to, or
+/// <see langword="null"/> for an ordinary global variable. Set only for the parameter itself and
+/// any reference to it within that same <c>DEF FN</c> statement's body - real hardware saves the
+/// prior value of a same-named global before the call and restores it after, so that variable
+/// behaves as local to the function for the call's duration, not shared with an unrelated global
+/// of the same name (or another function's same-named parameter) elsewhere in the program.
+/// </param>
+public readonly record struct VariableReference(string Name, int Offset, int Length, bool IsWrite, string? LocalToFunction = null);
+
+/// <summary>
+/// A single occurrence of a <c>DEF FN</c> user function in a BASIC source document: either the
+/// <c>DEF FN name(...)</c> definition itself, or a call site (<c>FN name(...)</c>) elsewhere.
+/// </summary>
+/// <param name="Name">The function's name, upper-invariant (without the <c>FN</c> keyword).</param>
+/// <param name="Offset">The character offset into the analyzed source where the name starts.</param>
+/// <param name="Length">The number of characters the name spans.</param>
+/// <param name="IsDefinition">Whether this occurrence is the <c>DEF FN</c> that defines the function, rather than a call to it.</param>
+public readonly record struct FunctionReference(string Name, int Offset, int Length, bool IsDefinition);
+
+/// <summary>
+/// A single <c>DEF FN</c> function's declared parameter in a BASIC source document. On real
+/// hardware, a <c>DEF FN</c> parameter only works as a plain float variable - a <c>%</c> or
+/// <c>$</c> suffix silently fails - so this is used to validate it (see <c>BasicDiagnostics</c>).
+/// </summary>
+/// <param name="FunctionName">The function's name, upper-invariant.</param>
+/// <param name="ParameterName">The parameter's full name, upper-invariant, including any trailing $ or % suffix.</param>
+/// <param name="Offset">The character offset into the analyzed source where the parameter name starts.</param>
+/// <param name="Length">The number of characters the parameter name spans (including any suffix).</param>
+public readonly record struct FunctionParameter(string FunctionName, string ParameterName, int Offset, int Length);
 
 /// <summary>
 /// Finds every variable in a BASIC source document and classifies each occurrence as a read or a
@@ -38,6 +67,36 @@ public static class VariableCrossReference
             AnalyzeLine(line, lineOffset, references);
 
         return references;
+    }
+
+    /// <summary>
+    /// Analyzes the given BASIC source and returns every <c>DEF FN</c> function occurrence found -
+    /// both definitions and call sites - in source order.
+    /// </summary>
+    /// <param name="source">The full BASIC source to analyze.</param>
+    public static IReadOnlyList<FunctionReference> AnalyzeFunctions(string source)
+    {
+        var references = new List<FunctionReference>();
+
+        foreach (var (line, lineOffset) in BasicDiagnostics.EnumerateLines(source))
+            AnalyzeFunctionsInLine(line, lineOffset, references);
+
+        return references;
+    }
+
+    /// <summary>
+    /// Analyzes the given BASIC source and returns every <c>DEF FN</c> function's declared
+    /// parameter, in source order.
+    /// </summary>
+    /// <param name="source">The full BASIC source to analyze.</param>
+    public static IReadOnlyList<FunctionParameter> AnalyzeFunctionParameters(string source)
+    {
+        var parameters = new List<FunctionParameter>();
+
+        foreach (var (line, lineOffset) in BasicDiagnostics.EnumerateLines(source))
+            AnalyzeFunctionParametersInLine(line, lineOffset, parameters);
+
+        return parameters;
     }
 
     #endregion
@@ -68,11 +127,171 @@ public static class VariableCrossReference
     {
         var writeOffsets = new HashSet<int>();
         string trimmed = stmt.TrimStart();
-        CollectWriteTargets(trimmed, stmt.Length - trimmed.Length, writeOffsets);
+        int trimmedOffset = stmt.Length - trimmed.Length;
+        CollectWriteTargets(trimmed, trimmedOffset, writeOffsets);
+
+        // A DEF FN statement's own parameter - and every reference to it in the function's body,
+        // which is the rest of this same statement - is scoped to that function rather than the
+        // global namespace (see VariableReference.LocalToFunction). scopeFrom is relative to
+        // `stmt` (not `trimmed`) to match the offsets EnumerateOccurrences reports below.
+        bool hasScope = TryGetDefFnScope(trimmed, out string scopeFunction, out string scopeParam, out int scopeParamOffset, out _);
+        int scopeFrom = trimmedOffset + scopeParamOffset;
 
         EnumerateOccurrences(stmt, (name, offset, length) =>
+        {
+            string? localToFunction = hasScope && offset >= scopeFrom &&
+                string.Equals(name, scopeParam, StringComparison.OrdinalIgnoreCase)
+                ? scopeFunction
+                : null;
+
             references.Add(new VariableReference(
-                name.ToUpperInvariant(), stmtOffset + offset, length, writeOffsets.Contains(offset))));
+                name.ToUpperInvariant(), stmtOffset + offset, length, writeOffsets.Contains(offset), localToFunction));
+        });
+    }
+
+    // If `trimmed` is a "DEF FN name(param)=..." statement, returns the function's name and the
+    // parameter's name/offset/length (all relative to `trimmed`, name/length including any
+    // trailing $ or % suffix) - everything from the parameter's own offset onward that matches its
+    // name belongs to this function's scope. Same parse as TryCollectDefFnTarget, which only needs
+    // the parameter's offset for writeOffsets; this one additionally needs both names (and the
+    // parameter's length) to build the scope itself and, for AnalyzeFunctionParameters below, to
+    // validate the parameter's type.
+    private static bool TryGetDefFnScope(
+        string trimmed, out string functionName, out string paramName, out int paramOffset, out int paramLength)
+    {
+        functionName = ""; paramName = ""; paramOffset = 0; paramLength = 0;
+
+        int i = 0;
+        if (!BasicTokens.TryMatchKeyword(trimmed, i, BasicTokens.WordKeywordsLongestFirst, out string defKeyword) ||
+            !string.Equals(defKeyword, "DEF", StringComparison.OrdinalIgnoreCase))
+            return false;
+        i += defKeyword.Length;
+        SkipSpaces(trimmed, ref i);
+
+        if (!BasicTokens.TryMatchKeyword(trimmed, i, BasicTokens.WordKeywordsLongestFirst, out string fnKeyword) ||
+            !string.Equals(fnKeyword, "FN", StringComparison.OrdinalIgnoreCase))
+            return false;
+        i += fnKeyword.Length;
+        SkipSpaces(trimmed, ref i);
+
+        if (!TryReadIdentifier(trimmed, ref i, out int fnStart, out int fnLength)) return false;
+        functionName = trimmed.Substring(fnStart, fnLength).ToUpperInvariant();
+        SkipSpaces(trimmed, ref i);
+
+        if (i >= trimmed.Length || trimmed[i] != '(') return false;
+        i++;
+        SkipSpaces(trimmed, ref i);
+
+        if (!TryReadIdentifier(trimmed, ref i, out int pStart, out int pLength)) return false;
+        paramName = trimmed.Substring(pStart, pLength).ToUpperInvariant();
+        paramOffset = pStart;
+        paramLength = pLength;
+        return true;
+    }
+
+    // ── DEF FN parameter types ────────────────────────────────────────────────────────────────
+
+    private static void AnalyzeFunctionParametersInLine(string line, int lineOffset, List<FunctionParameter> parameters)
+    {
+        if (!BasicDiagnostics.TryParseLineNumber(line, out _, out _, out _, out int codeStart))
+            return; // no leading line number - not a program line, nothing to analyze
+
+        string code = line[codeStart..];
+        int codeOffset = lineOffset + codeStart;
+        string activeCode = code[..BasicDiagnostics.FindTopLevelRemStart(code)];
+
+        int stmtOffset = codeOffset;
+        foreach (var stmt in CodePrettifier.SplitStatements(activeCode))
+        {
+            string trimmed = stmt.TrimStart();
+            int trimmedOffset = stmt.Length - trimmed.Length;
+
+            if (TryGetDefFnScope(trimmed, out string functionName, out string paramName, out int paramOffset, out int paramLength))
+                parameters.Add(new FunctionParameter(
+                    functionName, paramName, stmtOffset + trimmedOffset + paramOffset, paramLength));
+
+            stmtOffset += stmt.Length + 1; // +1 for the ':' separator consumed between statements
+        }
+    }
+
+    // ── DEF FN function occurrences (definitions and call sites) ─────────────────────────────
+
+    private static void AnalyzeFunctionsInLine(string line, int lineOffset, List<FunctionReference> references)
+    {
+        if (!BasicDiagnostics.TryParseLineNumber(line, out _, out _, out _, out int codeStart))
+            return; // no leading line number - not a program line, nothing to analyze
+
+        string code = line[codeStart..];
+        int codeOffset = lineOffset + codeStart;
+        string activeCode = code[..BasicDiagnostics.FindTopLevelRemStart(code)];
+
+        int stmtOffset = codeOffset;
+        foreach (var stmt in CodePrettifier.SplitStatements(activeCode))
+        {
+            EnumerateFnOccurrences(stmt, (name, offset, length, isDefinition) =>
+                references.Add(new FunctionReference(
+                    name.ToUpperInvariant(), stmtOffset + offset, length, isDefinition)));
+            stmtOffset += stmt.Length + 1; // +1 for the ':' separator consumed between statements
+        }
+    }
+
+    // Walks a statement looking for every "FN name" occurrence and reports the name's own span.
+    // An occurrence is a definition only when the "FN" keyword was immediately preceded (modulo
+    // whitespace) by a "DEF" keyword - i.e. "DEF FN name(...)" - which can only ever be the very
+    // start of a statement in real BASIC, so a single pendingDef flag (set on DEF, cleared by
+    // anything else) is enough to tell "DEF FN F1(P1)=FN F2(X)" apart: the first FN is F1's own
+    // definition, the second is a call to F2.
+    private static void EnumerateFnOccurrences(string stmt, Action<string, int, int, bool> onOccurrence)
+    {
+        bool inString = false;
+        bool pendingDef = false;
+        int i = 0;
+
+        while (i < stmt.Length)
+        {
+            char c = stmt[i];
+
+            if (c == '"')
+            {
+                inString = !inString;
+                pendingDef = false;
+                i++;
+                continue;
+            }
+            if (inString) { i++; continue; }
+
+            if (char.IsLetter(c))
+            {
+                if (BasicTokens.TryMatchKeyword(stmt, i, BasicTokens.WordKeywordsLongestFirst, out string keyword))
+                {
+                    if (string.Equals(keyword, "DATA", StringComparison.OrdinalIgnoreCase))
+                        return; // rest of the statement is literal DATA values, not references
+
+                    bool isDef = string.Equals(keyword, "DEF", StringComparison.OrdinalIgnoreCase);
+                    bool isFn  = string.Equals(keyword, "FN", StringComparison.OrdinalIgnoreCase);
+                    i += keyword.Length;
+
+                    if (isFn)
+                    {
+                        while (i < stmt.Length && stmt[i] == ' ') i++;
+                        int nameStart = i;
+                        while (i < stmt.Length && char.IsLetterOrDigit(stmt[i])) i++;
+                        if (i > nameStart)
+                            onOccurrence(stmt.Substring(nameStart, i - nameStart), nameStart, i - nameStart, pendingDef);
+                    }
+
+                    pendingDef = isDef;
+                    continue;
+                }
+
+                pendingDef = false;
+                i++;
+                continue;
+            }
+
+            if (c != ' ') pendingDef = false;
+            i++;
+        }
     }
 
     // ── Pass 1: enumerate every variable occurrence (default: read) ──────────────────────────

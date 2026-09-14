@@ -135,6 +135,97 @@ public class VariableCrossReferenceTests
         Assert.False(xs[2].IsWrite);  // X*X body - second read
     }
 
+    // ── DEF FN parameter scoping ─────────────────────────────────────────────
+    // On real hardware, a DEF FN parameter aliases the same storage as a same-named global only
+    // for the call's duration (saved before, restored after), so it must never be conflated with
+    // an unrelated global of the same name used elsewhere in the program.
+
+    [Fact]
+    public void Analyze_DefFnParameterAndBodyReferences_AreScopedToTheFunction()
+    {
+        var refs = Analyze("10 DEF FN F3(P1)=P1*10");
+
+        var p1s = refs.Where(r => r.Name == "P1").ToList();
+        Assert.Equal(2, p1s.Count); // the parameter itself, and the one body reference
+        Assert.All(p1s, r => Assert.Equal("F3", r.LocalToFunction));
+    }
+
+    [Fact]
+    public void Analyze_GlobalVariableSharingNameWithDefFnParameter_IsNotScopedToTheFunction()
+    {
+        var refs = Analyze("5 P1=30\n15 DEF FN F3(P1)=P1*10");
+
+        var global = Assert.Single(refs, r => r.Name == "P1" && r.LocalToFunction == null);
+        Assert.True(global.IsWrite);
+
+        var local = refs.Where(r => r.Name == "P1" && r.LocalToFunction == "F3").ToList();
+        Assert.Equal(2, local.Count);
+    }
+
+    [Fact]
+    public void Analyze_VariableOfSameNameUsedAfterDefFnStatement_IsGlobalAgain()
+    {
+        // A DEF FN parameter is only local for the extent of that one statement - a later,
+        // unrelated statement using the same name refers to the (untouched) global.
+        var refs = Analyze("10 DEF FN F3(P1)=P1*10\n20 PRINT P1");
+
+        var print = Assert.Single(refs, r => r.Offset > 20); // the PRINT statement's reference
+        Assert.Equal("P1", print.Name);
+        Assert.Null(print.LocalToFunction);
+    }
+
+    [Fact]
+    public void Analyze_TwoDefFnsWithSameParameterName_AreScopedToDifferentFunctions()
+    {
+        var refs = Analyze("10 DEF FN F3(P1)=P1*10\n20 DEF FN F4(P1)=P1+1");
+
+        var f3 = refs.Where(r => r.LocalToFunction == "F3").ToList();
+        var f4 = refs.Where(r => r.LocalToFunction == "F4").ToList();
+        Assert.Equal(2, f3.Count);
+        Assert.Equal(2, f4.Count);
+        Assert.All(f3, r => Assert.Equal("P1", r.Name));
+        Assert.All(f4, r => Assert.Equal("P1", r.Name));
+    }
+
+    [Fact]
+    public void Analyze_DefFnBodyReferencingAnotherVariable_IsStillGlobal()
+    {
+        // Only the declared parameter is scoped - any other variable the body reads is a genuine
+        // global reference, exactly as on real hardware.
+        var refs = Analyze("10 DEF FN F3(P1)=P1*K");
+
+        var k = Assert.Single(refs, r => r.Name == "K");
+        Assert.Null(k.LocalToFunction);
+    }
+
+    // ── AnalyzeFunctionParameters ─────────────────────────────────────────────
+
+    [Fact]
+    public void AnalyzeFunctionParameters_FloatParameter_IsReportedAsIs()
+    {
+        var parameters = VariableCrossReference.AnalyzeFunctionParameters("10 DEF FN SQ(X)=X*X");
+
+        var p = Assert.Single(parameters);
+        Assert.Equal("SQ", p.FunctionName);
+        Assert.Equal("X", p.ParameterName);
+    }
+
+    [Fact]
+    public void AnalyzeFunctionParameters_SuffixedParameter_IncludesTheSuffixInTheName()
+    {
+        var parameters = VariableCrossReference.AnalyzeFunctionParameters("10 DEF FN SQ(X%)=X%*X%");
+
+        var p = Assert.Single(parameters);
+        Assert.Equal("X%", p.ParameterName);
+        Assert.Equal(2, p.Length);
+    }
+
+    [Fact]
+    public void AnalyzeFunctionParameters_NoDefFn_ReturnsEmpty()
+    {
+        Assert.Empty(VariableCrossReference.AnalyzeFunctionParameters("10 X=5"));
+    }
+
     // ── IF ... THEN ───────────────────────────────────────────────────────────
 
     [Fact]
@@ -263,12 +354,67 @@ public class VariableCrossReferenceTests
         Assert.Empty(Analyze("10 DATA X,Y,Z"));
     }
 
+    // ── AnalyzeFunctions: DEF FN definitions and call sites ─────────────────────
+
+    [Fact]
+    public void AnalyzeFunctions_DefFn_IsReportedAsADefinition()
+    {
+        var refs = AnalyzeFunctions("10 DEF FN SQ(X)=X*X");
+
+        var r = Assert.Single(refs);
+        Assert.Equal("SQ", r.Name);
+        Assert.True(r.IsDefinition);
+    }
+
+    [Fact]
+    public void AnalyzeFunctions_CallSite_IsReportedAsNotADefinition()
+    {
+        var refs = AnalyzeFunctions("10 DEF FN SQ(X)=X*X\n20 PRINT FN SQ(5)");
+
+        Assert.Equal(2, refs.Count);
+        Assert.Contains(refs, r => r.Name == "SQ" && r.IsDefinition);
+        Assert.Contains(refs, r => r.Name == "SQ" && !r.IsDefinition);
+    }
+
+    [Fact]
+    public void AnalyzeFunctions_CallWithNoMatchingDefinition_IsStillReportedAsACall()
+    {
+        var refs = AnalyzeFunctions("10 PRINT FN UNDEF(5)");
+
+        var r = Assert.Single(refs);
+        Assert.Equal("UNDEF", r.Name);
+        Assert.False(r.IsDefinition);
+    }
+
+    [Fact]
+    public void AnalyzeFunctions_FunctionCallInsideAnotherDefFnBody_IsNotMistakenForADefinition()
+    {
+        var refs = AnalyzeFunctions("10 DEF FN F1(P1)=P1*10\n20 DEF FN F2(X)=FN F1(X)+1");
+
+        var f1 = refs.Where(r => r.Name == "F1").ToList();
+        Assert.Equal(2, f1.Count);
+        Assert.Single(f1, r => r.IsDefinition);
+        Assert.Single(f1, r => !r.IsDefinition);
+
+        var f2 = Assert.Single(refs, r => r.Name == "F2");
+        Assert.True(f2.IsDefinition);
+    }
+
+    [Fact]
+    public void AnalyzeFunctions_NoFnUsage_ReturnsEmpty()
+    {
+        Assert.Empty(AnalyzeFunctions("10 X=5"));
+    }
+
     #endregion
 
     #region Private Methods
 
     private static List<VariableReference> Analyze(string source) =>
         VariableCrossReference.Analyze(source).ToList();
+
+    private static List<FunctionReference> AnalyzeFunctions(string source) =>
+        VariableCrossReference.AnalyzeFunctions(source).ToList();
 
     #endregion
 }

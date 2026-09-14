@@ -80,6 +80,29 @@ public static class BasicDiagnostics
                 diagnostics.Add(new EditorDiagnostic(offset, length, $"Duplicate line number {number}."));
         }
 
+        // A DEF FN can appear anywhere in the document relative to its callers - same
+        // forward-reference tolerance as GOTO/GOSUB targets above - so a function only needs to be
+        // defined somewhere, not necessarily before its first call.
+        var functionRefs = VariableCrossReference.AnalyzeFunctions(source);
+        var definedFunctions = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var fn in functionRefs)
+            if (fn.IsDefinition) definedFunctions.Add(fn.Name);
+
+        foreach (var fn in functionRefs)
+        {
+            if (!fn.IsDefinition && !definedFunctions.Contains(fn.Name))
+                diagnostics.Add(new EditorDiagnostic(fn.Offset, fn.Length, $"Undefined function FN {fn.Name}."));
+        }
+
+        // DEF FN only works with a plain float parameter on real hardware - a % or $ suffix
+        // silently fails rather than raising an error there, so it's flagged here instead.
+        foreach (var param in VariableCrossReference.AnalyzeFunctionParameters(source))
+        {
+            if (param.ParameterName.EndsWith('%') || param.ParameterName.EndsWith('$'))
+                diagnostics.Add(new EditorDiagnostic(param.Offset, param.Length,
+                    $"DEF FN parameter \"{param.ParameterName}\" must be a plain float variable - % and $ suffixes aren't supported."));
+        }
+
         diagnostics.Sort((a, b) => a.Offset.CompareTo(b.Offset));
         return diagnostics;
     }

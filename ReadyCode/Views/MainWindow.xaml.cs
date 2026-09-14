@@ -6918,25 +6918,22 @@ public partial class MainWindow : Window
             return;
         }
 
-        var byName = VariableCrossReference.Analyze(document.Text)
-            .GroupBy(r => r.Name, StringComparer.Ordinal);
+        // Variables, DEF FN functions, and a DEF FN's own parameter are all separate namespaces in
+        // real BASIC (a variable, a function, and an unrelated function's same-named parameter can
+        // all legally share a name), so each tracked entry is keyed by (Name, IsFunction,
+        // LocalToFunction) rather than Name alone - otherwise same-named entries would collide in
+        // the tree below. See VariableReference.LocalToFunction for why a DEF FN parameter counts
+        // as its own scope rather than joining the global variable of the same name.
+        var seenKeys = new HashSet<(string Name, bool IsFunction, string? LocalToFunction)>();
 
-        var seenNames = new HashSet<string>(StringComparer.Ordinal);
+        var byName = VariableCrossReference.Analyze(document.Text)
+            .GroupBy(r => (r.Name, r.LocalToFunction));
 
         foreach (var group in byName)
         {
-            seenNames.Add(group.Key);
+            seenKeys.Add((group.Key.Name, false, group.Key.LocalToFunction));
 
-            var existing = variables.FirstOrDefault(v => v.Name == group.Key);
-            if (existing == null)
-            {
-                existing = new VariableInfo(group.Key);
-                int insertAt = 0;
-                while (insertAt < variables.Count && string.CompareOrdinal(variables[insertAt].Name, group.Key) < 0)
-                    insertAt++;
-                variables.Insert(insertAt, existing);
-            }
-
+            var existing = GetOrCreateVariableEntry(variables, group.Key.Name, isFunction: false, group.Key.LocalToFunction);
             existing.Occurrences.Clear();
             foreach (var reference in group.OrderBy(r => r.Offset))
             {
@@ -6946,8 +6943,44 @@ public partial class MainWindow : Window
             }
         }
 
+        var byFunctionName = VariableCrossReference.AnalyzeFunctions(document.Text)
+            .GroupBy(r => r.Name, StringComparer.Ordinal);
+
+        foreach (var group in byFunctionName)
+        {
+            seenKeys.Add((group.Key, true, null));
+
+            var existing = GetOrCreateVariableEntry(variables, group.Key, isFunction: true, localToFunction: null);
+            existing.Occurrences.Clear();
+            foreach (var reference in group.OrderBy(r => r.Offset))
+            {
+                var line = document.GetLineByOffset(reference.Offset);
+                TryGetBasicLineNumber(document, line.LineNumber, out int basicLineNumber);
+                existing.Occurrences.Add(new VariableOccurrenceInfo(
+                    line.LineNumber, basicLineNumber, reference.IsDefinition, isFunction: true));
+            }
+        }
+
         for (int i = variables.Count - 1; i >= 0; i--)
-            if (!seenNames.Contains(variables[i].Name)) variables.RemoveAt(i);
+            if (!seenKeys.Contains((variables[i].Name, variables[i].IsFunction, variables[i].LocalToFunction))) variables.RemoveAt(i);
+    }
+
+    // Finds the existing VariableInfo for (name, isFunction, localToFunction) in the (Name-sorted)
+    // Variable Explorer tree, or inserts a new one in sorted position - shared by both the
+    // variable and function indexing passes in RunVariableIndex above.
+    private static VariableInfo GetOrCreateVariableEntry(
+        ObservableCollection<VariableInfo> variables, string name, bool isFunction, string? localToFunction)
+    {
+        var existing = variables.FirstOrDefault(v =>
+            v.Name == name && v.IsFunction == isFunction && v.LocalToFunction == localToFunction);
+        if (existing != null) return existing;
+
+        existing = new VariableInfo(name, isFunction, localToFunction);
+        int insertAt = 0;
+        while (insertAt < variables.Count && string.CompareOrdinal(variables[insertAt].Name, name) < 0)
+            insertAt++;
+        variables.Insert(insertAt, existing);
+        return existing;
     }
 
     // Re-scans the active document for every label/constant's definition/reference occurrences,
@@ -7130,13 +7163,24 @@ public partial class MainWindow : Window
         string newName = box.Text.Trim().ToUpperInvariant();
         if (string.IsNullOrEmpty(newName) || newName == variable.Name) return;
 
+        if (variable.IsFunction)
+        {
+            if (!IsValidFunctionName(newName))
+            {
+                ViewModel.SetStatus($"\"{newName}\" isn't a valid BASIC function name.", StatusType.Warning);
+                return;
+            }
+            RenameFunction(variable.Name, newName);
+            return;
+        }
+
         if (!IsValidVariableName(newName))
         {
             ViewModel.SetStatus($"\"{newName}\" isn't a valid BASIC variable name.", StatusType.Warning);
             return;
         }
 
-        RenameVariable(variable.Name, newName);
+        RenameVariable(variable.Name, newName, variable.LocalToFunction);
     }
 
     // A variable name is a letter, then letters/digits, with an optional trailing $ or % - same
@@ -7156,15 +7200,65 @@ public partial class MainWindow : Window
             || keyword.Length != end;
     }
 
+    // Same shape as IsValidVariableName, but without the trailing $/% allowance - real BASIC's
+    // DEF FN only supports numeric functions, and VariableCrossReference.AnalyzeFunctions never
+    // captures a $ or % as part of a function name (see EnumerateFnOccurrences), so neither should
+    // a name this dialog accepts.
+    private static bool IsValidFunctionName(string name)
+    {
+        if (name.Length == 0 || !char.IsLetter(name[0])) return false;
+
+        for (int i = 1; i < name.Length; i++)
+            if (!char.IsLetterOrDigit(name[i])) return false;
+
+        return !BasicTokens.TryMatchKeyword(name, 0, BasicTokens.WordKeywordsLongestFirst, out string keyword)
+            || keyword.Length != name.Length;
+    }
+
     // Renames every occurrence of oldName (as currently grouped in the Variable Explorer) to
     // newName throughout the active document, as one grouped undo step, then refreshes the
     // Variable Explorer immediately (rather than waiting for the debounce timer) to reflect it.
-    private void RenameVariable(string oldName, string newName)
+    // localToFunction scopes the rename to one DEF FN's parameter (see
+    // VariableReference.LocalToFunction) rather than the global variable of the same name -
+    // passing null (the default) renames the global as before.
+    private void RenameVariable(string oldName, string newName, string? localToFunction = null)
     {
         var document = Editor.Document;
         if (document == null) return;
 
         var occurrences = VariableCrossReference.Analyze(document.Text)
+            .Where(r => r.Name == oldName && r.LocalToFunction == localToFunction)
+            .OrderByDescending(r => r.Offset) // back-to-front so earlier offsets stay valid
+            .ToList();
+        if (occurrences.Count == 0) return;
+
+        document.BeginUpdate();
+        try
+        {
+            foreach (var occurrence in occurrences)
+                document.Replace(occurrence.Offset, occurrence.Length, newName);
+        }
+        finally
+        {
+            document.EndUpdate();
+        }
+
+        RunVariableIndex();
+        string scopeSuffix = localToFunction == null ? "" : $", local to FN {localToFunction}";
+        ViewModel.SetStatus($"Renamed {oldName} to {newName} ({occurrences.Count} occurrence{(occurrences.Count == 1 ? "" : "s")}{scopeSuffix}).");
+    }
+
+    // RenameVariable's counterpart for DEF FN functions - renames every occurrence (the
+    // definition and every call site) of oldName to newName. Keyed off
+    // VariableCrossReference.AnalyzeFunctions rather than Analyze, so this only ever touches FN
+    // occurrences - functions and variables are separate namespaces in real BASIC (see
+    // RunVariableIndex), so a same-named variable elsewhere in the document is left untouched.
+    private void RenameFunction(string oldName, string newName)
+    {
+        var document = Editor.Document;
+        if (document == null) return;
+
+        var occurrences = VariableCrossReference.AnalyzeFunctions(document.Text)
             .Where(r => r.Name == oldName)
             .OrderByDescending(r => r.Offset) // back-to-front so earlier offsets stay valid
             .ToList();
@@ -7182,7 +7276,7 @@ public partial class MainWindow : Window
         }
 
         RunVariableIndex();
-        ViewModel.SetStatus($"Renamed {oldName} to {newName} ({occurrences.Count} occurrence{(occurrences.Count == 1 ? "" : "s")}).");
+        ViewModel.SetStatus($"Renamed FN {oldName} to FN {newName} ({occurrences.Count} occurrence{(occurrences.Count == 1 ? "" : "s")}).");
     }
 
     // Continuously re-clamps FolderTreeRow during an active drag so it can never grow large
@@ -7389,6 +7483,15 @@ public partial class MainWindow : Window
         tooltipText = "";
         if (col < 0 || col > lineText.Length) return false;
 
+        // Local scope for DEF FN parameters (see VariableReference.LocalToFunction), keyed by each
+        // occurrence's raw-run start offset - reuses the same source analysis the Variable
+        // Explorer is built from, so the tooltip always agrees with it rather than re-deriving
+        // scope independently. A DEF FN's parameter and every body reference to it are always on
+        // this one line, so analyzing lineText alone (rather than the whole document) is enough.
+        var localScopeByOffset = new Dictionary<int, string?>();
+        foreach (var reference in VariableCrossReference.Analyze(lineText))
+            localScopeByOffset[reference.Offset] = reference.LocalToFunction;
+
         bool inString = false;
         bool inDataArgs = false;
         int rawStart = -1;
@@ -7400,7 +7503,7 @@ public partial class MainWindow : Window
 
             if (c == '"')
             {
-                if (rawStart >= 0 && TryClassifyRawRun(lineText, rawStart, i, col, inDataArgs, out tooltipText))
+                if (rawStart >= 0 && TryClassifyRawRun(lineText, rawStart, i, col, inDataArgs, localScopeByOffset, out tooltipText))
                     return true;
                 rawStart = -1;
                 inString = !inString;
@@ -7418,7 +7521,7 @@ public partial class MainWindow : Window
 
             if (c == ':')
             {
-                if (rawStart >= 0 && TryClassifyRawRun(lineText, rawStart, i, col, inDataArgs, out tooltipText))
+                if (rawStart >= 0 && TryClassifyRawRun(lineText, rawStart, i, col, inDataArgs, localScopeByOffset, out tooltipText))
                     return true;
                 rawStart = -1;
                 inDataArgs = false;
@@ -7429,7 +7532,7 @@ public partial class MainWindow : Window
             // "?" is PRINT's literal shorthand (see BasicTokenizer.TryMatchKeywordOrAbbreviation).
             if (c == '?')
             {
-                if (rawStart >= 0 && TryClassifyRawRun(lineText, rawStart, i, col, inDataArgs, out tooltipText))
+                if (rawStart >= 0 && TryClassifyRawRun(lineText, rawStart, i, col, inDataArgs, localScopeByOffset, out tooltipText))
                     return true;
                 rawStart = -1;
 
@@ -7445,7 +7548,7 @@ public partial class MainWindow : Window
                 if (BasicKeywordAbbreviations.TryMatchKeywordOrAbbreviation(
                     lineText, i, BasicTokens.WordKeywordsLongestFirst, out string keyword, out int matchedLength))
                 {
-                    if (rawStart >= 0 && TryClassifyRawRun(lineText, rawStart, i, col, inDataArgs, out tooltipText))
+                    if (rawStart >= 0 && TryClassifyRawRun(lineText, rawStart, i, col, inDataArgs, localScopeByOffset, out tooltipText))
                         return true;
                     rawStart = -1;
 
@@ -7474,21 +7577,21 @@ public partial class MainWindow : Window
                 continue;
             }
 
-            if (rawStart >= 0 && TryClassifyRawRun(lineText, rawStart, i, col, inDataArgs, out tooltipText))
+            if (rawStart >= 0 && TryClassifyRawRun(lineText, rawStart, i, col, inDataArgs, localScopeByOffset, out tooltipText))
                 return true;
             rawStart = -1;
             i++;
         }
 
         return rawStart >= 0 &&
-               TryClassifyRawRun(lineText, rawStart, lineText.Length, col, inDataArgs, out tooltipText);
+               TryClassifyRawRun(lineText, rawStart, lineText.Length, col, inDataArgs, localScopeByOffset, out tooltipText);
     }
 
     // Checks whether the raw (non-keyword) run [start, end) - extended by one trailing $ or %
     // if present - contains `col`. DATA-statement values are excluded (they're literals, not
     // variable references); everything else in range is reported as a variable.
     private static bool TryClassifyRawRun(string lineText, int start, int end, int col, bool inDataArgs,
-        out string tooltipText)
+        IReadOnlyDictionary<int, string?> localScopeByOffset, out string tooltipText)
     {
         tooltipText = "";
 
@@ -7507,7 +7610,12 @@ public partial class MainWindow : Window
         // custom PETSCII font renders as Pi - a plain-font tooltip needs the real Pi glyph
         // substituted in instead, or it shows the misleading 'ÿ'.
         string displayName = name.Replace((char)0xFF, 'π');
-        tooltipText = $"(variable) {typeLabel} {displayName}";
+
+        string scopeSuffix = localScopeByOffset.TryGetValue(start, out string? localToFunction) && localToFunction != null
+            ? $" (local to FN {localToFunction})"
+            : "";
+
+        tooltipText = $"(variable) {typeLabel} {displayName}{scopeSuffix}";
         return true;
     }
 
