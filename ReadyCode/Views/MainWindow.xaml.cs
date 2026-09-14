@@ -7884,6 +7884,52 @@ public partial class MainWindow : Window
             {
                 if (int.TryParse(match.Groups[2].Value, out int currentNumber))
                 {
+                    int padding = ViewModel.Settings.LineNumberPadding;
+
+                    // If the caret sits at or before the line's own leading number (e.g. pressed
+                    // Enter at column 1), the intent is "insert a new line ABOVE this one," not
+                    // "continue the sequence after it" - split the gap between the line above (or
+                    // 0, if this is the very first line) and this line's own number, instead of
+                    // incrementing forward from it and colliding with this line's content.
+                    int caretCol = Editor.CaretOffset - line.Offset;
+                    if (caretCol <= match.Groups[2].Index)
+                    {
+                        int previousNumber = 0;
+                        bool hasPreviousNumber = false;
+                        DocumentLine? prevDocLine = line.PreviousLine;
+                        if (prevDocLine != null)
+                        {
+                            Match prevMatch = _leadingLineNumberPattern.Match(document.GetText(prevDocLine));
+                            if (prevMatch.Success && int.TryParse(prevMatch.Groups[2].Value, out int prevNumber))
+                            {
+                                previousNumber = prevNumber;
+                                hasPreviousNumber = true;
+                            }
+                        }
+
+                        // 0 is itself a valid BASIC line number, so when there's no real previous
+                        // line to stay above, the only floor is the current line's own number -
+                        // don't also require the midpoint to be strictly greater than the
+                        // "previousNumber = 0" default, or line 1 would have nowhere to go.
+                        int aboveMidpoint = (previousNumber + currentNumber) / 2;
+                        bool noRoom = aboveMidpoint >= currentNumber ||
+                            (hasPreviousNumber && aboveMidpoint <= previousNumber);
+                        if (noRoom) return;
+
+                        string aboveLabel = padding > 0
+                            ? aboveMidpoint.ToString().PadLeft(padding, '0')
+                            : aboveMidpoint.ToString();
+
+                        // Insert the new numbered (empty) line before this line's own start, then
+                        // land the caret right after the new line number - ready to type on the
+                        // freshly inserted line, same as the "continue forward" branch below lands
+                        // the caret right after the number it inserts.
+                        e.Handled = true;
+                        document.Insert(line.Offset, aboveLabel + " " + Environment.NewLine);
+                        Editor.CaretOffset = line.Offset + aboveLabel.Length + 1;
+                        return;
+                    }
+
                     int nextNumber = currentNumber + ViewModel.Settings.AutoNumberIncrement;
 
                     // If the naive increment would land on or past an already-existing line
@@ -7895,7 +7941,7 @@ public partial class MainWindow : Window
                     if (nextDocLine != null)
                     {
                         Match nextMatch = _leadingLineNumberPattern.Match(document.GetText(nextDocLine));
-                        
+
                         if (nextMatch.Success &&
                             int.TryParse(nextMatch.Groups[2].Value, out int nextExistingNumber) &&
                             nextNumber >= nextExistingNumber)
@@ -7906,8 +7952,7 @@ public partial class MainWindow : Window
                         }
                     }
 
-                    int padding       = ViewModel.Settings.LineNumberPadding;
-                    string nextLabel  = padding > 0
+                    string nextLabel = padding > 0
                         ? nextNumber.ToString().PadLeft(padding, '0')
                         : nextNumber.ToString();
 
