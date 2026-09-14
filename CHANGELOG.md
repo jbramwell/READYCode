@@ -1,5 +1,21 @@
 # Change Log
 
+## [v2.5.0] - 2026-09-14
+
+### New Features
+
+- **DEF FN function tracking** - the Variable Explorer now lists `DEF FN` functions alongside variables (with a new `FN` type badge), showing every definition and call-site occurrence and supporting inline renaming. Accordingly, `DEF FN` parameters are now correctly tracked as local to their own functions rather than merged with a same-named global variable
+
+### Improvements
+
+- Double-clicking a row in the Errors panel now selects the exact text the diagnostic's squiggle underlines, scrolling it into view if it's off-screen, instead of only moving the caret to the start of the line
+
+### Bug Fixes
+
+- Fixed calls to an undefined `FN` function, and a `DEF FN` parameter declared with a `%` or `$` suffix, not being flagged as errors
+- Fixed Prettify not inserting a space between `FN` and the function name
+- Fixed pressing Enter at the start of a line (before its line number) corrupting the line instead of inserting a new, correctly-numbered line above it
+
 ## [v2.4.0] - 2026-09-11
 
 ### New Features
