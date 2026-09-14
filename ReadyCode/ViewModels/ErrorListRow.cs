@@ -61,5 +61,11 @@ public sealed class ErrorListRow
     /// </summary>
     public int Offset { get; init; }
 
+    /// <summary>
+    /// Gets the diagnostic's span length, so a double-click can select exactly the text the
+    /// squiggle underlines rather than just placing the caret at <see cref="Offset"/>.
+    /// </summary>
+    public int Length { get; init; }
+
     #endregion
 }

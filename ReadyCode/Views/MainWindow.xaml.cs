@@ -6706,7 +6706,9 @@ public partial class MainWindow : Window
 
     // Jumps to an Errors-tab row's location, activating its (possibly inactive) tab first - same
     // "jump to a place in a possibly-inactive tab" shape as DebugCallStackList_MouseDoubleClick
-    // above, just off a row's own Tab/Line instead of the debug tab/call-stack frame.
+    // above, just off a row's own Tab/Line instead of the debug tab/call-stack frame. Also selects
+    // the diagnostic's exact offset/length span - the same text the Errors squiggle underlines -
+    // rather than only placing the caret at the start of the line.
     private void ErrorsGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (ErrorsGrid.SelectedItem is not ErrorListRow row) return;
@@ -6715,6 +6717,19 @@ public partial class MainWindow : Window
             ActivateTab(row.Tab);
 
         MoveCaretToDocumentLine(row.Line);
+        Editor.Select(row.Offset, row.Length);
+
+        // MoveCaretToDocumentLine already scrolled the line into view vertically, but it puts the
+        // caret at column 1 first - on a long line, the selection Select() just made can still
+        // sit off-screen horizontally (or even vertically, if it wraps past the line MoveCaret
+        // scrolled to). BringCaretToView re-scrolls both axes to the caret's actual position now
+        // (the selection's end), same as every other jump-to-selection spot in this file.
+        Editor.TextArea.Caret.BringCaretToView();
+
+        // Select() moves the caret, which fires Editor_CaretPositionChanged -> UpdateGhostText -
+        // if the selected span happens to be a complete keyword/function name, that can show
+        // stray ghost text at the caret (see NavigateToCurrentMatch's identical precaution).
+        ClearGhostText();
     }
 
     // Re-analyzes the active document and refreshes the squiggle underlines: for BASIC, undefined
@@ -6771,6 +6786,7 @@ public partial class MainWindow : Window
                         BasicLineNumber = basicLineNumber,
                         Tab = tab,
                         Offset = diag.Offset,
+                        Length = diag.Length,
                     });
                 }
             }
