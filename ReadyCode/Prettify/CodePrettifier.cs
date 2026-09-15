@@ -137,11 +137,23 @@ public static class CodePrettifier
     }
 
     /// <summary>
-    /// Renumbers all BASIC line numbers starting at <paramref name="start"/> in steps of
+    /// Renumbers BASIC line numbers starting at <paramref name="start"/> in steps of
     /// <paramref name="increment"/>, optionally zero-padded to <paramref name="padding"/> digits,
-    /// updating any line-number references to match.
+    /// updating any line-number references throughout the whole document to match.
     /// </summary>
-    public static string RenumberLines(string source, int start, int increment, int padding)
+    /// <param name="source">The full BASIC source to renumber.</param>
+    /// <param name="start">The line number the first renumbered line gets.</param>
+    /// <param name="increment">The step between consecutive renumbered lines.</param>
+    /// <param name="padding">Zero-pad renumbered line numbers to this many digits, or 0 for none.</param>
+    /// <param name="onlyLineNumbers">
+    /// When given a non-empty set, only lines whose current (old) line number is in this set are
+    /// renumbered - every other line keeps its own number unchanged. Every line's GOTO/GOSUB/
+    /// THEN/RESTORE/RUN references are still rewritten throughout the document wherever they
+    /// point at a renumbered line, whether or not the referencing line itself was renumbered.
+    /// Null or empty renumbers every line, same as before this parameter existed.
+    /// </param>
+    public static string RenumberLines(
+        string source, int start, int increment, int padding, IReadOnlySet<int>? onlyLineNumbers = null)
     {
         var numbered = new List<(int oldNum, string code)>();
         foreach (var line in SplitLines(source))
@@ -152,15 +164,26 @@ public static class CodePrettifier
                 numbered.Add((n, code));
         }
 
+        bool renumberAll = onlyLineNumbers == null || onlyLineNumbers.Count == 0;
+
+        // Only lines being renumbered get a mapping entry - UpdateLineReferences below leaves a
+        // reference's digits untouched when the target number it's already pointing at has no
+        // entry, so a line kept at its original number (and every reference to it, wherever that
+        // reference lives) is naturally left alone.
         var mapping = new Dictionary<int, int>(numbered.Count);
-        for (int i = 0; i < numbered.Count; i++)
-            mapping[numbered[i].oldNum] = start + i * increment;
+        int nextNumber = start;
+        foreach (var (oldNum, _) in numbered)
+        {
+            if (!renumberAll && !onlyLineNumbers!.Contains(oldNum)) continue;
+            mapping[oldNum] = nextNumber;
+            nextNumber += increment;
+        }
 
         var result = new List<string>(numbered.Count);
         foreach (var (oldNum, code) in numbered)
         {
-            int newNum    = mapping[oldNum];
-            string numStr = padding > 0 ? newNum.ToString().PadLeft(padding, '0') : newNum.ToString();
+            int newNum     = mapping.TryGetValue(oldNum, out int mapped) ? mapped : oldNum;
+            string numStr  = padding > 0 ? newNum.ToString().PadLeft(padding, '0') : newNum.ToString();
             string updated = UpdateLineReferences(code, mapping);
             result.Add($"{numStr} {updated}");
         }

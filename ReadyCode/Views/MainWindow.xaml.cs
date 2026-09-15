@@ -2646,9 +2646,45 @@ public partial class MainWindow : Window
         var doc = Editor.Document;
         if (doc == null || string.IsNullOrWhiteSpace(doc.Text)) return;
 
-        int increment = ViewModel.Settings.AutoNumberIncrement;
-        int padding   = ViewModel.Settings.LineNumberPadding;
-        string renumbered = CodePrettifier.RenumberLines(doc.Text, increment, increment, padding);
+        bool hasSelection = Editor.SelectionLength > 0;
+        var (selStartLine, selEndLine) = GetSelectedLineRange();
+
+        // Collected up front - reused both to seed the dialog's default starting number (the
+        // lowest BASIC line number actually selected) and, if the user keeps "Selected lines
+        // only" checked, as the renumber's actual scope.
+        var selectedLineNumbers = new HashSet<int>();
+        if (hasSelection)
+            for (int i = selStartLine; i <= selEndLine; i++)
+                if (TryGetBasicLineNumber(doc, i, out int n))
+                    selectedLineNumbers.Add(n);
+
+        int defaultStart = selectedLineNumbers.Count > 0 ? selectedLineNumbers.Min() : 10;
+
+        var dialog = new RenumberDialog(
+            defaultStart: defaultStart,
+            defaultIncrement: ViewModel.Settings.AutoNumberIncrement,
+            hasSelection: hasSelection)
+        { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+
+        int padding = ViewModel.Settings.LineNumberPadding;
+
+        // CodePrettifier.RenumberLines still rewrites GOTO/GOSUB/THEN/RESTORE/RUN references
+        // across the WHOLE document, so a reference outside the selection pointing at a line
+        // inside it (or vice versa) is kept correct either way.
+        HashSet<int>? onlyLineNumbers = null;
+        if (dialog.RenumberSelectedOnly)
+        {
+            onlyLineNumbers = selectedLineNumbers;
+            if (onlyLineNumbers.Count == 0)
+            {
+                ViewModel.SetStatus("No BASIC lines in the current selection to renumber.", StatusType.Warning);
+                return;
+            }
+        }
+
+        string renumbered = CodePrettifier.RenumberLines(
+            doc.Text, dialog.StartLineNumber, dialog.Increment, padding, onlyLineNumbers);
 
         if (renumbered == doc.Text)
         {
@@ -2656,15 +2692,26 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Renumbering can't fix a reference to a line number that never existed - it's left
-        // unchanged, so warn rather than silently applying a renumber with dangling references.
-        int danglingCount = BasicDiagnostics.Analyze(renumbered)
-            .Count(d => d.Message.EndsWith("does not exist."));
-        if (danglingCount > 0)
+        // Renumbering can't fix a reference to a line number that never existed, and renumbering
+        // only a selection can land a new number on top of an untouched line outside it - both
+        // are left as-is, so warn rather than silently applying a renumber with either problem.
+        var problems = BasicDiagnostics.Analyze(renumbered)
+            .Where(d => d.Message.EndsWith("does not exist.") || d.Message.StartsWith("Duplicate line number"))
+            .ToList();
+        if (problems.Count > 0)
         {
+            int danglingCount  = problems.Count(d => d.Message.EndsWith("does not exist."));
+            int duplicateCount = problems.Count(d => d.Message.StartsWith("Duplicate line number"));
+
+            var messageParts = new List<string>();
+            if (danglingCount > 0)
+                messageParts.Add($"{danglingCount} GOTO/GOSUB/THEN reference(s) would point to line numbers that don't exist.");
+            if (duplicateCount > 0)
+                messageParts.Add($"{duplicateCount} line number(s) would end up duplicated.");
+            messageParts.Add("Apply the renumber anyway?");
+
             var result = MessageBox.Show(
-                $"{danglingCount} GOTO/GOSUB/THEN reference(s) point to line numbers that don't exist " +
-                "and will be left unchanged. Apply the renumber anyway?",
+                string.Join("\n\n", messageParts),
                 "Renumber Code", MessageBoxButton.YesNo, MessageBoxImage.Warning);
             if (result != MessageBoxResult.Yes) return;
         }

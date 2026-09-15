@@ -403,6 +403,47 @@ public class CodePrettifierTests
         Assert.Equal(expected, CodePrettifier.RenumberLines(input, 10, 10, 0));
     }
 
+    // ── RenumberLines: onlyLineNumbers (partial/selection renumbering) ─────────
+
+    [Fact]
+    public void RenumberLines_OnlyLineNumbers_RenumbersOnlyThoseLinesLeavingOthersUnchanged()
+    {
+        string input    = "5 PRINT A\n10 PRINT B\n15 PRINT C";
+        string expected = "5 PRINT A\n100 PRINT B\n15 PRINT C";
+        Assert.Equal(expected, CodePrettifier.RenumberLines(input, 100, 10, 0, new HashSet<int> { 10 }));
+    }
+
+    [Fact]
+    public void RenumberLines_OnlyLineNumbers_UpdatesReferenceFromOutsideTheSubsetToARenumberedLine()
+    {
+        string input    = "5 GOTO 10\n10 PRINT B\n15 PRINT C";
+        string expected = "5 GOTO 100\n100 PRINT B\n15 PRINT C";
+        Assert.Equal(expected, CodePrettifier.RenumberLines(input, 100, 10, 0, new HashSet<int> { 10 }));
+    }
+
+    [Fact]
+    public void RenumberLines_OnlyLineNumbers_LeavesReferenceFromInsideTheSubsetToAnUnrenumberedLineUnchanged()
+    {
+        string input    = "5 PRINT A\n10 GOTO 15\n15 PRINT C";
+        string expected = "5 PRINT A\n100 GOTO 15\n15 PRINT C";
+        Assert.Equal(expected, CodePrettifier.RenumberLines(input, 100, 10, 0, new HashSet<int> { 10 }));
+    }
+
+    [Fact]
+    public void RenumberLines_OnlyLineNumbers_MultipleSelectedLinesRenumberSequentially()
+    {
+        string input    = "5 PRINT A\n10 PRINT B\n15 PRINT C\n20 PRINT D";
+        string expected = "5 PRINT A\n100 PRINT B\n105 PRINT C\n20 PRINT D";
+        Assert.Equal(expected, CodePrettifier.RenumberLines(input, 100, 5, 0, new HashSet<int> { 10, 15 }));
+    }
+
+    [Fact]
+    public void RenumberLines_EmptyOnlyLineNumbers_RenumbersEveryLineSameAsDefault()
+    {
+        string input = "5 PRINT A\n10 PRINT B";
+        Assert.Equal("10 PRINT A\n20 PRINT B", CodePrettifier.RenumberLines(input, 10, 10, 0, new HashSet<int>()));
+    }
+
     // ── Prettify (orchestrator) ───────────────────────────────────────────────
 
     [Fact]
