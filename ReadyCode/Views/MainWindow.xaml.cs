@@ -5717,6 +5717,30 @@ public partial class MainWindow : Window
             return;
         }
 
+        // REM makes the rest of the physical line a comment - no keyword/variable completion
+        // makes sense once the caret is past the REM keyword itself, same "everything after REM
+        // isn't code" rule every diagnostic/analysis pass in this codebase already follows.
+        if (ViewModel.ActiveTab?.Language == EditorLanguage.Basic)
+        {
+            var caretLine = Editor.Document.GetLineByOffset(Editor.CaretOffset);
+            string caretLineText = Editor.Document.GetText(caretLine);
+            if (BasicDiagnostics.TryParseLineNumber(caretLineText, out _, out _, out _, out int codeStart))
+            {
+                string code = caretLineText[codeStart..];
+                int remStart = BasicDiagnostics.FindTopLevelRemStart(code);
+                if (remStart < code.Length &&
+                    BasicTokens.TryMatchKeyword(code, remStart, BasicTokens.WordKeywordsLongestFirst, out string remKeyword))
+                {
+                    int caretCol = Editor.CaretOffset - caretLine.Offset - codeStart;
+                    if (caretCol >= remStart + remKeyword.Length)
+                    {
+                        ClearGhostText();
+                        return;
+                    }
+                }
+            }
+        }
+
         var (_, word) = GetWordBeforeCaret();
 
         if (string.IsNullOrEmpty(word) || word.All(char.IsDigit))
