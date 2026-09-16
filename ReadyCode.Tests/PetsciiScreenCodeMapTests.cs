@@ -108,5 +108,59 @@ public class PetsciiScreenCodeMapTests
         Assert.Equal("HELLO WORLD", PetsciiScreenCodeMap.FromDisplayText("HELLO WORLD"));
     }
 
+    // ── ToDisplayText(string, bool): mode-aware overload ─────────────────────
+    // Mirrors PetsciiGlyphGenerator.ConstructElement's/MainWindow.ApplyC64Shift's real-hardware
+    // behavior: "Upper Active" (the default) substitutes a lowercase-range byte to its PETSCII
+    // graphics glyph (a real C64's Shift+letter position in that charset); "Upper Inactive"/Lower
+    // Case Mode instead just swaps a letter's case for display - that charset has no letter
+    // graphics to substitute to.
+
+    [Fact]
+    public void ToDisplayText_UpperActiveMode_UppercaseLetterPassesThroughUnchanged()
+    {
+        Assert.Equal("A", PetsciiScreenCodeMap.ToDisplayText("A", isUpperCaseModeActive: true));
+    }
+
+    [Fact]
+    public void ToDisplayText_UpperActiveMode_LowercaseLetterSubstitutesToGraphicsGlyph()
+    {
+        string display = PetsciiScreenCodeMap.ToDisplayText("a", isUpperCaseModeActive: true);
+        char expected = (char)(0xE000 + PetsciiScreenCodeMap.ToScreenCode((byte)'a'));
+        Assert.Equal(expected.ToString(), display);
+    }
+
+    [Fact]
+    public void ToDisplayText_LowerCaseMode_UppercaseLetterSwapsToLowercase()
+    {
+        Assert.Equal("a", PetsciiScreenCodeMap.ToDisplayText("A", isUpperCaseModeActive: false));
+    }
+
+    [Fact]
+    public void ToDisplayText_LowerCaseMode_LowercaseLetterSwapsToUppercase()
+    {
+        Assert.Equal("A", PetsciiScreenCodeMap.ToDisplayText("a", isUpperCaseModeActive: false));
+    }
+
+    [Fact]
+    public void ToDisplayText_LowerCaseMode_NonLetterUnaffected()
+    {
+        Assert.Equal(" !", PetsciiScreenCodeMap.ToDisplayText(" !", isUpperCaseModeActive: false));
+    }
+
+    [Fact]
+    public void ToDisplayText_LowerCaseMode_MixedCaseWord_SwapsEveryLetter()
+    {
+        Assert.Equal("hELLO", PetsciiScreenCodeMap.ToDisplayText("Hello", isUpperCaseModeActive: false));
+    }
+
+    [Fact]
+    public void ToDisplayText_SingleArgOverload_MatchesUpperActiveModeExactly()
+    {
+        string mixed = "Hello, World! " + (char)0x93; // mixed case plus a control code
+        Assert.Equal(
+            PetsciiScreenCodeMap.ToDisplayText(mixed, isUpperCaseModeActive: true),
+            PetsciiScreenCodeMap.ToDisplayText(mixed));
+    }
+
     #endregion
 }

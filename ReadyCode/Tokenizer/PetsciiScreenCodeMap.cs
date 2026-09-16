@@ -58,12 +58,37 @@ public static class PetsciiScreenCodeMap
     /// pass through unchanged. The inverse of <see cref="FromDisplayText"/>.
     /// </summary>
     /// <param name="raw">Raw PETSCII bytes, one per <see cref="char"/> (0-255).</param>
-    public static string ToDisplayText(string raw)
+    public static string ToDisplayText(string raw) => ToDisplayText(raw, isUpperCaseModeActive: true);
+
+    /// <summary>
+    /// The <see cref="ToDisplayText(string)"/> overload used wherever the caller needs the result
+    /// to reflect a specific tab's C64 keyboard/charset mode rather than always assuming "Upper
+    /// Active" - e.g. the debugger's live Variables tree, whose string values should display the
+    /// same way actually typing them into the debugged tab right now would (see
+    /// <c>MainWindow.ApplyC64Shift</c>/<c>ReadyCode.Editor.PetsciiGlyphGenerator.ConstructElement</c>,
+    /// whose identical mode-aware decision this mirrors: "Upper Inactive" (Lower Case Mode) swaps a
+    /// plain ASCII letter's case instead of substituting it - real "upper/lower" charset hardware
+    /// has no letter graphics to substitute to - while every other byte, and every letter in the
+    /// default "Upper Active" mode, still goes through the normal screen-code substitution below.
+    /// </summary>
+    /// <param name="raw">Raw PETSCII bytes, one per <see cref="char"/> (0-255).</param>
+    /// <param name="isUpperCaseModeActive">
+    /// Whether the C64's default "Upper Active" charset is in effect, as opposed to "Upper
+    /// Inactive" (the upper/lowercase charset) - see <c>EditorTab.IsUpperCaseModeActive</c>.
+    /// </param>
+    public static string ToDisplayText(string raw, bool isUpperCaseModeActive)
     {
         var chars = new char[raw.Length];
         for (int i = 0; i < raw.Length; i++)
         {
             char c = raw[i];
+
+            if (!isUpperCaseModeActive && char.IsAsciiLetter(c))
+            {
+                chars[i] = char.IsAsciiLetterUpper(c) ? char.ToLowerInvariant(c) : char.ToUpperInvariant(c);
+                continue;
+            }
+
             chars[i] = c <= 0xFF && NeedsGlyphSubstitution((byte)c)
                 ? (char)(0xE000 + ToScreenCode((byte)c))
                 : c;

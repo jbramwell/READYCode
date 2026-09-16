@@ -897,10 +897,11 @@ public class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Gets the simple variables read from the machine at the last stop, sorted by name. Empty
-    /// while running or not debugging.
+    /// Gets the Variables tree's root rows read from the machine at the last stop, sorted by
+    /// name: a leaf per simple variable, and a collapsible root per array (its elements loaded
+    /// lazily - see <see cref="LoadArrayChildrenAsync"/>). Empty while running or not debugging.
     /// </summary>
-    public ObservableCollection<BasicVariable> DebugVariables { get; } = new();
+    public ObservableCollection<DebugVariableNode> DebugVariables { get; } = new();
 
     /// <summary>
     /// Gets the GOSUB call stack read from the machine at the last stop, innermost first. Empty
@@ -1865,9 +1866,14 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    // Ends the active debug session - deletes every checkpoint it created and detaches, without
-    // resetting or otherwise disturbing the running machine.
-    private async Task DebugStopAsync()
+    /// <summary>
+    /// Ends the active debug session - deletes every checkpoint it created and detaches, without
+    /// resetting or otherwise disturbing the running machine. A no-op if nothing is being
+    /// debugged. Public (not just <see cref="DebugStopCommand"/>) so <c>MainWindow.OnClosing</c>
+    /// can also await this exact cleanup before the app actually closes, rather than leaving a
+    /// live session dangling.
+    /// </summary>
+    public async Task DebugStopAsync()
     {
         if (DebugSession == null) return;
 
@@ -1957,9 +1963,11 @@ public class MainViewModel : INotifyPropertyChanged
     /// <summary>
     /// Re-reads the variable table and call stack from the machine and refreshes
     /// <see cref="DebugVariables"/>/<see cref="DebugCallStack"/> - public so a caller that just
-    /// wrote a new value to a variable (see <c>MainWindow.DebugVariablesGrid_CellEditEnding</c>)
-    /// can refresh the display with the true resulting value read back from the machine, rather
-    /// than trusting whatever was typed.
+    /// wrote a new value to a variable (see <c>MainWindow.CommitDebugValueEdit</c>) can
+    /// refresh the display with the true resulting value read back from the machine, rather than
+    /// trusting whatever was typed. Array elements are NOT fetched here - only each array's shape,
+    /// as a collapsed root row - see <see cref="LoadArrayChildrenAsync"/> for why, and for how an
+    /// already-expanded array still ends up refreshed by the time this method returns.
     /// </summary>
     public async Task RefreshDebugVariablesAndCallStackAsync()
     {
@@ -1967,33 +1975,34 @@ public class MainViewModel : INotifyPropertyChanged
 
         try
         {
-            byte[] zeroPage = await session.ReadMemoryAsync(0x2D, 4); // VARTAB ($2D-$2E), ARYTAB ($2F-$30)
+            byte[] zeroPage = await session.ReadMemoryAsync(0x2D, 6); // VARTAB ($2D-$2E), ARYTAB ($2F-$30), STREND ($31-$32)
             ushort vartab = (ushort)(zeroPage[0] | (zeroPage[1] << 8));
             ushort arytab = (ushort)(zeroPage[2] | (zeroPage[3] << 8));
+            ushort strend = (ushort)(zeroPage[4] | (zeroPage[5] << 8));
 
-            var variables = new List<BasicVariable>();
+            // Every node picks up the debugged tab's current Lower Case Mode at creation time;
+            // MainWindow.RefreshDebugVariablesDisplayMode keeps already-created nodes in sync too,
+            // for the moment the mode is toggled rather than only on the next stop.
+            bool isUpperCaseModeActive = DebugTab?.IsUpperCaseModeActive ?? true;
+            var nodes = new List<DebugVariableNode>();
+
             if (arytab > vartab)
             {
                 byte[] tableBytes = await session.ReadMemoryAsync(vartab, arytab - vartab);
-                variables.AddRange(VariableTableParser.ParseSimpleVariables(tableBytes, vartab, arytab));
-
-                // String values point into either literal program text or the string heap, so
-                // their characters aren't part of the table read above - resolve each one with
-                // its own follow-up read. Same PETSCII-byte-value-is-the-display-char-value
-                // convention PrgConverter.DetokenizeLine already uses for string literals.
-                for (int i = 0; i < variables.Count; i++)
-                {
-                    if (variables[i] is not { Type: BasicVariableType.String, Value: StringDescriptor descriptor })
-                        continue;
-                    if (descriptor.Length == 0) continue;
-
-                    byte[] chars = await session.ReadMemoryAsync(descriptor.HeapPointer, descriptor.Length);
-                    string text = new(chars.Select(b => (char)b).ToArray());
-                    variables[i] = variables[i] with { Value = new ResolvedStringValue(text, descriptor.HeapPointer) };
-                }
-
-                variables.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
+                var simpleVars = VariableTableParser.ParseSimpleVariables(tableBytes, vartab, arytab).ToList();
+                await ResolveStringValuesAsync(session, simpleVars, maxResolutions: 300);
+                foreach (var variable in simpleVars)
+                    nodes.Add(new DebugVariableNode(variable) { IsUpperCaseModeActive = isUpperCaseModeActive });
             }
+
+            if (strend > arytab)
+            {
+                foreach (var header in await LoadArrayHeadersAsync(session, arytab, strend))
+                    nodes.Add(new DebugVariableNode(header.Name, header.ElementType, header.DimensionSizes, header.DataAddress)
+                        { IsUpperCaseModeActive = isUpperCaseModeActive });
+            }
+
+            nodes.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
 
             // The GOSUB call stack needs the 6502 stack pointer, which not every target can
             // read (the C64 Ultimate's REST API has no register access at all - see
@@ -2006,21 +2015,178 @@ public class MainViewModel : INotifyPropertyChanged
                 callStack = GosubStackParser.Parse(stackPage, stackPointer, DebugLineAddressTable);
             }
 
+            var reexpand = new List<DebugVariableNode>();
+
             Application.Current.Dispatcher.Invoke(() =>
             {
+                // Reuse an existing node's identity where possible (matched by name AND kind, since
+                // a simple variable and an array can legally share a name on real BASIC - they're
+                // looked up through entirely separate tables) rather than replacing it wholesale -
+                // WPF ties a TreeViewItem's expansion to the bound object's identity, so this is
+                // what keeps an array the user has open expanded (and a leaf's inline editor, if
+                // one happens to be open) across every step instead of collapsing/closing it on
+                // every single stop. GroupBy rather than ToDictionary so that same-name collision
+                // can never throw - worst case, only the first of the two keeps its identity.
+                var existingByKey = DebugVariables
+                    .GroupBy(n => (n.Name, n.IsArray))
+                    .ToDictionary(g => g.Key, g => g.First());
+
                 DebugVariables.Clear();
-                foreach (var variable in variables)
-                    DebugVariables.Add(variable);
+                foreach (var node in nodes)
+                {
+                    var toAdd = node;
+                    if (existingByKey.TryGetValue((node.Name, node.IsArray), out var existing))
+                    {
+                        if (existing.IsArray)
+                        {
+                            existing.RefreshArrayShape(node.DimensionSizes, node.DataAddress);
+                            // This stop's values haven't been fetched into Children yet - reset so
+                            // a stale expand can't show a previous stop's contents.
+                            existing.ChildrenLoaded = false;
+                            if (existing.IsExpanded) reexpand.Add(existing);
+                        }
+                        else
+                        {
+                            existing.UpdateVariable(node.Variable!);
+                        }
+                        toAdd = existing;
+                    }
+                    DebugVariables.Add(toAdd);
+                }
 
                 DebugCallStack.Clear();
                 foreach (var frame in callStack)
                     DebugCallStack.Add(frame);
             });
+
+            // Refresh any array the user already had open so it reflects this stop's values too,
+            // rather than leaving it showing whatever it last showed.
+            foreach (var node in reexpand)
+                await LoadArrayChildrenAsync(node);
         }
         catch (Exception ex)
         {
             Application.Current.Dispatcher.Invoke(() =>
                 SetStatus($"Failed to refresh variables/call stack: {ex.Message}", StatusType.Error));
+        }
+    }
+
+    /// <summary>
+    /// Fetches and decodes one array's element data from the live session and populates
+    /// <paramref name="node"/>'s <see cref="DebugVariableNode.Children"/> - the lazy-load
+    /// counterpart to <see cref="RefreshDebugVariablesAndCallStackAsync"/> only ever reading each
+    /// array's small header (see <see cref="LoadArrayHeadersAsync"/>), never its actual contents.
+    /// A string array's per-element heap resolution is exactly the same kind of one-round-trip-per-
+    /// element cost that made resolving every string eagerly impractical for
+    /// <see cref="RefreshDebugVariablesAndCallStackAsync"/> - deferring it until the one array the
+    /// user is actually looking at is expanded is the whole point of this method existing
+    /// separately, so unlike that method's capped resolution, this one always resolves every
+    /// element (nothing else in the table competes for the round trips at this point).
+    /// </summary>
+    /// <param name="node">
+    /// The array root to load. A no-op if it isn't an array, or its children already reflect the
+    /// current stop (<see cref="DebugVariableNode.ChildrenLoaded"/>).
+    /// </param>
+    public async Task LoadArrayChildrenAsync(DebugVariableNode node)
+    {
+        if (!node.IsArray || node.ChildrenLoaded) return;
+        if (DebugSession is not { } session) return;
+
+        node.IsLoading = true;
+        try
+        {
+            int elementWidth = node.ElementType switch { BasicVariableType.Integer => 2, BasicVariableType.String => 3, _ => 5 };
+            int elementCount = 1;
+            foreach (int size in node.DimensionSizes) elementCount *= size;
+
+            byte[] data = elementCount > 0
+                ? await session.ReadMemoryAsync(node.DataAddress, elementCount * elementWidth)
+                : Array.Empty<byte>();
+
+            var elements = VariableTableParser.ParseArrayElements(data, node.DataAddress, node.Name, node.ElementType, node.DimensionSizes).ToList();
+            await ResolveStringValuesAsync(session, elements, maxResolutions: int.MaxValue);
+
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                node.Children.Clear();
+                foreach (var element in elements)
+                    node.Children.Add(new DebugVariableNode(element) { IsUpperCaseModeActive = node.IsUpperCaseModeActive });
+                node.ChildrenLoaded = true;
+            });
+        }
+        catch (Exception ex)
+        {
+            Application.Current.Dispatcher.Invoke(() =>
+                SetStatus($"Failed to load {node.Name}'s contents: {ex.Message}", StatusType.Error));
+        }
+        finally
+        {
+            node.IsLoading = false;
+        }
+    }
+
+    // Walks the array table reading only each entry's small header - never its element data - so
+    // every array's shape can be enumerated for a collapsed summary row at a cost proportional to
+    // how many arrays exist, not how much data they hold. One read per array in the common case;
+    // an array with more dimensions than the initial guess covers gets a single larger retry
+    // (BASIC's DIM realistically never approaches double digits of dimensions, let alone _bigHeaderReadSize).
+    private const int _headerReadSize = 64;
+    private const int _bigHeaderReadSize = 1024;
+
+    private static async Task<List<ArrayHeader>> LoadArrayHeadersAsync(IDebugSession session, ushort arytab, ushort strend)
+    {
+        var headers = new List<ArrayHeader>();
+        ushort address = arytab;
+
+        while (address < strend)
+        {
+            int remaining = strend - address;
+            byte[] chunk = await session.ReadMemoryAsync(address, Math.Min(_headerReadSize, remaining));
+            var header = VariableTableParser.TryParseArrayHeader(chunk, 0);
+
+            if (header == null && remaining > _headerReadSize)
+            {
+                chunk = await session.ReadMemoryAsync(address, Math.Min(_bigHeaderReadSize, remaining));
+                header = VariableTableParser.TryParseArrayHeader(chunk, 0);
+            }
+            if (header == null) break; // corrupt, or genuinely too large to fit even the bigger retry
+
+            headers.Add(new ArrayHeader(header.Name, header.ElementType, header.DimensionSizes, (ushort)(address + header.DataOffset)));
+
+            if (header.EntryLength <= 0) break; // corrupt - would loop forever otherwise
+            address = (ushort)(address + header.EntryLength);
+        }
+
+        return headers;
+    }
+
+    // One array's shape plus its resolved live data address - LoadArrayHeadersAsync's own return
+    // shape, distinct from VariableTableParser.ArrayHeader (whose DataOffset is relative to the
+    // entry's own start, not yet resolved to an absolute address).
+    private sealed record ArrayHeader(string Name, BasicVariableType ElementType, IReadOnlyList<int> DimensionSizes, ushort DataAddress);
+
+    // String values point into either literal program text or the string heap, so their
+    // characters aren't part of the variable-table/array-element read that produced `variables` -
+    // resolve each one with its own follow-up read. Same PETSCII-byte-value-is-the-display-char-
+    // value convention PrgConverter.DetokenizeLine already uses for string literals. Capped so a
+    // large collection of strings (typically a string array - see LoadArrayChildrenAsync, which
+    // passes int.MaxValue since it only ever resolves the one array the user expanded) can't turn
+    // a refresh into a multi-second stall of one round trip per element; anything left unresolved
+    // past the cap just renders as an empty value (DebugVariableValueConverter's existing "not yet
+    // resolved" fallback).
+    private static async Task ResolveStringValuesAsync(IDebugSession session, List<BasicVariable> variables, int maxResolutions)
+    {
+        int resolutions = 0;
+        for (int i = 0; i < variables.Count && resolutions < maxResolutions; i++)
+        {
+            if (variables[i] is not { Type: BasicVariableType.String, Value: StringDescriptor descriptor })
+                continue;
+            resolutions++;
+            if (descriptor.Length == 0) continue;
+
+            byte[] chars = await session.ReadMemoryAsync(descriptor.HeapPointer, descriptor.Length);
+            string text = new(chars.Select(b => (char)b).ToArray());
+            variables[i] = variables[i] with { Value = new ResolvedStringValue(text, descriptor.HeapPointer) };
         }
     }
 

@@ -111,6 +111,11 @@ public partial class MainWindow : Window
     private bool _activatingTab;
     private bool _ctrlKChordPending;
 
+    // Set once OnClosing has already run its unsaved-tab prompts and any active debug session's
+    // async cleanup has finished - see OnClosing for why closing sometimes has to cancel itself,
+    // await that cleanup, then request the close again.
+    private bool _readyToClose;
+
     // Closed-tab history for Ctrl+Shift+T, most-recently-closed last. In-memory only (starts
     // empty each run) and capped at 20 entries, oldest evicted first.
     private const int _maxClosedTabHistory = 20;
@@ -242,7 +247,16 @@ public partial class MainWindow : Window
             if (e.PropertyName is nameof(MainViewModel.IsDebugPanelActive) or nameof(MainViewModel.IsErrorsPanelActive))
                 ApplyBottomPanelOpenState();
             if (e.PropertyName == nameof(MainViewModel.IsUpperCaseModeActive))
+            {
                 ApplyUpperCaseMode();
+
+                // ViewModel.IsUpperCaseModeActive tracks the ACTIVE tab, not necessarily the
+                // debugged one - only refresh the Variables tree's string displays when they're
+                // actually the same tab (toggling the mode on some other, non-debugged tab, or
+                // merely switching which tab is active, has nothing to do with the debug session).
+                if (ReferenceEquals(ViewModel.ActiveTab, ViewModel.DebugTab))
+                    RefreshDebugVariablesDisplayMode();
+            }
         };
 
         // WPF has no change-notification event for Caps Lock - Activated catches a
@@ -608,11 +622,18 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Prompts to save any modified tabs before the window closes, cancelling the close if the
-    /// user dismisses a save prompt.
+    /// user dismisses a save prompt, then - once those are settled - cleans up an active debug
+    /// session before letting the window actually close.
     /// </summary>
     /// <param name="e">The event data.</param>
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
+        // The second pass, after debug cleanup has finished and Close() was called again below -
+        // skip straight to actually closing rather than re-running the prompts/cleanup a second
+        // time (the unsaved-tab check in particular would otherwise re-prompt for a tab the user
+        // already answered "No" to on the first pass).
+        if (_readyToClose) { base.OnClosing(e); return; }
+
         foreach (var tab in ViewModel.OpenTabs.ToList())
         {
             if (!tab.IsModified) continue;
@@ -625,7 +646,28 @@ public partial class MainWindow : Window
             if (result == MessageBoxResult.Cancel) { e.Cancel = true; base.OnClosing(e); return; }
             if (result == MessageBoxResult.Yes && !SaveTabWithDialog(tab)) { e.Cancel = true; base.OnClosing(e); return; }
         }
+
+        // DebugSession.DisposeAsync does real work (deleting its checkpoint over the live
+        // connection, closing the socket/HTTP client, joining its background read/poll loop task)
+        // that can't run synchronously here - cancel this close, await the same cleanup Stop
+        // Debugging uses, then request the close again once it's done, rather than leaving a live
+        // session dangling (still polling/connected) after the window disappears.
+        if (ViewModel.DebugSession != null)
+        {
+            e.Cancel = true;
+            base.OnClosing(e);
+            _ = CloseAfterDebugCleanupAsync();
+            return;
+        }
+
         base.OnClosing(e);
+    }
+
+    private async Task CloseAfterDebugCleanupAsync()
+    {
+        await ViewModel.DebugStopAsync();
+        _readyToClose = true;
+        Close();
     }
 
     #endregion
@@ -5609,6 +5651,19 @@ public partial class MainWindow : Window
         return null;
     }
 
+    private static TreeViewItem? FindTreeViewItem(ItemsControl container, DebugVariableNode target)
+    {
+        foreach (var raw in container.Items)
+        {
+            var tvi = container.ItemContainerGenerator.ContainerFromItem(raw) as TreeViewItem;
+            if (tvi == null) continue;
+            if (raw == target) return tvi;
+            var found = FindTreeViewItem(tvi, target);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
     private static T? FindVisualChild<T>(DependencyObject parent, string name) where T : FrameworkElement
     {
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
@@ -6639,7 +6694,7 @@ public partial class MainWindow : Window
     // content element each one shows - mirrors RightPanelToggles' shape for the same reasons.
     private IEnumerable<(ToggleButton Toggle, UIElement Content, string Key)> DebugPanelTabs => new (ToggleButton, UIElement, string)[]
     {
-        (DebugVariablesTabToggle,   DebugVariablesGrid,   "Variables"),
+        (DebugVariablesTabToggle,   DebugVariablesTree,  "Variables"),
         (DebugBreakpointsTabToggle, DebugBreakpointsGrid, "Breakpoints"),
         (DebugCallStackTabToggle,   DebugCallStackList,   "CallStack"),
     };
@@ -6683,26 +6738,165 @@ public partial class MainWindow : Window
             MoveCaretToDocumentLine(documentLine);
     }
 
-    // Commits a Variables-grid edit: encodes the typed text via VariableWriteBack (float/integer/
-    // string, per the variable's type), writes it to the live machine, then re-reads the whole
-    // variable table so the grid shows the true resulting value rather than trusting the typed
-    // text verbatim - matters most for a string, which silently space-pads to its original
-    // length. Always cancels the grid's own edit (its templates have nothing bound two-way to
-    // push back anyway) so this is the one path that ever applies a Variables-grid edit.
-    //
-    // e.EditingElement is the DataGridTemplateColumn's generated ContentPresenter, not the
-    // CellEditingTemplate's TextBox directly (unlike a DataGridTextColumn, where it would be) -
-    // has to be located within it via the visual tree, or every edit silently no-ops here before
-    // ever reaching VariableWriteBack.
-    private async void DebugVariablesGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
+    // Re-applies the debugged tab's current Lower Case Mode to every already-populated node in the
+    // Variables tree (both top-level and any already-expanded array's children), so toggling the
+    // mode for the tab being debugged (Edit > Lower Case Mode, or the status bar's Shift Badge)
+    // updates a string variable's display immediately instead of waiting for the next
+    // breakpoint/step to refresh. A node created by a later refresh picks up the current mode
+    // directly instead (see MainViewModel.RefreshDebugVariablesAndCallStackAsync/LoadArrayChildrenAsync).
+    private void RefreshDebugVariablesDisplayMode()
     {
-        if (e.EditAction != DataGridEditAction.Commit) return;
-        if (e.Row.Item is not BasicVariable variable) return;
-        if (e.EditingElement is not FrameworkElement editingElement) return;
-        if (FindVisualChild<TextBox>(editingElement) is not { } textBox) return;
-        if (ViewModel.DebugSession is not { } session) return;
+        bool isUpperCaseModeActive = ViewModel.DebugTab?.IsUpperCaseModeActive ?? true;
+        foreach (var node in ViewModel.DebugVariables)
+        {
+            node.IsUpperCaseModeActive = isUpperCaseModeActive;
+            foreach (var child in node.Children)
+                child.IsUpperCaseModeActive = isUpperCaseModeActive;
+        }
+    }
 
-        e.Cancel = true;
+    // Double-clicking a leaf's Value cell starts inline editing (see BeginInlineEditDebugVariable)
+    // - an array root's own row has no value of its own to edit (see DebugVariableNode.IsArray),
+    // only its individual elements do, once expanded.
+    private void DebugVariablesTree_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (DebugVariablesTree.SelectedItem is not DebugVariableNode { IsArray: false } node) return;
+        BeginInlineEditDebugVariable(node);
+    }
+
+    // Fetches this array's contents the first time it's expanded - or re-expanded after a refresh
+    // reset ChildrenLoaded for the new stop - see MainViewModel.LoadArrayChildrenAsync. Wired via
+    // DebugVariableTreeViewItemStyle's EventSetter, so this fires for every TreeViewItem in the
+    // tree; only an array root (IsArray) ever actually has anything to load.
+    private void DebugVariablesTree_Expanded(object sender, RoutedEventArgs e)
+    {
+        if (e.OriginalSource is not TreeViewItem { DataContext: DebugVariableNode { IsArray: true } node }) return;
+        _ = ViewModel.LoadArrayChildrenAsync(node);
+    }
+
+    private void BeginInlineEditDebugVariable(DebugVariableNode node)
+    {
+        if (node.Variable == null) return; // e.g. a string still mid-resolution - nothing to edit yet
+
+        node.IsEditing = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Render, () =>
+        {
+            var tvi = FindTreeViewItem(DebugVariablesTree, node);
+            if (tvi == null) return;
+            var box = FindVisualChild<TextBox>(tvi, "valueEditBox");
+            if (box == null) return;
+
+            // The box's Text binds Mode=OneTime to DebugVariableNode.ValueDisplayText - safe to
+            // overwrite once here, before focusing, since that binding never re-pushes. For a
+            // string, rebuild the box's text directly from the RAW PETSCII bytes via
+            // PetsciiScreenCodeMap.ToDisplayText's mode-aware overload - the same per-byte display
+            // rule live typing uses in DebugValueEditBox_PreviewTextInput below - so editing shows
+            // the raw content unquoted, in whatever case/graphics the debugged tab's keyboard
+            // emulation is currently in, matching what actually typing this string right now would
+            // show (ValueDisplayText itself can't be used here - it's quoted, for the read-only
+            // display).
+            if (node.Variable is { Type: BasicVariableType.String, Value: ResolvedStringValue resolved })
+            {
+                bool isUpperCaseModeActive = ViewModel.DebugTab?.IsUpperCaseModeActive ?? true;
+                box.Text = PetsciiScreenCodeMap.ToDisplayText(resolved.Text, isUpperCaseModeActive);
+            }
+
+            box.Focus();
+            box.SelectAll();
+        });
+    }
+
+    // Intercepts live typing into the Value edit box for a string variable, applying the exact
+    // same real-hardware keyboard behavior the main code editor already does (see
+    // MainWindow.ApplyC64Shift and PetsciiGlyphGenerator.ConstructElement, which this mirrors):
+    // the raw PETSCII byte a key produces is the SAME uppercase-or-lowercase ASCII value
+    // regardless of the debugged tab's Lower Case Mode - only Shift/Caps Lock decides that, same
+    // as a real C64 keyboard matrix - and it's the CURRENT display mode that then decides whether
+    // that byte shows as a plain letter (case-swapped in Lower Case Mode) or its PETSCII graphic
+    // (Upper Active mode's Shift+letter positions). Only applies while editing a string - a
+    // float/integer edit box's plain-numeric input is left untouched.
+    private void DebugValueEditBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        var box = (TextBox)sender;
+        if (box.DataContext is not DebugVariableNode { Variable.Type: BasicVariableType.String }) return;
+
+        e.Handled = true;
+
+        bool isUpperCaseModeActive = ViewModel.DebugTab?.IsUpperCaseModeActive ?? true;
+        string insertText = ApplyDebugValueShift(e.Text, isUpperCaseModeActive);
+
+        int start = box.SelectionStart;
+        int length = box.SelectionLength;
+        box.Text = box.Text.Remove(start, length).Insert(start, insertText);
+
+        int caretOffset = start + insertText.Length;
+        box.CaretIndex = caretOffset;
+        box.Select(caretOffset, 0);
+    }
+
+    // Non-letters (digits, punctuation) pass through untouched, same as ApplyC64Shift. A letter's
+    // raw byte is decided purely by Shift/Caps Lock, mode-independent - then
+    // PetsciiScreenCodeMap.ToDisplayText's mode-aware overload decides how that one-char "string"
+    // is actually shown, given the debugged tab's current mode (same call BeginInlineEditDebugVariable
+    // makes for the whole pre-existing value above, and PetsciiGlyphGenerator.ConstructElement
+    // makes per-byte for the main code editor).
+    private static string ApplyDebugValueShift(string text, bool isUpperCaseModeActive)
+    {
+        if (text.Length != 1 || !char.IsAsciiLetter(text[0])) return text;
+
+        bool shifted = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) || KeyboardLockKeys.IsCapsLockOn;
+        char rawByte = shifted ? char.ToLowerInvariant(text[0]) : char.ToUpperInvariant(text[0]);
+        return PetsciiScreenCodeMap.ToDisplayText(rawByte.ToString(), isUpperCaseModeActive);
+    }
+
+    // Swaps every ASCII letter's case (A<->a) across a whole string - used only to reverse
+    // BeginInlineEditDebugVariable/DebugValueEditBox_PreviewTextInput's Lower Case Mode display
+    // swap before writing a committed edit back (CommitDebugValueEdit): in that mode, ANY letter
+    // shown is already the opposite of its real PETSCII case (see ToDebugDisplayChar), and no
+    // graphics glyphs ever appear in it to worry about, so a plain whole-string case flip is the
+    // exact, self-inverse reversal - unlike Upper Active mode, where VariableWriteBack.EncodeString's
+    // own PetsciiScreenCodeMap.FromDisplayText call already correctly reverses any PUA graphics
+    // glyphs back to their real byte with no case flip needed.
+    private static string SwapAsciiLetterCase(string text)
+    {
+        char[] chars = text.ToCharArray();
+        for (int i = 0; i < chars.Length; i++)
+        {
+            char c = chars[i];
+            if (char.IsAsciiLetter(c))
+                chars[i] = char.IsAsciiLetterUpper(c) ? char.ToLowerInvariant(c) : char.ToUpperInvariant(c);
+        }
+        return new string(chars);
+    }
+
+    private void DebugValueEditBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)       { CommitDebugValueEdit((TextBox)sender); e.Handled = true; }
+        else if (e.Key == Key.Escape) { CancelDebugValueEdit((TextBox)sender); e.Handled = true; }
+    }
+
+    private void DebugValueEditBox_LostFocus(object sender, RoutedEventArgs e)
+        => CommitDebugValueEdit((TextBox)sender);
+
+    private void CancelDebugValueEdit(TextBox box)
+    {
+        if (box.DataContext is DebugVariableNode node) node.IsEditing = false;
+    }
+
+    // Commits an inline value edit: encodes the typed text via VariableWriteBack (float/integer/
+    // string, per the variable's type), writes it to the live machine, then re-reads the whole
+    // variable table so the tree shows the true resulting value rather than trusting the typed
+    // text verbatim - matters most for a string, which silently space-pads to its original
+    // length. Guarded on IsEditing (mirroring CommitVariableRename's identical guard) so the
+    // LostFocus that CancelDebugValueEdit's own IsEditing=false triggers doesn't re-commit
+    // afterward.
+    private async void CommitDebugValueEdit(TextBox box)
+    {
+        if (box.DataContext is not DebugVariableNode { IsEditing: true } node) return;
+        node.IsEditing = false;
+
+        if (node.Variable is not { } variable) return;
+        if (ViewModel.DebugSession is not { } session) return;
 
         // Writing memory while the target is running (not halted) would race the live program's
         // own reads/writes of the same bytes - only safe while stopped, same as every other live
@@ -6713,7 +6907,13 @@ public partial class MainWindow : Window
             return;
         }
 
-        string enteredText = textBox.Text;
+        string enteredText = box.Text;
+
+        // Reverse BeginInlineEditDebugVariable's display-only case swap before encoding, so what
+        // gets written back is real PETSCII case regardless of the debugged tab's current keyboard
+        // emulation mode - the swap is its own inverse, so this is the exact same operation.
+        if (variable.Type == BasicVariableType.String && ViewModel.DebugTab is { IsUpperCaseModeActive: false })
+            enteredText = SwapAsciiLetterCase(enteredText);
 
         try
         {
@@ -8351,14 +8551,14 @@ public partial class MainWindow : Window
             InsertSpecialChar((char)code);
     }
 
-    // Targets whichever control the click is actually meant for: the Variables grid's value edit
+    // Targets whichever control the click is actually meant for: the Variables tree's value edit
     // box if that's focused, otherwise the main code editor (the historical, still-default
     // target). There's no real copy/paste from this panel to redirect instead - its preview
     // glyphs are static, non-selectable TextBlocks - so click-to-insert has to be the one
     // mechanism that reaches both places.
     private void InsertSpecialChar(char ch)
     {
-        if (Keyboard.FocusedElement is TextBox textBox && FindAncestor<DataGrid>(textBox) == DebugVariablesGrid)
+        if (Keyboard.FocusedElement is TextBox textBox && FindAncestor<TreeView>(textBox) == DebugVariablesTree)
         {
             InsertSpecialCharIntoVariableEditBox(textBox, ch);
             return;
@@ -8381,7 +8581,7 @@ public partial class MainWindow : Window
         ClearGhostText();
     }
 
-    // The Variables grid's value edit box shows PUA-substituted display text (see
+    // The Variables tree's value edit box shows PUA-substituted display text (see
     // DebugVariableValueConverter/PetsciiScreenCodeMap.ToDisplayText), not raw PETSCII bytes, so
     // the inserted character has to match that same convention - VariableWriteBack.EncodeString
     // converts it back on commit.
