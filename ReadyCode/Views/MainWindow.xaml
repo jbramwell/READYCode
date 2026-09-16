@@ -2345,7 +2345,7 @@
                     Visibility="{Binding ViewModel.ShowC64UMenu, Converter={StaticResource BoolToVisibility}}">
                 <MenuItem Header="_Load"
                         Command="{Binding ViewModel.C64UTransferCommand}"/>
-                <MenuItem Header="_Run Without Debugging"
+                <MenuItem Header="Start _Without Debugging"
                         Command="{Binding ViewModel.C64URunCommand}"
                         InputGestureText="Ctrl+F5">
                     <MenuItem.Icon>
@@ -2356,7 +2356,12 @@
                 <Separator/>
                 <MenuItem Header="_Start Debugging / Continue"
                         Command="{Binding ViewModel.DebugStartOrContinueOnC64UCommand}"
-                        InputGestureText="F5"/>
+                        InputGestureText="F5">
+                    <MenuItem.Icon>
+                        <TextBlock Text="&#xF5B0;"
+                                Style="{StaticResource MenuItemIconText}"/>
+                    </MenuItem.Icon>
+                </MenuItem>
                 <MenuItem Header="_Pause"
                         Command="{Binding ViewModel.DebugPauseCommand}"
                         InputGestureText="F6"/>
@@ -2408,7 +2413,7 @@
                     Visibility="{Binding ViewModel.ShowViceMenu, Converter={StaticResource BoolToVisibility}}">
                 <MenuItem Header="_Load"
                         Command="{Binding ViewModel.ViceTransferCommand}"/>
-                <MenuItem Header="_Run Without Debugging"
+                <MenuItem Header="Start _Without Debugging"
                         Command="{Binding ViewModel.ViceRunCommand}"
                         InputGestureText="Ctrl+Alt+F5">
                     <MenuItem.Icon>
@@ -2419,7 +2424,12 @@
                 <Separator/>
                 <MenuItem Header="_Start Debugging / Continue"
                         Command="{Binding ViewModel.DebugStartOrContinueOnViceCommand}"
-                        InputGestureText="Alt+F5"/>
+                        InputGestureText="Alt+F5">
+                    <MenuItem.Icon>
+                        <TextBlock Text="&#xF5B0;"
+                                Style="{StaticResource MenuItemIconText}"/>
+                    </MenuItem.Icon>
+                </MenuItem>
                 <MenuItem Header="_Pause"
                         Command="{Binding ViewModel.DebugPauseCommand}"
                         InputGestureText="Alt+F6"/>
