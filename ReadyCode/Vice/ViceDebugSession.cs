@@ -46,6 +46,24 @@ public sealed class ViceDebugSession : IDebugSession
     // line number.
     private const ushort _curlinHighByteAddress = 0x3A;
 
+    // The program counter immediately after BASIC's MAIN routine writes $FF to $3A when
+    // returning to direct mode (the STX $3A confirmed at ~$A490-$A492 in the ROM disassembly - see
+    // HandleStoppedAsync's remarks; a 2-byte STX zp instruction there puts the next PC at $A494,
+    // matching this range with room either side for ROM revision drift). Zero page $3A is not
+    // exclusive to CURLIN - other KERNAL routines reuse the same byte as scratch space for
+    // entirely unrelated purposes, and this checkpoint (a store watch with no way to filter by
+    // *which* code is doing the writing) fires for those too - confirmed against a live VICE
+    // instance at pc=$FD77-$FD79 (KERNAL reset/RAM-clear, immediately after the autostart
+    // transfer's machine reset) and pc=$EE1E/$EE5A (moments after typing into the keyboard buffer,
+    // before BASIC has even begun processing it). Both looked, from curlin alone, indistinguishable
+    // from a genuine return to direct mode - one even left curlin holding the exact same $FF00
+    // sentinel value already there from a real prior MAIN hit, since nothing had touched the byte
+    // since. Gating on the program counter landing in this narrow, empirically-confirmed range as
+    // well - not just curlin's value - is what actually tells a real "back at READY" apart from
+    // incidental noise elsewhere in ROM.
+    private const ushort _mainReturnToReadyPcMin = 0xA490;
+    private const ushort _mainReturnToReadyPcMax = 0xA49F;
+
     // Without a timeout, a command VICE never replies to - stuck processing something, or the
     // connection wedged for any other reason - leaves this session (and, since VICE processes
     // monitor commands on its main thread, the entire VICE UI) hung forever, with no way to
@@ -61,7 +79,76 @@ public sealed class ViceDebugSession : IDebugSession
 
     private long _nextRequestId;
     private Task _readLoopTask = Task.CompletedTask;
+    private Task _curlinPollTask = Task.CompletedTask;
     private uint? _masterCheckpointNumber;
+
+    // Set explicitly by MarkRunTyped, called right before "RUN" is typed into the keyboard buffer
+    // (see MainViewModel.DebugStartOnViceAsync) - NOT inferred from checkpoint hits, because the
+    // master checkpoint is armed (see StartAsync) while VICE's autostart transfer is still
+    // settling from the machine reset it triggers, and that window produces its own incidental
+    // writes to the exact byte this checkpoint watches: one at curlin=$0000 from still-resetting
+    // KERNAL code (nowhere near BASIC's interpreter - pc was deep in KERNAL ROM), and another from
+    // the autostart-typed LOAD command itself returning to direct mode (curlin high byte set to
+    // $FF, same sentinel a genuinely finished program produces - see HandleStoppedAsync). Trying to
+    // infer "the real program has started" from curlin's value treated that first incidental hit as
+    // proof of a genuine line executing, which then made the LOAD-finishing hit look exactly like
+    // "the debugged program already finished." Gating on this explicit flag instead sidesteps that
+    // specific race entirely, regardless of what curlin happens to read during that startup window.
+    private bool _runTyped;
+
+    // Counts direct-mode-sentinel hits (see HandleStoppedAsync) observed after MarkRunTyped, to
+    // sidestep a second, similarly-timed race: typing "RUN" itself makes BASIC's MAIN routine pass
+    // through the exact same return-to-direct-mode write ONE MORE TIME, landing within roughly
+    // 25-110ms of the keystroke, before the program's actual first line ever dispatches - as part
+    // of processing the typed "RUN" command, before it locates and jumps to the program. That
+    // pass-through is indistinguishable from a genuinely finished program by curlin or program
+    // counter alone (both read identically to the real thing - see _mainReturnToReadyPcMin's
+    // remarks), so only the second and later hits after MarkRunTyped are treated as the program
+    // having actually finished; the first is assumed to be RUN's own pass-through and just resumed,
+    // the same way the pre-RUN LOAD-finishing hit already is.
+    private int _directModeReturnsSinceRunTyped;
+
+    // Backstop for program-end detection: BASIC reaching READY through some end paths (confirmed
+    // live for a machine-code program that re-enters BASIC without going through the normal CURLIN
+    // reset) never writes to $3A at all, meaning _directModeReturnsSinceRunTyped's checkpoint-based
+    // detection above can miss a genuine end entirely, not just mistime it. RunCurlinPollLoopAsync
+    // polls CURLIN directly as a fallback, independent of the checkpoint, and needs to agree with
+    // the checkpoint-based path on whether the CPU is presumed to be running right now - true once
+    // RUN is typed or Continue succeeds, false once any Stopped is reported (by either path) - both
+    // to know when polling is even worth doing and to arbitrate which path gets to report a given
+    // stop via TryClaimStopped.
+    private volatile bool _isRunning;
+    private readonly object _stopClaimLock = new();
+
+    // Set for the duration of RunCurlinPollLoopAsync's own CURLIN read - a plain memory read while
+    // the CPU is running still makes VICE briefly halt (to safely read memory) and notify this
+    // connection of a Stopped/Resumed pair (confirmed live: every poll produced exactly one, timed
+    // to the millisecond) - indistinguishable from a genuine checkpoint hit by pc or curlin alone.
+    // DispatchUnsolicitedEvent checks this to skip routing that specific Stopped notification
+    // through HandleStoppedAsync's checkpoint-hit heuristics, since the poll loop already reads and
+    // judges the same CURLIN value directly, and resumes the CPU itself when it isn't the end.
+    private volatile bool _pollReadInProgress;
+
+    // The program counter DispatchUnsolicitedEvent captured from the Stopped notification produced
+    // by RunCurlinPollLoopAsync's own read (see _pollReadInProgress) - null if the read didn't
+    // happen to trigger one (the CPU may already have been paused for some other reason at that
+    // exact instant). Since that pc is effectively a random sample of wherever the CPU was at the
+    // moment of the read, it doubles as a way to tell whether the machine is genuinely idle: while
+    // BASIC's CURLIN write (watched by the checkpoint) turned out NOT to happen on every return-to-
+    // READY path - confirmed live for a machine-code program that re-enters BASIC without going
+    // through the normal CURLIN reset, leaving CURLIN frozen at its last real value forever even
+    // with the machine genuinely idle at READY - a random sample landing repeatedly in the KERNAL's
+    // keyboard/cursor idle loop ($E5CD-$E5D4, confirmed live across every idle sample taken so far)
+    // is a direct, CURLIN-independent signal that the CPU has nothing left to do but wait for input.
+    private ushort? _lastPollInducedPc;
+
+    // The empirically-observed program counter range for the KERNAL's idle-at-READY loop (see
+    // _lastPollInducedPc's remarks) - not from ROM disassembly like _mainReturnToReadyPcMin, since
+    // this is a courser, purely empirical signal meant as a backstop, not a precise instruction
+    // address. Widened a little past the exact observed samples ($E5CD, $E5CF, $E5D1, $E5D4) for
+    // margin against minor sampling variation within the same tight loop.
+    private const ushort _idleAtReadyPcMin = 0xE5C0;
+    private const ushort _idleAtReadyPcMax = 0xE5E0;
 
     // Set by Pause/StepLine: the very next line-boundary hit should be reported regardless of
     // whether it's a known breakpoint line.
@@ -86,6 +173,10 @@ public sealed class ViceDebugSession : IDebugSession
 
     private bool _disposed;
 
+    // Cancelled by DisposeAsync so RunCurlinPollLoopAsync's Task.Delay wakes immediately instead
+    // of DisposeAsync having to wait out whatever is left of the current 2-second poll interval.
+    private readonly CancellationTokenSource _disposeCts = new();
+
     // Cached on first use - the VICE binary monitor protocol docs explicitly warn register ids
     // aren't guaranteed stable across versions, so these must be looked up per session rather
     // than hardcoded.
@@ -99,6 +190,9 @@ public sealed class ViceDebugSession : IDebugSession
     {
         _client = client;
         _stream = client.GetStream();
+        // The machine is already executing (VICE's autostart transfer triggers this before a
+        // session even connects) - see _isRunning's remarks.
+        _isRunning = true;
     }
 
     #endregion
@@ -146,6 +240,19 @@ public sealed class ViceDebugSession : IDebugSession
 
         var session = new ViceDebugSession(client);
         session._readLoopTask = Task.Run(session.RunReadLoopAsync);
+
+        // Armed unconditionally here, not left lazy (see EnsureMasterCheckpointAsync's own
+        // comment) - a session with zero breakpoints still needs this checkpoint to ever see the
+        // one hit that matters to it: CURLIN going to $FFFF when the program returns to READY
+        // (END, falling off the end, STOP, or a runtime error - see HandleStoppedAsync). Without
+        // it, nothing VICE ever sends distinguishes "still running" from "finished long ago," and
+        // the session is stuck looking like it's still debugging forever.
+        await session.EnsureMasterCheckpointAsync();
+
+        // Backstop for program-end detection, independent of the checkpoint - see _isRunning's
+        // remarks.
+        session._curlinPollTask = Task.Run(session.RunCurlinPollLoopAsync);
+
         return session;
     }
 
@@ -172,7 +279,11 @@ public sealed class ViceDebugSession : IDebugSession
     /// <summary>
     /// Resumes execution after a stop, running until the next breakpoint (or another stop).
     /// </summary>
-    public Task ContinueAsync() => SendExpectingSuccessAsync(ViceBinaryMonitorProtocol.ExitCommand, Array.Empty<byte>());
+    public async Task ContinueAsync()
+    {
+        await SendExpectingSuccessAsync(ViceBinaryMonitorProtocol.ExitCommand, Array.Empty<byte>());
+        _isRunning = true;
+    }
 
     /// <summary>
     /// Types text into the keyboard buffer over this session's own connection - used instead of
@@ -182,6 +293,16 @@ public sealed class ViceDebugSession : IDebugSession
     /// </summary>
     public Task TypeAsync(string text) =>
         SendExpectingSuccessAsync(ViceBinaryMonitorProtocol.KeyboardFeedCommand, ViceBinaryMonitorProtocol.BuildKeyboardFeedRequest(text));
+
+    /// <summary>
+    /// Marks the debugged program as genuinely starting - call this right before typing "RUN" (see
+    /// <c>MainViewModel.DebugStartOnViceAsync</c>). Until this is called, a checkpoint hit showing
+    /// the direct-mode sentinel (see <see cref="HandleStoppedAsync"/>) is assumed to be leftover
+    /// startup noise from the autostart transfer's own machine reset - such as the LOAD command
+    /// itself returning to direct mode - and is silently resumed rather than reported as the
+    /// program having finished.
+    /// </summary>
+    public void MarkRunTyped() => _runTyped = true;
 
     /// <summary>
     /// Arms a trap that halts execution at the start of the next BASIC line, without resuming -
@@ -280,6 +401,7 @@ public sealed class ViceDebugSession : IDebugSession
     {
         if (_disposed) return;
         _disposed = true;
+        _disposeCts.Cancel();
 
         if (_masterCheckpointNumber is { } checkpointNumber)
         {
@@ -300,12 +422,31 @@ public sealed class ViceDebugSession : IDebugSession
         try { await _readLoopTask; }
         catch { /* the read loop's own exit, once the socket closes, is expected here */ }
 
+        try { await _curlinPollTask; }
+        catch { /* the poll loop's own exit, once _disposed is set or the socket closes, is expected here */ }
+
+        _disposeCts.Dispose();
         _writeLock.Dispose();
     }
 
     #endregion
 
     #region Private Methods
+
+    // Arbitrates between HandleStoppedAsync's checkpoint-based detection and
+    // RunCurlinPollLoopAsync's independent poll-based backstop, both of which can decide the CPU
+    // has genuinely stopped (a breakpoint, a completed step, or the program ending) - only the
+    // first to call this actually gets to report it, so the two paths can never both fire Stopped
+    // for the same stop.
+    private bool TryClaimStopped()
+    {
+        lock (_stopClaimLock)
+        {
+            if (!_isRunning) return false;
+            _isRunning = false;
+            return true;
+        }
+    }
 
     private async Task<IReadOnlyDictionary<string, byte>> GetRegisterIdsAsync()
     {
@@ -318,9 +459,11 @@ public sealed class ViceDebugSession : IDebugSession
         return _registerIds;
     }
 
-    // Creates the single store checkpoint every breakpoint/Pause/Step relies on, the first time
-    // any of them is used - a session that's never asked to stop at anything never pays even the
-    // once-per-line round-trip cost at all.
+    // Creates the single store checkpoint every breakpoint/Pause/Step relies on. Idempotent
+    // (returns immediately once already armed) since it's called both eagerly - StartAsync arms
+    // it for every session up front, needed to ever detect the program returning to READY even
+    // with zero breakpoints set - and lazily, from SetLineBreakpointAsync/PauseAsync/Step*Async,
+    // which would otherwise be the first callers to need it on an older session.
     private async Task EnsureMasterCheckpointAsync()
     {
         if (_masterCheckpointNumber.HasValue) return;
@@ -375,6 +518,57 @@ public sealed class ViceDebugSession : IDebugSession
         }
     }
 
+    // Backstop for "the program genuinely ended" detection, independent of the checkpoint - see
+    // _isRunning's remarks for why the checkpoint alone isn't sufficient. Runs for the session's
+    // whole lifetime, but only actually reads CURLIN while _isRunning and _runTyped are both true
+    // (skipped entirely while genuinely stopped at a breakpoint/step, so this never disturbs an
+    // intentional pause - and skipped before RUN is typed, since the pre-RUN LOAD-finishing case is
+    // already handled by the checkpoint path).
+    private async Task RunCurlinPollLoopAsync()
+    {
+        while (!_disposed)
+        {
+            try
+            {
+                await Task.Delay(2000, _disposeCts.Token);
+                if (_disposed || !_isRunning || !_runTyped) continue;
+
+                _lastPollInducedPc = null;
+                _pollReadInProgress = true;
+                ushort curlin;
+                try
+                {
+                    curlin = await ((IDebugSession)this).ReadCurlinAsync();
+                }
+                finally
+                {
+                    _pollReadInProgress = false;
+                }
+
+                ushort? sampledPc = _lastPollInducedPc;
+                bool looksIdleAtReady = (curlin & 0xFF00) == 0xFF00
+                    || (sampledPc is { } pc && pc >= _idleAtReadyPcMin && pc <= _idleAtReadyPcMax);
+
+                if (looksIdleAtReady && TryClaimStopped())
+                {
+                    Stopped?.Invoke(this, new DebugStoppedEventArgs(sampledPc ?? 0, 0xFFFF, null));
+                }
+                else if (_isRunning)
+                {
+                    // The read above may have paused the CPU (see _pollReadInProgress's remarks) -
+                    // resume it, since this isn't being treated as the program having ended.
+                    await ContinueAsync();
+                }
+            }
+            catch
+            {
+                // The connection is going away (Dispose closed the socket) or _disposeCts was
+                // cancelled - either way, nothing left for this loop to do.
+                return;
+            }
+        }
+    }
+
     // Runs for the whole session lifetime, dispatching every reply (matched by request id) to
     // its waiting caller, and every unsolicited event (stopped/resumed, request id 0xffffffff)
     // to the appropriate internal handler.
@@ -414,6 +608,17 @@ public sealed class ViceDebugSession : IDebugSession
         {
             case ViceBinaryMonitorProtocol.StoppedResponseType:
                 ushort pc = ViceBinaryMonitorProtocol.ParseStoppedEventProgramCounter(body);
+
+                // A plain memory read while the CPU is running still makes VICE briefly halt and
+                // send this same notification (see _pollReadInProgress's remarks) - RunCurlinPollLoopAsync
+                // already owns judging and resuming from its own read, so this specific hit isn't a
+                // genuine checkpoint event and shouldn't run through HandleStoppedAsync's heuristics.
+                if (_pollReadInProgress)
+                {
+                    _lastPollInducedPc = pc;
+                    break;
+                }
+
                 // Dispatched onto a separate task so the read loop can keep servicing replies -
                 // handling a stop issues its own commands (reading CURLIN, possibly resuming)
                 // that only this same loop can complete, which would deadlock if awaited inline.
@@ -426,14 +631,19 @@ public sealed class ViceDebugSession : IDebugSession
         }
     }
 
-    // The checkpoint fires exactly once per BASIC line dispatched (see class remarks), so every
-    // hit here is a genuine line boundary - no same-line/mid-statement filtering needed.
+    // The checkpoint fires once per BASIC line genuinely dispatched (see class remarks), but also
+    // for any other, unrelated code that happens to write to the same zero-page byte (see
+    // _mainReturnToReadyPcMin's remarks) - curlin alone can't tell those apart, since an unrelated
+    // write can coincidentally land on a value that looks exactly like a real line number or the
+    // direct-mode sentinel.
     private async Task HandleStoppedAsync(ushort programCounter)
     {
         try
         {
             ushort curlin = await ((IDebugSession)this).ReadCurlinAsync();
             bool isBreakpointLine = _breakpointLines.ContainsKey(curlin);
+            bool isDirectModeSentinel = (curlin & 0xFF00) == 0xFF00
+                && programCounter >= _mainReturnToReadyPcMin && programCounter <= _mainReturnToReadyPcMax;
 
             if (_stepOutStartStackPointer is { } startStackPointer)
             {
@@ -447,7 +657,8 @@ public sealed class ViceDebugSession : IDebugSession
                 }
 
                 _stepOutStartStackPointer = null;
-                Stopped?.Invoke(this, new DebugStoppedEventArgs(programCounter, curlin, isBreakpointLine ? curlin : null));
+                if (TryClaimStopped())
+                    Stopped?.Invoke(this, new DebugStoppedEventArgs(programCounter, curlin, isBreakpointLine ? curlin : null));
                 return;
             }
 
@@ -464,24 +675,61 @@ public sealed class ViceDebugSession : IDebugSession
                 }
 
                 _stepOverStartStackPointer = null;
-                Stopped?.Invoke(this, new DebugStoppedEventArgs(programCounter, curlin, isBreakpointLine ? curlin : null));
+                if (TryClaimStopped())
+                    Stopped?.Invoke(this, new DebugStoppedEventArgs(programCounter, curlin, isBreakpointLine ? curlin : null));
                 return;
             }
 
             if (_awaitingLineBoundary)
             {
                 _awaitingLineBoundary = false;
-                Stopped?.Invoke(this, new DebugStoppedEventArgs(programCounter, curlin, isBreakpointLine ? curlin : null));
+                if (TryClaimStopped())
+                    Stopped?.Invoke(this, new DebugStoppedEventArgs(programCounter, curlin, isBreakpointLine ? curlin : null));
                 return;
             }
 
             if (!isBreakpointLine)
             {
+                // High byte $FF is BASIC's own sentinel for "no program running" (direct/immediate
+                // mode) - confirmed against the actual ROM disassembly (MAIN, ~$A490-$A492): it
+                // sets ONLY $3A (the byte this checkpoint watches) to $FF when returning to READY,
+                // whether from END, falling off the end of the listing, STOP, or a runtime error.
+                // It deliberately does NOT also touch $39 (the low byte) - that's left holding
+                // whatever the program's last-executed line's low byte happened to be, so
+                // comparing the full 16-bit curlin against exactly 0xFFFF only ever matched by
+                // coincidence (this was the actual bug: a run with no breakpoints, or one that
+                // finished after its last breakpoint, kept looking like it was still debugging
+                // forever, since curlin was near-never literally 0xFFFF even though the high byte
+                // genuinely was $FF). Reported as the canonical 0xFFFF regardless of the low
+                // byte's leftover value, so nothing downstream needs to know about this quirk too.
+                //
+                // This same sentinel write also happens before "RUN" is even typed - the autostart
+                // transfer's own LOAD command returns to direct mode the exact same way (see
+                // _runTyped's remarks) - and once more right as "RUN" itself is dispatched, before
+                // the program's first real line ever runs (see _directModeReturnsSinceRunTyped's
+                // remarks). So it's only ever reported as "the program ended" on the SECOND such
+                // hit after MarkRunTyped - the first is assumed to be RUN's own pass-through and
+                // just resumed, same as a pre-RUN hit.
+                if (isDirectModeSentinel && _runTyped)
+                {
+                    _directModeReturnsSinceRunTyped++;
+                    if (_directModeReturnsSinceRunTyped >= 2)
+                    {
+                        if (TryClaimStopped())
+                            Stopped?.Invoke(this, new DebugStoppedEventArgs(programCounter, 0xFFFF, null));
+                        return;
+                    }
+
+                    await ContinueAsync();
+                    return;
+                }
+
                 await ContinueAsync();
                 return;
             }
 
-            Stopped?.Invoke(this, new DebugStoppedEventArgs(programCounter, curlin, curlin));
+            if (TryClaimStopped())
+                Stopped?.Invoke(this, new DebugStoppedEventArgs(programCounter, curlin, curlin));
         }
         catch (Exception ex)
         {

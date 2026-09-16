@@ -841,6 +841,12 @@ public class MainViewModel : INotifyPropertyChanged
             _debugSession = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(IsDebugging));
+            // RelayCommand's CanExecuteChanged is CommandManager.RequerySuggested, which WPF only
+            // raises automatically on UI activity (mouse/keyboard/focus) - a session ending on its
+            // own in the background (e.g. the debugged program finishing with nothing clicked)
+            // would otherwise leave every debug menu item showing its stale enabled state until
+            // the next unrelated UI interaction happened to trigger a requery.
+            CommandManager.InvalidateRequerySuggested();
         }
     }
 
@@ -861,6 +867,9 @@ public class MainViewModel : INotifyPropertyChanged
             if (_isDebugStopped == value) return;
             _isDebugStopped = value;
             OnPropertyChanged();
+            // See DebugSession's setter remarks - the debug menu commands need to be requeried
+            // immediately, not just on the next incidental UI interaction.
+            CommandManager.InvalidateRequerySuggested();
         }
     }
 
@@ -1707,7 +1716,17 @@ public class MainViewModel : INotifyPropertyChanged
             "VICE",
             (tab, prgData) => transferClient.TransferAsync(Settings.ViceEmulatorPath, prgData, tab.FileName, Settings.ViceBringToForeground),
             async () => (IDebugSession)await ViceDebugSession.StartAsync(Settings.ViceMonitorHost, Settings.ViceMonitorPort),
-            session => ((ViceDebugSession)session).TypeAsync("RUN\r"));
+            session =>
+            {
+                var viceSession = (ViceDebugSession)session;
+                // Marks the point after which a checkpoint hit showing the direct-mode sentinel
+                // means the debugged program genuinely finished, rather than leftover startup
+                // noise from the autostart transfer's own machine reset - see MarkRunTyped's
+                // remarks (this was the root cause of a "stuck at LOAD" hang: a pre-RUN hit was
+                // being misread as "already finished," halting the CPU before RUN ever ran).
+                viceSession.MarkRunTyped();
+                return viceSession.TypeAsync("RUN\r");
+            });
     }
 
     // Starts a new BASIC debug session on the C64 Ultimate for the active tab. Unlike VICE's
@@ -1871,9 +1890,11 @@ public class MainViewModel : INotifyPropertyChanged
     /// resetting or otherwise disturbing the running machine. A no-op if nothing is being
     /// debugged. Public (not just <see cref="DebugStopCommand"/>) so <c>MainWindow.OnClosing</c>
     /// can also await this exact cleanup before the app actually closes, rather than leaving a
-    /// live session dangling.
+    /// live session dangling, and so <see cref="OnDebugSessionStopped"/> can reuse it to fully
+    /// detach once the debugged program ends on its own.
     /// </summary>
-    public async Task DebugStopAsync()
+    /// <param name="completionMessage">Status text to show once stopped.</param>
+    public async Task DebugStopAsync(string completionMessage = "Debug session stopped.")
     {
         if (DebugSession == null) return;
 
@@ -1888,7 +1909,7 @@ public class MainViewModel : INotifyPropertyChanged
         finally
         {
             CleanupDebugSessionState();
-            SetStatus("Debug session stopped.", StatusType.Info);
+            SetStatus(completionMessage, StatusType.Info);
         }
     }
 
@@ -1917,6 +1938,22 @@ public class MainViewModel : INotifyPropertyChanged
     // touching any bindable property.
     private void OnDebugSessionStopped(object? sender, DebugStoppedEventArgs e)
     {
+        // Curlin 0xFFFF is BASIC's own "no program running" sentinel (see
+        // ViceDebugSession.HandleStoppedAsync) - the program returned to READY (END, falling off
+        // the end, STOP, or a runtime error) on its own, rather than stopping at a breakpoint or a
+        // completed step. There's no live machine state left worth staying attached to inspect, so
+        // this detaches the session entirely (as if Stop Debugging had been clicked) instead of
+        // leaving it "stopped but still attached" - which left Restart Debugging/Stop Debugging
+        // enabled with nothing meaningful left to restart or stop.
+        if (e.Curlin == 0xFFFF)
+        {
+            // DebugStopAsync touches bindable properties throughout (including after its own
+            // await), so it's kicked off from the UI thread rather than this background one -
+            // matching every other caller, which is always a RelayCommand's UI-thread Execute.
+            Application.Current.Dispatcher.Invoke(() => { _ = DebugStopAsync("Program finished - back at READY."); });
+            return;
+        }
+
         Application.Current.Dispatcher.Invoke(() =>
         {
             IsDebugStopped = true;
