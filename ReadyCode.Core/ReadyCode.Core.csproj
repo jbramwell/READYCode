@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Cross-platform core: tokenizer, assembler, diagnostics, VICE/C64U clients, settings, etc.
+         Deliberately free of any WPF/AvalonEdit types so it builds and runs on Windows, macOS,
+         and Linux, and can be shared by every UI front end. -->
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Keep the original ReadyCode.* namespaces and the ReadyCode.Assets.* manifest resource
+         names so the code moved here from the WPF project needs no edits. -->
+    <RootNamespace>ReadyCode</RootNamespace>
+    <AssemblyName>ReadyCode.Core</AssemblyName>
+    <AssemblyVersion>2.3.0.0</AssemblyVersion>
+    <FileVersion>2.3.0.0</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DiffPlex" Version="1.9.0" />
+    <PackageReference Include="FluentFTP" Version="54.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Embedded so the SID note frequency table (Music Notes panel) is read from the
+         assembly at runtime instead of relying on a loose file next to the executable. -->
+    <EmbeddedResource Include="Assets\Data\sid_notes.csv" />
+  </ItemGroup>
+
+
+</Project>

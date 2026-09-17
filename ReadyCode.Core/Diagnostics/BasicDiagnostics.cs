@@ -112,7 +112,7 @@ public static class BasicDiagnostics
     /// but keeps the raw offset/length (SplitBasicLine's zero-stripped string return can't place
     /// a squiggle - or a fold boundary - precisely). Reused by <c>BasicFoldingStrategy</c>.
     /// </summary>
-    internal static bool TryParseLineNumber(string line, out int number, out int offset, out int length, out int codeStart)
+    public static bool TryParseLineNumber(string line, out int number, out int offset, out int length, out int codeStart)
     {
         number = 0; offset = 0; length = 0; codeStart = 0;
 
@@ -134,9 +134,10 @@ public static class BasicDiagnostics
 
     /// <summary>
     /// Finds where a top-level (not inside a string) REM keyword starts in <paramref name="code"/>,
-    /// or <c>code.Length</c> if none. Reused by <c>BasicFoldingStrategy</c>.
+    /// or <c>code.Length</c> if none. Reused by the fold-region finder, the variable
+    /// cross-reference, and the editor's completion (which offers nothing past a REM).
     /// </summary>
-    internal static int FindTopLevelRemStart(string code)
+    public static int FindTopLevelRemStart(string code)
     {
         bool inString = false;
         int i = 0;

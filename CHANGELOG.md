@@ -9,12 +9,24 @@
 ### Improvements
 
 - Double-clicking a row in the Errors panel now selects the exact text the diagnostic's squiggle underlines, scrolling it into view if it's off-screen, instead of only moving the caret to the start of the line
+- **`ReadyCode.Core`** - the editor's non-UI logic (tokenizer, assembler and disassembler,
+  diagnostics, minify/prettify, the diff engine, the BASIC debugger, and the VICE and C64 Ultimate
+  clients) now lives in a `net8.0` class library the Windows application references, rather than
+  inside the WPF project. Behavior is unchanged; the library and its tests build and run on Windows,
+  macOS, and Linux, so that logic can be exercised without a Windows machine and shared with future
+  front ends
+- **Cross-platform CI** - a GitHub Actions workflow that builds the shared library and its tests on
+  Ubuntu and macOS and compile-checks the WPF application on both, so a change to the core can't
+  silently break the Windows build
 
 ### Bug Fixes
 
 - Fixed calls to an undefined `FN` function, and a `DEF FN` parameter declared with a `%` or `$` suffix, not being flagged as errors
 - Fixed Prettify not inserting a space between `FN` and the function name
 - Fixed pressing Enter at the start of a line (before its line number) corrupting the line instead of inserting a new, correctly-numbered line above it
+- Fixed `FacFloat.Encode` silently accepting `NaN` on ARM64 (Apple Silicon): casting `NaN` to `int`
+  yields `0` there rather than `int.MinValue` as on x64, so the range check that was meant to reject
+  it never fired. `NaN` and infinity are now rejected explicitly
 
 ## [v2.4.0] - 2026-09-11
 

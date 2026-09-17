@@ -40,6 +40,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Cross-platform core (tokenizer, assembler, diagnostics, VICE/C64U clients, settings...)
+         shared with the non-Windows front ends. -->
+    <ProjectReference Include="..\ReadyCode.Core\ReadyCode.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Gives access to System.Windows.Forms.ColorDialog without enabling
          UseWindowsForms, which would inject conflicting implicit usings. -->
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
@@ -65,12 +71,6 @@
     <Content Include="Assets\Fonts\LICENSE-PetMe64.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- Embedded so the SID note frequency table (Music Notes panel) is read from the
-         assembly at runtime instead of relying on a loose file next to the executable. -->
-    <EmbeddedResource Include="Assets\Data\sid_notes.csv" />
   </ItemGroup>
 
 </Project>

@@ -287,6 +287,17 @@ public class ViceClient
     private static void BringViceToForeground(string emulatorPath)
     {
         string imageName = Path.GetFileNameWithoutExtension(emulatorPath);
+
+        if (OperatingSystem.IsWindows())
+            BringViceToForegroundWindows(imageName);
+        else if (OperatingSystem.IsMacOS())
+            BringViceToForegroundMacOS(imageName);
+        // Other platforms: no portable way to raise another app's window; leave it where it is.
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void BringViceToForegroundWindows(string imageName)
+    {
         var process = Process.GetProcessesByName(imageName)
             .FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero);
         if (process == null) return;
@@ -295,6 +306,31 @@ public class ViceClient
             ShowWindow(process.MainWindowHandle, _swRestore);
 
         SetForegroundWindow(process.MainWindowHandle);
+    }
+
+    // macOS has no window-handle API reachable from .NET; ask System Events (via osascript) to
+    // bring the emulator's process to the front by its PID instead.
+    [System.Runtime.Versioning.SupportedOSPlatform("macos")]
+    private static void BringViceToForegroundMacOS(string imageName)
+    {
+        var process = Process.GetProcessesByName(imageName).FirstOrDefault();
+        if (process == null) return;
+
+        try
+        {
+            string script = $"tell application \"System Events\" to set frontmost of (first process whose unix id is {process.Id}) to true";
+            using var osascript = Process.Start(new ProcessStartInfo("osascript", ["-e", script])
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardError = true,
+            });
+            osascript?.WaitForExit(2000);
+        }
+        catch (Exception)
+        {
+            // Best effort only - failing to raise the window must never fail the transfer/run.
+        }
     }
 
     [DllImport("user32.dll")]
@@ -353,7 +389,11 @@ public class ViceClient
         Process.Start(new ProcessStartInfo(
             emulatorPath,
             $"-binarymonitor -binarymonitoraddress {_monitorHost}:{_monitorPort}")
-        { UseShellExecute = true });
+        {
+            // ShellExecute is the Windows launch path the app has always used; on Unix-likes the
+            // executable is started directly.
+            UseShellExecute = OperatingSystem.IsWindows(),
+        });
 
         for (int i = 0; i < 30; i++)
         {

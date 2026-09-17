@@ -2,6 +2,7 @@
   "solution": {
     "path": "ReadyCode.sln",
     "projects": [
+      "ReadyCode.Core\\ReadyCode.Core.csproj",
       "ReadyCode\\ReadyCode.csproj",
       "ReadyCode.Tests\\ReadyCode.Tests.csproj"
     ]
