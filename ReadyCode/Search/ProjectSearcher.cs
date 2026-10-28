@@ -22,6 +22,11 @@ public static class ProjectSearcher
     // does when opening/saving one.
     private static readonly string[] SearchableExtensions = [".bas", ".asm", ".s", ".txt", ".prg"];
 
+    // Upper bound on a single regex match attempt. The pattern is user-typed and runs on the UI
+    // thread, so a catastrophically backtracking one (e.g. "(a+)+$") would otherwise freeze the
+    // app indefinitely - far beyond anything a legitimate search of a source file needs.
+    private static readonly TimeSpan RegexMatchTimeout = TimeSpan.FromMilliseconds(250);
+
     #endregion
 
     #region Public Methods
@@ -108,7 +113,10 @@ public static class ProjectSearcher
     /// character on either side.
     /// </param>
     /// <param name="useRegex">Whether <paramref name="searchText"/> is a regular expression.</param>
-    /// <returns>Each match's offset and length, in document order. Empty if the pattern is invalid or has no matches.</returns>
+    /// <returns>
+    /// Each match's offset and length, in document order. Empty if the pattern is invalid, takes
+    /// too long to evaluate (see <see cref="RegexMatchTimeout"/>), or has no matches.
+    /// </returns>
     public static List<(int Offset, int Length)> FindMatches(string text, string searchText, bool matchCase, bool wholeWord, bool useRegex)
     {
         var matches = new List<(int Offset, int Length)>();
@@ -119,10 +127,16 @@ public static class ProjectSearcher
             try
             {
                 var options = matchCase ? RegexOptions.None : RegexOptions.IgnoreCase;
-                foreach (Match m in new Regex(searchText, options | RegexOptions.Multiline).Matches(text))
+                foreach (Match m in new Regex(searchText, options | RegexOptions.Multiline, RegexMatchTimeout).Matches(text))
                     if (m.Length > 0) matches.Add((m.Index, m.Length));
             }
-            catch { /* invalid regex - no matches */ }
+            catch (ArgumentException) { /* invalid regex - no matches */ }
+            catch (RegexMatchTimeoutException)
+            {
+                // Matches are enumerated lazily, so some may already have been added - drop them
+                // rather than report a partial result as if it were complete.
+                matches.Clear();
+            }
         }
         else
         {

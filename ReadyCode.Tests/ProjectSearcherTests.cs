@@ -1,6 +1,8 @@
-// Copyright (c) 2026 Moonspace Labs, LLC
+﻿// Copyright (c) 2026 Moonspace Labs, LLC
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
+using System.Diagnostics;
+using System.Text.RegularExpressions;
 using ReadyCode.Search;
 using ReadyCode.Tokenizer;
 using Xunit;
@@ -12,6 +14,14 @@ namespace ReadyCode.Tests;
 /// </summary>
 public class ProjectSearcherTests
 {
+    #region Private Fields
+
+    // Nested quantifiers over the same character with no way to complete the match (no Y):
+    // every way of splitting the X's between the inner groups gets tried before failing.
+    private const string CatastrophicPattern = "(X+X+)+Y";
+
+    #endregion
+
     #region Public Methods
 
     // ── FindMatches: plain text ───────────────────────────────────────────────
@@ -104,6 +114,35 @@ public class ProjectSearcherTests
         // A pattern that can match zero-width against text with no actual hit shouldn't produce
         // a phantom zero-length match.
         var matches = ProjectSearcher.FindMatches("XYZ", "A*", matchCase: true, wholeWord: false, useRegex: true);
+        Assert.Empty(matches);
+    }
+
+    [Fact]
+    public void FindMatches_CatastrophicBacktrackingRegex_ReturnsEmptyInsteadOfHanging()
+    {
+        string text = new string('X', 40);
+
+        // Guard: confirm the pattern really is pathological on this runtime, so this test can't
+        // silently pass because the regex engine optimized the backtracking away.
+        Assert.Throws<RegexMatchTimeoutException>(() =>
+            new Regex(CatastrophicPattern, RegexOptions.None, TimeSpan.FromMilliseconds(250)).Match(text));
+
+        var stopwatch = Stopwatch.StartNew();
+        var matches = ProjectSearcher.FindMatches(text, CatastrophicPattern, matchCase: true, wholeWord: false, useRegex: true);
+
+        Assert.Empty(matches);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5), $"Took {stopwatch.Elapsed}");
+    }
+
+    [Fact]
+    public void FindMatches_RegexTimesOutAfterEarlierMatches_ReturnsEmptyRatherThanPartial()
+    {
+        // "XXY" matches immediately; the long run of X's after it (no closing Y) then backtracks
+        // catastrophically - the earlier match must not be reported as if the search completed.
+        string text = "XXY " + new string('X', 40);
+
+        var matches = ProjectSearcher.FindMatches(text, CatastrophicPattern, matchCase: true, wholeWord: false, useRegex: true);
+
         Assert.Empty(matches);
     }
 
