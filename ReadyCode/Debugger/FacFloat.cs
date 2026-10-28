@@ -39,9 +39,8 @@ public static class FacFloat
         if (value == 0.0)
             return (0, 0, 0, 0, 0);
 
-        // Must be checked explicitly: the (int) cast of Log2(NaN/Infinity) below is
-        // CPU-dependent in .NET 8 (int.MinValue on x64, saturated on ARM64), so relying on the
-        // exponent range check would let NaN through as garbage bytes on ARM64.
+        // Must be checked explicitly: the (int) cast of Log2(NaN) below saturates to 0 rather
+        // than failing, so the exponent range check alone would let NaN through as garbage bytes.
         if (!double.IsFinite(value))
             throw new OverflowException($"The value {value} is outside the range a C64 BASIC float can represent.");
 

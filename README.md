@@ -138,7 +138,7 @@ Full documentation, covering every feature in depth, lives in [docs/](docs/READM
 
 ## Architecture overview
 
-ReadyCode is a single-window WPF (.NET 8) desktop app using a hybrid MVVM-ish pattern: `MainViewModel`
+ReadyCode is a single-window WPF (.NET 10) desktop app using a hybrid MVVM-ish pattern: `MainViewModel`
 holds bindable state (open tabs, settings, status bar text, the folder tree), while `MainWindow.xaml.cs`
 owns most commands and talks directly to the AvalonEdit control, since a text editor control doesn't
 lend itself to pure MVVM. Commands are implemented with a small custom `RelayCommand` (`ICommand`
@@ -212,7 +212,7 @@ Explorer (parsing bytes read straight from disk).
 ### Prerequisites
 
 - Windows 10/11
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - Visual Studio 2022+ **or** VS Code with the C# Dev Kit extension
 
 ### Clone
