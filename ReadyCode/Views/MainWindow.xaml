@@ -2492,6 +2492,9 @@
                 <MenuItem Header="View Online _Docs"
                         Command="{Binding ViewModel.HelpDocsCommand}"/>
                 <Separator/>
+                <MenuItem Header="_Copy Diagnostic Info"
+                        Command="{Binding ViewModel.HelpCopyDiagnosticInfoCommand}"/>
+                <Separator/>
                 <MenuItem Header="_About READYCode"
                         Command="{Binding ViewModel.HelpAboutCommand}"/>
             </MenuItem>

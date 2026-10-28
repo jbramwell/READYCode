@@ -42,6 +42,9 @@ public sealed class AppSession : IDisposable
     /// <summary>Gets the app's main window.</summary>
     public AutomationElement Window { get; }
 
+    /// <summary>Gets the session's throwaway data folder (the app's settings / error log folder).</summary>
+    public string DataDirectory => _dataDirectory;
+
     /// <summary>Gets the contents of the session's error.log, or null if nothing was logged.</summary>
     public string? ErrorLogText
     {
@@ -64,12 +67,18 @@ public sealed class AppSession : IDisposable
     /// AppSettings) - e.g. LastFolderPath to open a project folder. Anything not given keeps
     /// its default.
     /// </param>
-    public static AppSession Launch(IReadOnlyDictionary<string, object?>? settings = null)
+    /// <param name="dataFiles">
+    /// Other files to put in the data folder before launch (file name to content) - e.g. a
+    /// pre-existing error.log.
+    /// </param>
+    public static AppSession Launch(IReadOnlyDictionary<string, object?>? settings = null, IReadOnlyDictionary<string, string>? dataFiles = null)
     {
         string dataDirectory = Path.Combine(Path.GetTempPath(), "ReadyCodeUITests_" + Guid.NewGuid());
         Directory.CreateDirectory(dataDirectory);
         if (settings != null)
             File.WriteAllText(Path.Combine(dataDirectory, "settings.json"), JsonSerializer.Serialize(settings));
+        foreach (var (name, content) in dataFiles ?? new Dictionary<string, string>())
+            File.WriteAllText(Path.Combine(dataDirectory, name), content);
 
         var startInfo = new ProcessStartInfo(FindAppExecutable()) { UseShellExecute = false };
         startInfo.Environment["READYCODE_DATA_DIR"] = dataDirectory;
@@ -163,6 +172,18 @@ public sealed class AppSession : IDisposable
         SendKeys("{ENTER}");
     }
 
+    /// <summary>Gets the clipboard's text (empty if it holds no text).</summary>
+    public static string GetClipboardText() =>
+        RunOnStaThread(() => System.Windows.Clipboard.ContainsText() ? System.Windows.Clipboard.GetText() : "");
+
+    /// <summary>Replaces the clipboard's content with <paramref name="text"/> (or clears it, if empty).</summary>
+    public static void SetClipboardText(string text) => RunOnStaThread(() =>
+    {
+        if (text.Length == 0) System.Windows.Clipboard.Clear();
+        else System.Windows.Clipboard.SetText(text);
+        return true;
+    });
+
     /// <summary>Waits until <paramref name="condition"/> holds, failing with a message if it times out.</summary>
     public static void WaitUntil(Func<bool> condition, TimeSpan timeout, string description)
     {
@@ -231,6 +252,27 @@ public sealed class AppSession : IDisposable
         }
         throw new InvalidOperationException(
             "Couldn't bring the app to the foreground, so no keystrokes were sent. Don't use the keyboard or mouse while UI tests run.");
+    }
+
+    // The clipboard API needs an STA thread (test threads are MTA), and the clipboard can be
+    // briefly locked by another app - so run on a fresh STA thread, retrying a few times.
+    private static T RunOnStaThread<T>(Func<T> action)
+    {
+        T result = default!;
+        Exception? error = null;
+        var thread = new Thread(() =>
+        {
+            for (int attempt = 0; ; attempt++)
+            {
+                try { result = action(); error = null; return; }
+                catch (ExternalException ex) when (attempt < 10) { error = ex; Thread.Sleep(100); }
+                catch (Exception ex) { error = ex; return; }
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+        return error == null ? result : throw new InvalidOperationException("Clipboard access failed.", error);
     }
 
     private static void TryDeleteDirectory(string path)

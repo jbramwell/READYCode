@@ -6,12 +6,14 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using ReadyCode.Assembler;
 using ReadyCode.C64U;
 using ReadyCode.Debugger;
 using ReadyCode.Interop;
+using ReadyCode.Logging;
 using ReadyCode.Minify;
 using ReadyCode.Models;
 using ReadyCode.Printing;
@@ -149,6 +151,7 @@ public class MainViewModel : INotifyPropertyChanged
 
         HelpGitHubCommand = new RelayCommand(_ => OpenGitHubRepo());
         HelpDocsCommand = new RelayCommand(_ => OpenDocs());
+        HelpCopyDiagnosticInfoCommand = new RelayCommand(_ => CopyDiagnosticInfo());
         HelpAboutCommand = new RelayCommand(_ => ShowAboutDialog());
     }
 
@@ -986,6 +989,12 @@ public class MainViewModel : INotifyPropertyChanged
     public ICommand HelpDocsCommand { get; }
 
     /// <summary>
+    /// Gets the command that copies diagnostic info (version, runtime, OS, recent errors) to the
+    /// clipboard for pasting into a bug report.
+    /// </summary>
+    public ICommand HelpCopyDiagnosticInfoCommand { get; }
+
+    /// <summary>
     /// Gets the command that shows the About dialog.
     /// </summary>
     public ICommand HelpAboutCommand { get; }
@@ -1332,6 +1341,21 @@ public class MainViewModel : INotifyPropertyChanged
     private void OpenDocs()
     {
         Process.Start(new ProcessStartInfo(Settings.DocsUrl) { UseShellExecute = true });
+    }
+
+    // Copies the diagnostic report (see DiagnosticInfo) to the clipboard. The clipboard can be
+    // briefly locked by another app, so that's reported rather than treated as an error.
+    private void CopyDiagnosticInfo()
+    {
+        try
+        {
+            Clipboard.SetText(DiagnosticInfo.Build());
+            SetStatus("Diagnostic info copied to the clipboard - paste it into your bug report.");
+        }
+        catch (ExternalException)
+        {
+            SetStatus("Couldn't copy diagnostic info: another app is using the clipboard. Try again.", StatusType.Error);
+        }
     }
 
     // Shows the About dialog with application information.
