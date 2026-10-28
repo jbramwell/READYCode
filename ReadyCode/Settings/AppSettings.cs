@@ -400,6 +400,13 @@ public class AppSettings
     /// </summary>
     public bool MinifyDialogRenumberLines { get; set; } = false;
 
+    /// <summary>
+    /// Gets the per-user folder (under %AppData%) that holds the settings file and error log.
+    /// Static, so it is never serialized into the settings file.
+    /// </summary>
+    public static string DataDirectory =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "READYCode");
+
     #endregion
 
     #region Public Methods
@@ -466,8 +473,7 @@ public class AppSettings
     /// <summary>
     /// Gets the file path for the settings file.
     /// </summary>
-    private static string SettingsFilePath =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "READYCode", "settings.json");
+    private static string SettingsFilePath => Path.Combine(DataDirectory, "settings.json");
 
     #endregion
 }
