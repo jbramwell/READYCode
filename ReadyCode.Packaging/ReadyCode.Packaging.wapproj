@@ -67,7 +67,9 @@
     <GenerateTemporaryStoreCertificate>True</GenerateTemporaryStoreCertificate>
     <GenerateAppInstallerFile>False</GenerateAppInstallerFile>
     <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
-    <AppxAutoIncrementPackageRevision>True</AppxAutoIncrementPackageRevision>
+    <!-- Off: the version comes from Directory.Build.props (see StampPackageManifestVersion),
+         and the Store requires the revision part this would increment to stay 0. -->
+    <AppxAutoIncrementPackageRevision>False</AppxAutoIncrementPackageRevision>
     <GenerateTestArtifacts>False</GenerateTestArtifacts>
     <AppxBundlePlatforms>x64|arm64</AppxBundlePlatforms>
     <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
@@ -109,6 +111,24 @@
       <SubType>Designer</SubType>
     </AppxManifest>
   </ItemGroup>
+  <!-- Packages with the version from Directory.Build.props rather than the placeholder in
+       Package.appxmanifest: stamps it into a copy under obj\ and builds from that copy, so the
+       source manifest is never modified. Runs before PrepareForBuild, ahead of every target that
+       reads the manifest. -->
+  <Target Name="StampPackageManifestVersion" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <_StampedAppxManifest>$(MSBuildProjectDirectory)\$(IntermediateOutputPath)Package.appxmanifest</_StampedAppxManifest>
+    </PropertyGroup>
+    <Copy SourceFiles="@(AppxManifest)" DestinationFiles="$(_StampedAppxManifest)" />
+    <XmlPoke XmlInputPath="$(_StampedAppxManifest)"
+             Query="/m:Package/m:Identity/@Version"
+             Value="$(ReadyCodeVersion).0"
+             Namespaces="&lt;Namespace Prefix='m' Uri='http://schemas.microsoft.com/appx/manifest/foundation/windows10' /&gt;" />
+    <ItemGroup>
+      <AppxManifest Remove="@(AppxManifest)" />
+      <AppxManifest Include="$(_StampedAppxManifest)" />
+    </ItemGroup>
+  </Target>
   <ItemGroup>
     <Content Include="Images\LargeTile.scale-100.png" />
     <Content Include="Images\LargeTile.scale-125.png" />

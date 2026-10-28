@@ -1,0 +1,17 @@
+<Project>
+
+  <!-- READYCode's version - the single place to change it. Imported automatically by every
+       project under this folder, and from here it becomes:
+         - the app's assembly/file version (ReadyCode.csproj <Version>), shown in About and
+           written to error.log
+         - the MSI's ProductVersion (ReadyCode.Installer.wixproj)
+         - the MSIX package Identity version, as $(ReadyCodeVersion).0 (ReadyCode.Packaging.wapproj
+           stamps it into a copy of Package.appxmanifest at build time)
+       Major.Minor.Build only: the Microsoft Store reserves the fourth (revision) part and
+       requires it to be 0, so bump the Build part for each Store submission. The release
+       workflow also checks that a pushed vX.Y.Z tag matches this value. -->
+  <PropertyGroup>
+    <ReadyCodeVersion>2.5.0</ReadyCodeVersion>
+  </PropertyGroup>
+
+</Project>

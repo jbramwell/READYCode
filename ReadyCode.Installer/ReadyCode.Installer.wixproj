@@ -3,7 +3,8 @@
     <SuppressIces>ICE61</SuppressIces>
   </PropertyGroup>
   <PropertyGroup>
-    <InstallerVersion>2.5.0.0</InstallerVersion>
+    <!-- From Directory.Build.props (MSI upgrades compare only the first three parts) -->
+    <InstallerVersion>$(ReadyCodeVersion).0</InstallerVersion>
   </PropertyGroup>
   <PropertyGroup>
     <AcceptEula>true</AcceptEula>

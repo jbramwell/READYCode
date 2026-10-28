@@ -6,10 +6,12 @@
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   IgnorableNamespaces="uap rescap">
 
+  <!-- Version is a placeholder: the build stamps the real one from Directory.Build.props into
+       the packaged manifest (see StampPackageManifestVersion in ReadyCode.Packaging.wapproj). -->
   <Identity
     Name="MoonspaceLabs.READYCode"
     Publisher="CN=EEF9F8D2-C859-4D69-8A4A-2694AF79515B"
-    Version="2.5.0.0" />
+    Version="0.0.0.0" />
 
   <Properties>
     <DisplayName>READYCode</DisplayName>

@@ -34,22 +34,6 @@
                 "isDefault": true
             },
             "dependsOn": "Build ReadyCode"
-        },
-        {
-            "label": "Publish MSIX (Store)",
-            "command": "dotnet",
-            "type": "process",
-            "args": [
-                "publish",
-                "${workspaceFolder}/ReadyCode/ReadyCode.csproj",
-                "-c", "Release",
-                "-r", "win-x64",
-                "--self-contained", "true",
-                "-p:GenerateAppxPackageOnBuild=true",
-                "-p:AppxPackageDir=${workspaceFolder}/Packages/",
-                "-p:UapAppxPackageBuildMode=StoreUpload"
-            ],
-            "problemMatcher": "$msCompile"
         }
     ]
 }

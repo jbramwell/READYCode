@@ -268,20 +268,24 @@ it only activates when you configure a device URL in Preferences.
 
 ### Packaging
 
-There are two MSIX-related pieces in this repo:
+The version number lives in one place: `ReadyCodeVersion` in `Directory.Build.props` (Major.Minor.Build).
+It flows into the app's assembly and file versions, the MSI, and the MSIX package (as `X.Y.Z.0` - the
+Store requires the fourth part to be 0, so bump the third for each Store submission). The release
+workflow fails if a pushed `vX.Y.Z` tag doesn't match it.
 
-- `ReadyCode/ReadyCode.csproj` itself is configured for a self-contained Release build (`win-x64` by
-  default, `win-arm64` with `-p:Platform=ARM64` or `-r win-arm64`) with `WindowsPackageType=MSIX` -
-  the `Publish MSIX (Store)` task in `.vscode/tasks.json` drives this via `dotnet publish`.
-- `ReadyCode.Packaging/ReadyCode.Packaging.wapproj` is a separate Windows Application Packaging
-  Project. As noted above, it requires Visual Studio's MSIX/packaging workload - open `ReadyCode.sln`
-  in Visual Studio and build/publish that project from there. It bundles both x64 and ARM64
-  (`AppxBundlePlatforms=x64|arm64`), so a single `.msixupload` covers both architectures.
+`ReadyCode/ReadyCode.csproj` is configured for a self-contained Release build (`win-x64` by default,
+`win-arm64` with `-p:Platform=ARM64` or `-r win-arm64`). Two projects package it:
 
-The WiX installer (`ReadyCode.Installer`) builds `READYCode.msi` (x64) by default, or
-`READYCode-arm64.msi` with `-p:Platform=ARM64`; the release workflow publishes both. It packages
-the app's *publish* output, so run `dotnet publish ReadyCode/ReadyCode.csproj -c Release -r win-x64`
-(or `win-arm64`) before building it.
+- `ReadyCode.Packaging/ReadyCode.Packaging.wapproj` is a Windows Application Packaging Project that
+  builds the MSIX for Store submission. As noted above, it requires Visual Studio's MSIX/packaging
+  workload - open `ReadyCode.sln` in Visual Studio and build/publish that project from there. It
+  bundles both x64 and ARM64 (`AppxBundlePlatforms=x64|arm64`), so a single `.msixupload` covers both
+  architectures. The `Version` in `Package.appxmanifest` is a placeholder; the build stamps in the
+  real one.
+- The WiX installer (`ReadyCode.Installer`) builds `READYCode.msi` (x64) by default, or
+  `READYCode-arm64.msi` with `-p:Platform=ARM64`; the release workflow publishes both. It packages
+  the app's *publish* output, so run `dotnet publish ReadyCode/ReadyCode.csproj -c Release -r win-x64`
+  (or `win-arm64`) before building it.
 
 ## Contributing
 

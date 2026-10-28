@@ -14,14 +14,9 @@
     <AppendRuntimeIdentifierToOutputPath Condition="'$(Configuration)' != 'Release'">false</AppendRuntimeIdentifierToOutputPath>
     <SelfContained>false</SelfContained>
     
-    <!-- Versioning — increment ApplicationVersion (Build digit) for each Store submission -->
-    <ApplicationVersion>2.5.0.0</ApplicationVersion>
-    <ApplicationDisplayVersion>2.5.0</ApplicationDisplayVersion>
-    <AssemblyVersion>2.5.0.0</AssemblyVersion>
-    <FileVersion>2.5.0.0</FileVersion>
-
-    <!-- MSIX packaging — Release only so Debug builds remain fast -->
-    <WindowsPackageType Condition="'$(Configuration)' == 'Release'">MSIX</WindowsPackageType>
+    <!-- Set once for the whole repo in Directory.Build.props; the SDK derives AssemblyVersion,
+         FileVersion, and the product version from it. -->
+    <Version>$(ReadyCodeVersion)</Version>
 
     <!-- Self-contained publish so users don't need .NET 10 installed.
          Release-only: Debug builds stay in the standard output path so launch.json works unchanged.
@@ -33,10 +28,6 @@
     <PublishTrimmed>false</PublishTrimmed>
     <PublishReadyToRun Condition="'$(Configuration)' == 'Release'">true</PublishReadyToRun>
 
-    <!-- Code signing: replace with your certificate thumbprint after creating the dev cert.
-         See the packaging plan for the PowerShell command to generate it.
-         Alternatively use PackageCertificateKeyFile + PackageCertificatePassword for a .pfx file. -->
-    <PackageCertificateThumbprint>REPLACE_WITH_CERT_THUMBPRINT</PackageCertificateThumbprint>
     <ApplicationIcon>READYCode.ico</ApplicationIcon>
     <Platforms>AnyCPU;x64;ARM64</Platforms>
   </PropertyGroup>

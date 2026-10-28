@@ -21,6 +21,17 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # The pushed tag (e.g. v2.5.0) must match ReadyCodeVersion in Directory.Build.props, so a
+      # release can't ship binaries stamped with a different version than its name.
+      - name: Check tag matches version
+        shell: pwsh
+        run: |
+          $version = dotnet msbuild ReadyCode/ReadyCode.csproj -getProperty:ReadyCodeVersion
+          if ("v$version" -ne '${{ github.ref_name }}') {
+            Write-Error "Tag ${{ github.ref_name }} doesn't match ReadyCodeVersion $version in Directory.Build.props."
+            exit 1
+          }
+
       - name: Accept WiX OSMF EULA
         shell: pwsh
         run: |
