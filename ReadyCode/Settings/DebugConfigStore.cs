@@ -2,8 +2,8 @@
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
 using System.IO;
-using System.Text.Json;
 using System.Text.Json.Serialization;
+using ReadyCode.Logging;
 
 namespace ReadyCode.Settings;
 
@@ -100,27 +100,12 @@ public sealed class DebugConfigStore
     /// <summary>
     /// Loads the store from disk, pruning (and immediately re-saving without) any project entry
     /// whose <see cref="DebugProjectConfig.LastAccessedUtc"/> is 30 or more days old. Falls back
-    /// to an empty store if the file is missing or corrupt.
+    /// to the previous save's backup if the file is damaged (see <see cref="JsonSettingsFile"/>),
+    /// and to an empty store if neither exists or can be read.
     /// </summary>
     public static DebugConfigStore Load()
     {
-        DebugConfigStore store;
-        try
-        {
-            if (File.Exists(FilePath))
-            {
-                string json = File.ReadAllText(FilePath);
-                store = JsonSerializer.Deserialize<DebugConfigStore>(json) ?? new DebugConfigStore();
-            }
-            else
-            {
-                store = new DebugConfigStore();
-            }
-        }
-        catch (Exception)
-        {
-            store = new DebugConfigStore();
-        }
+        var store = JsonSettingsFile.Load<DebugConfigStore>(FilePath, ErrorLog.Write) ?? new DebugConfigStore();
 
         if (PruneStaleProjects(store.Projects, DateTime.UtcNow))
             store.Save();
@@ -178,24 +163,15 @@ public sealed class DebugConfigStore
     }
 
     /// <summary>
-    /// Persists the store to disk.
+    /// Persists the store to disk, crash-safely (see <see cref="JsonSettingsFile"/>).
     /// </summary>
-    public void Save()
-    {
-        string? directory = Path.GetDirectoryName(FilePath);
-        if (!string.IsNullOrEmpty(directory))
-            Directory.CreateDirectory(directory);
-
-        string json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(FilePath, json);
-    }
+    public void Save() => JsonSettingsFile.Save(FilePath, this);
 
     #endregion
 
     #region Private Properties
 
-    private static string FilePath =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "READYCode", "debug-config.json");
+    private static string FilePath => Path.Combine(AppSettings.DataDirectory, "debug-config.json");
 
     #endregion
 }

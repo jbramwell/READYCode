@@ -2,7 +2,7 @@
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
 using System.IO;
-using System.Text.Json;
+using ReadyCode.Logging;
 
 namespace ReadyCode.Settings;
 
@@ -412,30 +412,13 @@ public class AppSettings
     #region Public Methods
 
     /// <summary>
-    /// Loads settings from disk, falling back to defaults if none exist or the file
-    /// can't be read.
+    /// Loads settings from disk - or from the previous save's backup if the settings file is
+    /// damaged (see <see cref="JsonSettingsFile"/>) - falling back to defaults if neither exists
+    /// or can be read.
     /// </summary>
     /// <returns>The loaded settings, or defaults if loading fails.</returns>
-    public static AppSettings Load()
-    {
-        try
-        {
-            if (File.Exists(SettingsFilePath))
-            {
-                string json = File.ReadAllText(SettingsFilePath);
-                var settings = JsonSerializer.Deserialize<AppSettings>(json);
-
-                if (settings != null)
-                    return settings;
-            }
-        }
-        catch (Exception)
-        {
-            // Settings file is missing or corrupt - fall back to defaults
-        }
-
-        return new AppSettings();
-    }
+    public static AppSettings Load() =>
+        JsonSettingsFile.Load<AppSettings>(SettingsFilePath, ErrorLog.Write) ?? new AppSettings();
 
     /// <summary>
     /// Adds a file path to the list of recent files, moving it to the front if it already
@@ -452,19 +435,9 @@ public class AppSettings
     }
 
     /// <summary>
-    /// Persists the application settings to disk.
+    /// Persists the application settings to disk, crash-safely (see <see cref="JsonSettingsFile"/>).
     /// </summary>
-    public void Save()
-    {
-        string? directory = Path.GetDirectoryName(SettingsFilePath);
-
-        if (!string.IsNullOrEmpty(directory))
-            Directory.CreateDirectory(directory);
-
-        string json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
-
-        File.WriteAllText(SettingsFilePath, json);
-    }
+    public void Save() => JsonSettingsFile.Save(SettingsFilePath, this);
 
     #endregion
 
