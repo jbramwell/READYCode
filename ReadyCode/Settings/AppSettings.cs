@@ -401,11 +401,20 @@ public class AppSettings
     public bool MinifyDialogRenumberLines { get; set; } = false;
 
     /// <summary>
-    /// Gets the per-user folder (under %AppData%) that holds the settings file and error log.
-    /// Static, so it is never serialized into the settings file.
+    /// Gets the per-user folder (under %AppData%) that holds the settings file, debug config, and
+    /// error log - or the folder named by the <c>READYCODE_DATA_DIR</c> environment variable, if
+    /// set, which the UI smoke tests (ReadyCode.UITests) use to run against throwaway settings
+    /// instead of the developer's own. Static, so it is never serialized into the settings file.
     /// </summary>
     public static string DataDirectory =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "READYCode");
+        Environment.GetEnvironmentVariable(DataDirectoryOverrideVariable) is { Length: > 0 } overrideDir
+            ? overrideDir
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "READYCode");
+
+    /// <summary>
+    /// The environment variable that, when set, replaces <see cref="DataDirectory"/>'s location.
+    /// </summary>
+    public const string DataDirectoryOverrideVariable = "READYCODE_DATA_DIR";
 
     #endregion
 

@@ -77,11 +77,13 @@ style in a new file:
    such as no unused `using` directives.
 2. `dotnet test ReadyCode.Tests/ReadyCode.Tests.csproj` - must pass. Add tests under
    `ReadyCode.Tests/` for new pure-logic code (tokenizer, minify, prettify, and similar are good
-   candidates; UI/AvalonEdit-coupled code is harder to unit test and isn't currently covered - manual
-   verification is fine there). The **Build and Test** workflow (`.github/workflows/ci.yml`) also
-   runs the suite on both x64 and ARM64 for every PR and push to `main`, and must pass on both.
-3. For any UI-visible change, actually run the app (`dotnet run --project ReadyCode/ReadyCode.csproj`)
-   and exercise the change rather than relying on the build succeeding.
+   candidates; UI/AvalonEdit-coupled code is covered by the UI smoke tests below instead). The
+   **Build and Test** workflow (`.github/workflows/ci.yml`) also runs the suite on both x64 and
+   ARM64 for every PR and push to `main`, and must pass on both.
+3. For any UI-visible change, run the UI smoke tests (`.\ReadyCode.UITests\run-ui-tests.ps1`,
+   about 45 seconds, hands off the keyboard) and actually run the app
+   (`dotnet run --project ReadyCode/ReadyCode.csproj`) to exercise the change. Consider adding a
+   smoke test for it - see [ReadyCode.UITests/README.md](ReadyCode.UITests/README.md).
 4. Keep commits/PRs scoped to one change - separate unrelated fixes into separate PRs where practical.
 5. Any new `.cs` files must include the copyright header at the top:
 ```csharp

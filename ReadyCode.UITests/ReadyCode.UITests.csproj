@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- UI smoke tests: launch the real app and drive it through UI Automation. Skipped unless
+       READYCODE_UI_TESTS=1 (see UIFactAttribute), so they never run in CI or a plain "Run All" -
+       use run-ui-tests.ps1. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <!-- UI Automation (System.Windows.Automation) ships in the WPF reference set. -->
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- System.Windows.Forms.SendKeys, without UseWindowsForms' conflicting implicit usings
+         (the same approach ReadyCode.csproj takes). -->
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Builds the app first so the tests always launch current code; the tests run it as a
+         separate process rather than referencing its assembly. -->
+    <ProjectReference Include="..\ReadyCode\ReadyCode.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>
