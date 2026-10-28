@@ -39,6 +39,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Nests MainWindow's partial-class files (MainWindow.Files.cs, MainWindow.Search.cs, ...)
+         under MainWindow.xaml in Solution Explorer, alongside MainWindow.xaml.cs. -->
+    <Compile Update="Views\MainWindow.*.cs" DependentUpon="MainWindow.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Gives access to System.Windows.Forms.ColorDialog without enabling
          UseWindowsForms, which would inject conflicting implicit usings. -->
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
