@@ -6,7 +6,12 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- Debug builds target the host machine's architecture (win-x64 or win-arm64) so the
+         VS Code debugger, which only attaches to native-architecture processes, works on both.
+         The RID is left out of the output path so launch.json doesn't depend on it. -->
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifier>$(NETCoreSdkRuntimeIdentifier)</RuntimeIdentifier>
+    <AppendRuntimeIdentifierToOutputPath Condition="'$(Configuration)' != 'Release'">false</AppendRuntimeIdentifierToOutputPath>
     <SelfContained>false</SelfContained>
     
     <!-- Versioning — increment ApplicationVersion (Build digit) for each Store submission -->
@@ -19,8 +24,11 @@
     <WindowsPackageType Condition="'$(Configuration)' == 'Release'">MSIX</WindowsPackageType>
 
     <!-- Self-contained publish so users don't need .NET 8 installed.
-         Release-only: Debug builds stay in the standard output path so launch.json works unchanged. -->
+         Release-only: Debug builds stay in the standard output path so launch.json works unchanged.
+         Release targets the requested Platform (x64 or ARM64 - the packaging project builds one
+         per bundle platform), defaulting to win-x64 when no specific platform is given. -->
     <RuntimeIdentifier Condition="'$(Configuration)' == 'Release'">win-x64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(Configuration)' == 'Release' and '$(Platform)' == 'ARM64'">win-arm64</RuntimeIdentifier>
     <SelfContained Condition="'$(Configuration)' == 'Release'">true</SelfContained>
     <PublishTrimmed>false</PublishTrimmed>
     <PublishReadyToRun Condition="'$(Configuration)' == 'Release'">true</PublishReadyToRun>
@@ -30,7 +38,7 @@
          Alternatively use PackageCertificateKeyFile + PackageCertificatePassword for a .pfx file. -->
     <PackageCertificateThumbprint>REPLACE_WITH_CERT_THUMBPRINT</PackageCertificateThumbprint>
     <ApplicationIcon>READYCode.ico</ApplicationIcon>
-    <Platforms>AnyCPU;x64</Platforms>
+    <Platforms>AnyCPU;x64;ARM64</Platforms>
   </PropertyGroup>
 
   <ItemGroup>

@@ -4,15 +4,20 @@
   </PropertyGroup>
   <PropertyGroup>
     <InstallerVersion>2.5.0.0</InstallerVersion>
-    <DefineConstants>InstallerVersion=$(InstallerVersion)</DefineConstants>
   </PropertyGroup>
   <PropertyGroup>
     <AcceptEula>true</AcceptEula>
-    <Platform>x64</Platform>
+    <!-- x64 by default; build with -p:Platform=ARM64 for the native ARM64 installer -->
+    <Platform Condition="'$(Platform)' == '' or '$(Platform)' == 'AnyCPU' or '$(Platform)' == 'x86'">x64</Platform>
     <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
   </PropertyGroup>
   <PropertyGroup>
+    <AppRuntimeIdentifier>win-$(Platform.ToLowerInvariant())</AppRuntimeIdentifier>
+    <DefineConstants>InstallerVersion=$(InstallerVersion);AppRuntimeIdentifier=$(AppRuntimeIdentifier)</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup>
     <OutputName>READYCode</OutputName>
+    <OutputName Condition="'$(Platform)' == 'ARM64'">READYCode-arm64</OutputName>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="WixToolset.UI.wixext" Version="7.0.0" />

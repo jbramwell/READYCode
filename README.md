@@ -270,12 +270,16 @@ it only activates when you configure a device URL in Preferences.
 
 There are two MSIX-related pieces in this repo:
 
-- `ReadyCode/ReadyCode.csproj` itself is configured for a self-contained (`win-x64`) Release build with
-  `WindowsPackageType=MSIX` - the `Publish MSIX (Store)` task in `.vscode/tasks.json` drives this via
-  `dotnet publish`.
+- `ReadyCode/ReadyCode.csproj` itself is configured for a self-contained Release build (`win-x64` by
+  default, `win-arm64` with `-p:Platform=ARM64` or `-r win-arm64`) with `WindowsPackageType=MSIX` -
+  the `Publish MSIX (Store)` task in `.vscode/tasks.json` drives this via `dotnet publish`.
 - `ReadyCode.Packaging/ReadyCode.Packaging.wapproj` is a separate Windows Application Packaging
   Project. As noted above, it requires Visual Studio's MSIX/packaging workload - open `ReadyCode.sln`
-  in Visual Studio and build/publish that project from there.
+  in Visual Studio and build/publish that project from there. It bundles both x64 and ARM64
+  (`AppxBundlePlatforms=x64|arm64`), so a single `.msixupload` covers both architectures.
+
+The WiX installer (`ReadyCode.Installer`) builds `READYCode.msi` (x64) by default, or
+`READYCode-arm64.msi` with `-p:Platform=ARM64`; the release workflow publishes both.
 
 ## Contributing
 

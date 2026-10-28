@@ -27,14 +27,19 @@ jobs:
           New-Item -Path "$env:USERPROFILE\.wix" -ItemType Directory -Force
           New-Item -Path "$env:USERPROFILE\.wix\wix7-osmf-eula.txt" -ItemType File -Force
 
+      # ReadyCode.csproj declares RuntimeIdentifiers (win-x64;win-arm64), so one restore covers both
       - name: Restore dependencies
-        run: dotnet restore READYCode.sln --runtime win-x64
+        run: dotnet restore READYCode.sln
 
       - name: Build app
-        run: dotnet build ReadyCode/ReadyCode.csproj -c Release --no-restore
+        run: |
+          dotnet build ReadyCode/ReadyCode.csproj -c Release -r win-x64 --no-restore
+          dotnet build ReadyCode/ReadyCode.csproj -c Release -r win-arm64 --no-restore
 
-      - name: Build installer
-        run: dotnet build ReadyCode.Installer/ReadyCode.Installer.wixproj -c Release --no-restore
+      - name: Build installers
+        run: |
+          dotnet build ReadyCode.Installer/ReadyCode.Installer.wixproj -c Release -p:Platform=x64 --no-restore
+          dotnet build ReadyCode.Installer/ReadyCode.Installer.wixproj -c Release -p:Platform=ARM64 --no-restore
 
       - name: Read Changelog
         id: changelog
@@ -52,5 +57,5 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ReadyCode.Installer/bin/x64/Release/en-US/*.msi
+          files: ReadyCode.Installer/bin/*/Release/en-US/*.msi
           body: ${{ steps.changelog.outputs.CHANGELOG }}
