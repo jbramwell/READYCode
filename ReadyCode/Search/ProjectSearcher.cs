@@ -3,16 +3,16 @@
 
 using System.IO;
 using System.Text;
-using System.Text.RegularExpressions;
 using ReadyCode.IO;
+using ReadyCode.Models;
 using ReadyCode.Tokenizer;
 
 namespace ReadyCode.Search;
 
 /// <summary>
-/// Finds text matches within a single document's text, and enumerates and reads the searchable
-/// source files of an open project folder - shared by the single-tab Find/Replace bar and the
-/// project-wide Search panel so both use one matching algorithm.
+/// Enumerates, reads, writes, and searches the searchable source files of an open project folder
+/// for the project-wide Search panel; matching itself is <see cref="SearchPattern"/>, shared with
+/// the single-tab Find/Replace bar so both use one matching algorithm.
 /// </summary>
 public static class ProjectSearcher
 {
@@ -22,11 +22,6 @@ public static class ProjectSearcher
     // ReadSearchableText/re-tokenized by WriteSearchableText, same round trip the editor already
     // does when opening/saving one.
     private static readonly string[] SearchableExtensions = [".bas", ".asm", ".s", ".txt", ".prg"];
-
-    // Upper bound on a single regex match attempt. The pattern is user-typed and runs on the UI
-    // thread, so a catastrophically backtracking one (e.g. "(a+)+$") would otherwise freeze the
-    // app indefinitely - far beyond anything a legitimate search of a source file needs.
-    private static readonly TimeSpan RegexMatchTimeout = TimeSpan.FromMilliseconds(250);
 
     #endregion
 
@@ -104,7 +99,9 @@ public static class ProjectSearcher
 
     /// <summary>
     /// Finds every occurrence of <paramref name="searchText"/> in <paramref name="text"/>, either
-    /// as a regular expression or a plain substring search.
+    /// as a regular expression or a plain substring search - a one-off convenience over
+    /// <see cref="SearchPattern"/>, which callers searching many texts or needing to know why
+    /// nothing matched should use directly.
     /// </summary>
     /// <param name="text">The text to search.</param>
     /// <param name="searchText">The text or pattern to search for.</param>
@@ -116,58 +113,96 @@ public static class ProjectSearcher
     /// <param name="useRegex">Whether <paramref name="searchText"/> is a regular expression.</param>
     /// <returns>
     /// Each match's offset and length, in document order. Empty if the pattern is invalid, takes
-    /// too long to evaluate (see <see cref="RegexMatchTimeout"/>), or has no matches.
+    /// too long to evaluate, or has no matches.
     /// </returns>
-    public static List<(int Offset, int Length)> FindMatches(string text, string searchText, bool matchCase, bool wholeWord, bool useRegex)
+    public static List<(int Offset, int Length)> FindMatches(string text, string searchText, bool matchCase, bool wholeWord, bool useRegex) =>
+        SearchPattern.TryCreate(searchText, matchCase, wholeWord, useRegex, out _)?.FindMatches(text, out _) ?? [];
+
+    /// <summary>
+    /// Searches every searchable file under <paramref name="rootPath"/> for
+    /// <paramref name="pattern"/>. Touches no UI state, so it can run on a background thread.
+    /// </summary>
+    /// <param name="rootPath">The project's root folder.</param>
+    /// <param name="pattern">The prepared search.</param>
+    /// <param name="prepareText">
+    /// Adjusts a file's text before it's searched, given its path and text - e.g. padding a
+    /// detokenized .prg's line numbers the way the editor does on opening one, so a result's
+    /// line/column lines up with the opened tab.
+    /// </param>
+    /// <param name="cancellationToken">Stops the search between files.</param>
+    /// <returns>The files with matches, in search order, plus totals.</returns>
+    public static ProjectSearchOutcome SearchProject(string rootPath, SearchPattern pattern, Func<string, string, string> prepareText, CancellationToken cancellationToken)
     {
-        var matches = new List<(int Offset, int Length)>();
-        if (string.IsNullOrEmpty(searchText)) return matches;
+        var files = new List<ProjectSearchFileResult>();
+        int totalMatches = 0;
+        int timedOutFiles = 0;
 
-        if (useRegex)
+        foreach (string path in EnumerateSearchableFiles(rootPath))
         {
-            try
-            {
-                var options = matchCase ? RegexOptions.None : RegexOptions.IgnoreCase;
-                foreach (Match m in new Regex(searchText, options | RegexOptions.Multiline, RegexMatchTimeout).Matches(text))
-                    if (m.Length > 0) matches.Add((m.Index, m.Length));
-            }
-            catch (ArgumentException) { /* invalid regex - no matches */ }
-            catch (RegexMatchTimeoutException)
-            {
-                // Matches are enumerated lazily, so some may already have been added - drop them
-                // rather than report a partial result as if it were complete.
-                matches.Clear();
-            }
-        }
-        else
-        {
-            var comparison = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-            int idx = 0;
-            while (idx < text.Length)
-            {
-                int pos = text.IndexOf(searchText, idx, comparison);
-                if (pos < 0) break;
+            cancellationToken.ThrowIfCancellationRequested();
 
-                if (wholeWord)
-                {
-                    bool okStart = pos == 0 || !IsWordChar(text[pos - 1]);
-                    bool okEnd = pos + searchText.Length >= text.Length || !IsWordChar(text[pos + searchText.Length]);
-                    if (!okStart || !okEnd) { idx = pos + 1; continue; }
-                }
+            string? text = ReadSearchableText(path);
+            if (text == null) continue;
+            text = prepareText(path, text);
 
-                matches.Add((pos, searchText.Length));
-                idx = pos + 1;
+            var matches = pattern.FindMatches(text, out bool timedOut);
+            if (timedOut) timedOutFiles++;
+            if (matches.Count == 0) continue;
+
+            var lineStarts = ComputeLineStartOffsets(text);
+            var fileResult = new ProjectSearchFileResult(path, Path.GetRelativePath(rootPath, path));
+            foreach (var (offset, length) in matches)
+            {
+                var (lineNumber, columnOffset, preview) = LocateMatch(text, lineStarts, offset);
+                fileResult.Matches.Add(new ProjectSearchMatchInfo(fileResult, lineNumber, columnOffset, length, preview));
             }
+            files.Add(fileResult);
+            totalMatches += matches.Count;
         }
 
-        return matches;
+        return new ProjectSearchOutcome(files, totalMatches, timedOutFiles);
+    }
+
+    /// <summary>
+    /// Gets the 0-based offset of each line's first character, used to turn a match's absolute
+    /// offset into a 1-based line number + in-line column without an O(n) scan per match.
+    /// </summary>
+    /// <param name="text">The text to index.</param>
+    public static List<int> ComputeLineStartOffsets(string text)
+    {
+        var offsets = new List<int> { 0 };
+        for (int i = 0; i < text.Length; i++)
+            if (text[i] == '\n') offsets.Add(i + 1);
+        return offsets;
+    }
+
+    /// <summary>
+    /// Locates an absolute offset within <paramref name="text"/> as a line and column.
+    /// </summary>
+    /// <param name="text">The text containing the offset.</param>
+    /// <param name="lineStartOffsets">The text's line start offsets (see <see cref="ComputeLineStartOffsets"/>).</param>
+    /// <param name="offset">The absolute offset to locate.</param>
+    /// <returns>The 1-based line number, the 0-based column within it, and the line's trimmed text.</returns>
+    public static (int LineNumber, int ColumnOffset, string LinePreview) LocateMatch(string text, List<int> lineStartOffsets, int offset)
+    {
+        int idx = lineStartOffsets.BinarySearch(offset);
+        if (idx < 0) idx = ~idx - 1;
+        int lineStart = lineStartOffsets[idx];
+        int lineEnd = idx + 1 < lineStartOffsets.Count ? lineStartOffsets[idx + 1] - 1 : text.Length;
+        if (lineEnd < lineStart) lineEnd = lineStart;
+        string lineText = text.Substring(lineStart, lineEnd - lineStart).TrimEnd('\r');
+        return (idx + 1, offset - lineStart, lineText.Trim());
     }
 
     #endregion
-
-    #region Private Methods
-
-    private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '_';
-
-    #endregion
 }
+
+/// <summary>
+/// The result of <see cref="ProjectSearcher.SearchProject"/>.
+/// </summary>
+/// <param name="Files">Each file with at least one match.</param>
+/// <param name="TotalMatches">The number of matches across all files.</param>
+/// <param name="TimedOutFiles">
+/// How many files were skipped because the regular expression took too long to evaluate on them.
+/// </param>
+public sealed record ProjectSearchOutcome(IReadOnlyList<ProjectSearchFileResult> Files, int TotalMatches, int TimedOutFiles);

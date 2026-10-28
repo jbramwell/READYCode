@@ -125,6 +125,8 @@ public partial class FindBarControl : UserControl
     /// <param name="total">The total number of matches.</param>
     public void SetMatchCount(int current, int total)
     {
+        MatchCountText.ToolTip = null;
+
         if (string.IsNullOrEmpty(SearchBox.Text))
         {
             MatchCountText.Text = "";
@@ -140,6 +142,19 @@ public partial class FindBarControl : UserControl
             MatchCountText.Text   = $"{current} of {total}";
             SearchBox.BorderBrush = (Brush)FindResource("ThemeSettingsInputBorder");
         }
+    }
+
+    /// <summary>
+    /// Shows why the search couldn't run in place of the match count - e.g. an invalid regular
+    /// expression - so "no matches" isn't confused with "couldn't search".
+    /// </summary>
+    /// <param name="message">A short summary for the match count area.</param>
+    /// <param name="details">The full explanation, shown as its tooltip.</param>
+    public void SetSearchProblem(string message, string details)
+    {
+        MatchCountText.Text    = message;
+        MatchCountText.ToolTip = details;
+        SearchBox.BorderBrush  = Brushes.Red;
     }
 
     #endregion

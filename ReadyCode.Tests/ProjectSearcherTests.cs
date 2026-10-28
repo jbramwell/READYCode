@@ -274,9 +274,110 @@ public class ProjectSearcherTests
         finally { Directory.Delete(dir, recursive: true); }
     }
 
+    // ── SearchProject ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void SearchProject_FindsMatchesAcrossFilesWithLineAndColumn()
+    {
+        string dir = CreateTempDir();
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "a.bas"), "10 PRINT \"HI\"\r\n20 GOTO 10\r\n");
+            Directory.CreateDirectory(Path.Combine(dir, "sub"));
+            File.WriteAllText(Path.Combine(dir, "sub", "b.asm"), "; GOTO is BASIC\nLDA #1\n");
+            File.WriteAllText(Path.Combine(dir, "c.txt"), "nothing here");
+
+            var outcome = ProjectSearcher.SearchProject(dir, Pattern("GOTO"), (_, text) => text, CancellationToken.None);
+
+            Assert.Equal(2, outcome.TotalMatches);
+            Assert.Equal(0, outcome.TimedOutFiles);
+
+            var a = Assert.Single(outcome.Files, f => f.RelativeDisplayPath == "a.bas");
+            var aMatch = Assert.Single(a.Matches);
+            Assert.Equal((2, 3, 4, "20 GOTO 10"), (aMatch.LineNumber, aMatch.ColumnOffset, aMatch.MatchLength, aMatch.LinePreviewText));
+
+            var b = Assert.Single(outcome.Files, f => f.RelativeDisplayPath == Path.Combine("sub", "b.asm"));
+            Assert.Equal(1, Assert.Single(b.Matches).LineNumber);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void SearchProject_SearchesTextAsAdjustedByPrepareText()
+    {
+        // Mirrors the .prg line-number padding the Search panel applies: results must be located
+        // against the adjusted text, since that's what the opened tab will show.
+        string dir = CreateTempDir();
+        try
+        {
+            string path = Path.Combine(dir, "a.bas");
+            File.WriteAllText(path, "10 PRINT");
+
+            var seen = new List<string>();
+            var outcome = ProjectSearcher.SearchProject(dir, Pattern("PRINT"),
+                (p, text) => { seen.Add(p); return "000" + text; }, CancellationToken.None);
+
+            Assert.Equal([path], seen);
+            Assert.Equal(6, Assert.Single(Assert.Single(outcome.Files).Matches).ColumnOffset);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void SearchProject_RegexTooSlowOnAFile_CountsItAsTimedOutAndKeepsOtherResults()
+    {
+        string dir = CreateTempDir();
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "slow.txt"), new string('X', 40));
+            File.WriteAllText(Path.Combine(dir, "fast.txt"), "XXY");
+
+            var pattern = SearchPattern.TryCreate(CatastrophicPattern, matchCase: true, wholeWord: false, useRegex: true, out _)!;
+            var outcome = ProjectSearcher.SearchProject(dir, pattern, (_, text) => text, CancellationToken.None);
+
+            Assert.Equal(1, outcome.TimedOutFiles);
+            Assert.Equal("fast.txt", Assert.Single(outcome.Files).RelativeDisplayPath);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void SearchProject_Cancelled_Throws()
+    {
+        string dir = CreateTempDir();
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "a.bas"), "10 PRINT");
+            using var cts = new CancellationTokenSource();
+            cts.Cancel();
+
+            Assert.ThrowsAny<OperationCanceledException>(() =>
+                ProjectSearcher.SearchProject(dir, Pattern("PRINT"), (_, text) => text, cts.Token));
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    // ── LocateMatch ───────────────────────────────────────────────────────────
+
+    [Fact]
+    public void LocateMatch_CrLfText_ReturnsLineColumnAndTrimmedPreview()
+    {
+        const string text = "10 REM\r\n   20 PRINT X\r\n30 END";
+        var lineStarts = ProjectSearcher.ComputeLineStartOffsets(text);
+
+        var (line, column, preview) = ProjectSearcher.LocateMatch(text, lineStarts, text.IndexOf("PRINT"));
+
+        Assert.Equal(2, line);
+        Assert.Equal(6, column);
+        Assert.Equal("20 PRINT X", preview);
+    }
+
     #endregion
 
     #region Private Methods
+
+    private static SearchPattern Pattern(string text) =>
+        SearchPattern.TryCreate(text, matchCase: true, wholeWord: false, useRegex: false, out _)!;
 
     private static string CreateTempDir()
     {

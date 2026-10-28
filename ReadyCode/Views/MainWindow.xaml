@@ -1,4 +1,4 @@
-<Window x:Class="ReadyCode.Views.MainWindow"
+﻿<Window x:Class="ReadyCode.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -4032,7 +4032,8 @@
                                 <Rectangle DockPanel.Dock="Left"
                                         Width="20"
                                         Fill="Transparent"/>
-                                <Button DockPanel.Dock="Right"
+                                <Button x:Name="SearchReplaceAllBtn"
+                                        DockPanel.Dock="Right"
                                         Style="{StaticResource SearchBtnStyle}"
                                         Content="Replace All"
                                         Margin="4,0,0,0"

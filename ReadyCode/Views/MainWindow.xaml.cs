@@ -94,6 +94,15 @@ public partial class MainWindow : Window
     // Debounces the find-bar's live match list so an edit doesn't re-search the whole document
     // on every keystroke; only fired while the find bar is open (see Editor_TextChanged).
     private readonly DispatcherTimer _findUpdateTimer;
+
+    // Shown when a Find / project search regex is abandoned for taking too long (see SearchPattern).
+    private const string _regexTooSlowMessage =
+        "The regular expression took too long to evaluate, so the search was stopped. Try a simpler pattern.";
+
+    // The project search currently running in the background, if any - cancelled when a new
+    // search starts so only the latest one's results are shown (see RunProjectSearchAsync).
+    private CancellationTokenSource? _projectSearchCts;
+
     private IReadOnlyList<EditorDiagnostic> _currentDiagnostics = Array.Empty<EditorDiagnostic>();
 
     // The most recent assembly result for the active Asm tab, refreshed by RunAsmSymbolIndex on
@@ -4117,13 +4126,22 @@ public partial class MainWindow : Window
             return;
         }
 
-        _findMatches.AddRange(ProjectSearcher.FindMatches(Editor.Document.Text, searchText, FindBar.MatchCase, FindBar.WholeWord, FindBar.UseRegex));
+        var pattern = SearchPattern.TryCreate(searchText, FindBar.MatchCase, FindBar.WholeWord, FindBar.UseRegex, out string? patternError);
+        bool timedOut = false;
+        if (pattern != null)
+            _findMatches.AddRange(pattern.FindMatches(Editor.Document.Text, out timedOut));
 
         _findMatchIndex = FindNearestMatchIndex(Editor.CaretOffset);
         _findHighlightColorizer.SetMatches(Editor.Document, _findMatches, _findMatchIndex);
         if (previousMatches != null) RedrawMatches(previousMatches);
         RedrawMatches(_findMatches);
-        FindBar.SetMatchCount(_findMatchIndex + 1, _findMatches.Count);
+
+        if (patternError != null)
+            FindBar.SetSearchProblem("Invalid regex", patternError);
+        else if (timedOut)
+            FindBar.SetSearchProblem("Regex too slow", _regexTooSlowMessage);
+        else
+            FindBar.SetMatchCount(_findMatchIndex + 1, _findMatches.Count);
     }
 
     // Redraws only the visual lines overlapping the given match segments, rather than
@@ -4284,16 +4302,21 @@ public partial class MainWindow : Window
         SearchReplaceRow.Visibility = Visibility.Collapsed;
     }
 
-    private void SearchQueryBox_KeyDown(object sender, KeyEventArgs e)
+    private async void SearchQueryBox_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter) { RunProjectSearch(); e.Handled = true; }
+        if (e.Key != Key.Enter) return;
+        e.Handled = true;
+        await RunProjectSearchAsync();
     }
 
-    // Runs an explicit (not live-as-you-type) search across every plain-text source file in the
-    // open project, replacing ViewModel.SearchResults wholesale. Synchronous - project folders at
-    // this app's scale don't need the Task.Run/cancellation machinery a larger IDE would.
-    private void RunProjectSearch()
+    // Runs an explicit (not live-as-you-type) search across every searchable source file in the
+    // open project, replacing ViewModel.SearchResults wholesale. The file scan runs on a
+    // background thread so a large folder (or a slow regex) doesn't freeze the window. Starting
+    // a new search cancels one still running, and Replace All is disabled meanwhile so it can't
+    // act on results from a search that hasn't finished.
+    private async Task RunProjectSearchAsync()
     {
+        _projectSearchCts?.Cancel();
         ViewModel.SearchResults.Clear();
 
         string root = ViewModel.Project.RootPath;
@@ -4304,60 +4327,57 @@ public partial class MainWindow : Window
             return;
         }
 
-        bool matchCase = SearchMatchCaseBtn.IsChecked == true;
-        bool wholeWord = SearchWholeWordBtn.IsChecked == true;
-        bool useRegex  = SearchRegexBtn.IsChecked == true;
-
-        int totalMatches = 0;
-        foreach (string path in ProjectSearcher.EnumerateSearchableFiles(root))
+        var pattern = SearchPattern.TryCreate(query, SearchMatchCaseBtn.IsChecked == true,
+            SearchWholeWordBtn.IsChecked == true, SearchRegexBtn.IsChecked == true, out string? patternError);
+        if (pattern == null)
         {
-            string? text = ProjectSearcher.ReadSearchableText(path);
-            if (text == null) continue;
-
-            // Matches the padding OpenFileByPath applies when detokenizing a .prg for display,
-            // so a result's line/column here lines up with the offsets in the opened tab.
-            if (path.EndsWith(".prg", StringComparison.OrdinalIgnoreCase))
-                text = PadLineNumbers(text);
-
-            var matches = ProjectSearcher.FindMatches(text, query, matchCase, wholeWord, useRegex);
-            if (matches.Count == 0) continue;
-
-            var lineStarts = ComputeLineStartOffsets(text);
-            var fileResult = new ProjectSearchFileResult(path, Path.GetRelativePath(root, path));
-            foreach (var (offset, length) in matches)
-            {
-                var (lineNumber, columnOffset, preview) = LocateMatch(text, lineStarts, offset);
-                fileResult.Matches.Add(new ProjectSearchMatchInfo(fileResult, lineNumber, columnOffset, length, preview));
-            }
-            ViewModel.SearchResults.Add(fileResult);
-            totalMatches += matches.Count;
+            SearchStatusText.Text = $"Invalid regular expression: {patternError}";
+            return;
         }
 
-        SearchStatusText.Text = totalMatches == 0
-            ? "No results found."
-            : $"{totalMatches} result{(totalMatches == 1 ? "" : "s")} in {ViewModel.SearchResults.Count} file{(ViewModel.SearchResults.Count == 1 ? "" : "s")}.";
-    }
+        // Matches the padding OpenFileByPath applies when detokenizing a .prg for display, so a
+        // result's line/column lines up with the offsets in the opened tab. The setting is read
+        // here, on the UI thread, since the scan itself runs in the background.
+        int lineNumberPadding = ViewModel.Settings.LineNumberPadding;
+        string PrepareText(string path, string text) =>
+            path.EndsWith(".prg", StringComparison.OrdinalIgnoreCase) ? PadLineNumbers(text, lineNumberPadding) : text;
 
-    // Line start offsets (0-based char offset of each line's first character), used to turn a
-    // match's absolute offset into a 1-based line number + in-line column without an O(n) scan
-    // per match.
-    private static List<int> ComputeLineStartOffsets(string text)
-    {
-        var offsets = new List<int> { 0 };
-        for (int i = 0; i < text.Length; i++)
-            if (text[i] == '\n') offsets.Add(i + 1);
-        return offsets;
-    }
+        using var cts = new CancellationTokenSource();
+        _projectSearchCts = cts;
+        SearchStatusText.Text = "Searching…";
+        SearchReplaceAllBtn.IsEnabled = false;
 
-    private static (int LineNumber, int ColumnOffset, string LinePreview) LocateMatch(string text, List<int> lineStartOffsets, int offset)
-    {
-        int idx = lineStartOffsets.BinarySearch(offset);
-        if (idx < 0) idx = ~idx - 1;
-        int lineStart = lineStartOffsets[idx];
-        int lineEnd = idx + 1 < lineStartOffsets.Count ? lineStartOffsets[idx + 1] - 1 : text.Length;
-        if (lineEnd < lineStart) lineEnd = lineStart;
-        string lineText = text.Substring(lineStart, lineEnd - lineStart).TrimEnd('\r');
-        return (idx + 1, offset - lineStart, lineText.Trim());
+        try
+        {
+            var outcome = await Task.Run(() => ProjectSearcher.SearchProject(root, pattern, PrepareText, cts.Token), cts.Token);
+
+            // Can finish just as a newer search cancels it - that one has already cleared the
+            // results and owns the status text, so don't add stale results to its list.
+            if (cts.IsCancellationRequested) return;
+
+            foreach (var fileResult in outcome.Files)
+                ViewModel.SearchResults.Add(fileResult);
+
+            int fileCount = outcome.Files.Count;
+            string summary = outcome.TotalMatches == 0
+                ? "No results found."
+                : $"{outcome.TotalMatches} result{(outcome.TotalMatches == 1 ? "" : "s")} in {fileCount} file{(fileCount == 1 ? "" : "s")}.";
+            if (outcome.TimedOutFiles > 0)
+                summary += $" {outcome.TimedOutFiles} file{(outcome.TimedOutFiles == 1 ? " was" : "s were")} skipped because the regular expression took too long to evaluate.";
+            SearchStatusText.Text = summary;
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer search, which now owns the results and status text.
+        }
+        finally
+        {
+            if (ReferenceEquals(_projectSearchCts, cts))
+            {
+                _projectSearchCts = null;
+                SearchReplaceAllBtn.IsEnabled = true;
+            }
+        }
     }
 
     // Selecting a row would otherwise auto-scroll the tree's horizontal ScrollViewer to bring
@@ -4384,7 +4404,7 @@ public partial class MainWindow : Window
     // it touches files that may not even be open. Files already open as a tab go through the
     // AvalonEdit document (so undo/IsModified stay correct, same backwards-iteration trick as
     // ExecuteReplaceAll); files not open are rewritten directly on disk.
-    private void SearchReplaceAll_Click(object sender, RoutedEventArgs e)
+    private async void SearchReplaceAll_Click(object sender, RoutedEventArgs e)
     {
         int totalMatches = ViewModel.SearchResults.Sum(f => f.Matches.Count);
         if (totalMatches == 0) return;
@@ -4424,7 +4444,7 @@ public partial class MainWindow : Window
                     bool isPrg = fileResult.FilePath.EndsWith(".prg", StringComparison.OrdinalIgnoreCase);
                     if (isPrg) text = PadLineNumbers(text);
 
-                    var lineStarts = ComputeLineStartOffsets(text);
+                    var lineStarts = ProjectSearcher.ComputeLineStartOffsets(text);
                     var sb = new StringBuilder(text);
                     // Backwards, so each earlier (larger-offset) replacement doesn't shift the
                     // offsets - computed from lineStarts of the original text - that later,
@@ -4446,7 +4466,7 @@ public partial class MainWindow : Window
             }
         }
 
-        RunProjectSearch();
+        await RunProjectSearchAsync();
     }
 
     #endregion
@@ -7990,9 +8010,11 @@ public partial class MainWindow : Window
     /// padding Editor_PreviewKeyDown applies as the user types - imported .prg source
     /// otherwise comes back with its zero padding stripped (the format only stores numbers)
     /// </summary>
-    private string PadLineNumbers(string sourceCode)
+    private string PadLineNumbers(string sourceCode) => PadLineNumbers(sourceCode, ViewModel.Settings.LineNumberPadding);
+
+    // The setting-free core of PadLineNumbers, safe to call off the UI thread (project search).
+    private static string PadLineNumbers(string sourceCode, int padding)
     {
-        int padding = ViewModel.Settings.LineNumberPadding;
         if (padding <= 0) return sourceCode;
 
         string[] lines = sourceCode.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
