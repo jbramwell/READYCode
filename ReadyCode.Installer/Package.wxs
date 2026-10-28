@@ -34,7 +34,9 @@
 
   <Fragment>
     <ComponentGroup Id="HarvestedComponents" Directory="INSTALLFOLDER">
-      <Files Include="..\READYCode\bin\Release\net10.0-windows\$(var.AppRuntimeIdentifier)\**" />
+      <!-- The publish output (dotnet publish -c Release -r <rid>), not the build output: only
+           publish applies ReadyToRun precompilation (PublishReadyToRun), for faster startup. -->
+      <Files Include="..\READYCode\bin\Release\net10.0-windows\$(var.AppRuntimeIdentifier)\publish\**" />
     </ComponentGroup>
   </Fragment>
 

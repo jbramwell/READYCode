@@ -279,7 +279,9 @@ There are two MSIX-related pieces in this repo:
   (`AppxBundlePlatforms=x64|arm64`), so a single `.msixupload` covers both architectures.
 
 The WiX installer (`ReadyCode.Installer`) builds `READYCode.msi` (x64) by default, or
-`READYCode-arm64.msi` with `-p:Platform=ARM64`; the release workflow publishes both.
+`READYCode-arm64.msi` with `-p:Platform=ARM64`; the release workflow publishes both. It packages
+the app's *publish* output, so run `dotnet publish ReadyCode/ReadyCode.csproj -c Release -r win-x64`
+(or `win-arm64`) before building it.
 
 ## Contributing
 

@@ -35,10 +35,12 @@ jobs:
       - name: Test
         run: dotnet test ReadyCode.Tests/ReadyCode.Tests.csproj -c Debug --no-restore
 
-      - name: Build app
+      # Publish (not build) so ReadyToRun precompilation is applied - the installers package the
+      # publish output.
+      - name: Publish app
         run: |
-          dotnet build ReadyCode/ReadyCode.csproj -c Release -r win-x64 --no-restore
-          dotnet build ReadyCode/ReadyCode.csproj -c Release -r win-arm64 --no-restore
+          dotnet publish ReadyCode/ReadyCode.csproj -c Release -r win-x64 --no-restore
+          dotnet publish ReadyCode/ReadyCode.csproj -c Release -r win-arm64 --no-restore
 
       - name: Build installers
         run: |
