@@ -31,6 +31,10 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore READYCode.sln
 
+      # Don't publish a release whose tests fail (ARM64 is covered by the Build and Test workflow)
+      - name: Test
+        run: dotnet test ReadyCode.Tests/ReadyCode.Tests.csproj -c Debug --no-restore
+
       - name: Build app
         run: |
           dotnet build ReadyCode/ReadyCode.csproj -c Release -r win-x64 --no-restore

@@ -76,7 +76,8 @@ style in a new file:
 2. `dotnet test ReadyCode.Tests/ReadyCode.Tests.csproj` - must pass. Add tests under
    `ReadyCode.Tests/` for new pure-logic code (tokenizer, minify, prettify, and similar are good
    candidates; UI/AvalonEdit-coupled code is harder to unit test and isn't currently covered - manual
-   verification is fine there).
+   verification is fine there). The **Build and Test** workflow (`.github/workflows/ci.yml`) also
+   runs the suite on both x64 and ARM64 for every PR and push to `main`, and must pass on both.
 3. For any UI-visible change, actually run the app (`dotnet run --project ReadyCode/ReadyCode.csproj`)
    and exercise the change rather than relying on the build succeeding.
 4. Keep commits/PRs scoped to one change - separate unrelated fixes into separate PRs where practical.

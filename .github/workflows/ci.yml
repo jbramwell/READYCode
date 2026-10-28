@@ -1,0 +1,51 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+# A newer push to the same branch/PR supersedes any run still in progress.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Both architectures, since behavior can differ between them (e.g. floating-point to
+    # integer conversion) - each runner builds and tests natively for its own CPU.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ windows-latest, windows-11-arm ]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore ReadyCode.slnf
+
+      - name: Build
+        run: dotnet build ReadyCode.slnf -c Debug --no-restore
+
+      - name: Test
+        run: dotnet test ReadyCode.Tests/ReadyCode.Tests.csproj -c Debug --no-build --logger "trx;LogFileName=results.trx"
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: ReadyCode.Tests/TestResults/*.trx
