@@ -73,7 +73,7 @@ public class JsonSettingsFileTests
             JsonSettingsFile.Save(path, new SampleSettings { Name = "first" });
             JsonSettingsFile.Save(path, new SampleSettings { Name = "second" });
 
-            var files = Directory.GetFiles(dir).Select(Path.GetFileName).OrderBy(f => f).ToArray();
+            var files = Directory.GetFiles(dir).Select(f => Path.GetFileName(f)).OrderBy(f => f).ToArray();
             Assert.Equal(["settings.json", "settings.json.bak"], files);
         }
         finally { Directory.Delete(dir, recursive: true); }

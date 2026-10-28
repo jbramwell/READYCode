@@ -3,7 +3,6 @@
 
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
 using DiffPlex.DiffBuilder.Model;
 using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.Document;

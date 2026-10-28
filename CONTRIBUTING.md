@@ -72,7 +72,9 @@ style in a new file:
 
 ## Before opening a PR
 
-1. `dotnet build ReadyCode/ReadyCode.csproj -c Debug` - must build with no new warnings.
+1. `dotnet build ReadyCode/ReadyCode.csproj -c Debug` - must build with no warnings (CI treats
+   warnings as errors). That includes the code-style rules `.editorconfig` enforces in builds,
+   such as no unused `using` directives.
 2. `dotnet test ReadyCode.Tests/ReadyCode.Tests.csproj` - must pass. Add tests under
    `ReadyCode.Tests/` for new pure-logic code (tokenizer, minify, prettify, and similar are good
    candidates; UI/AvalonEdit-coupled code is harder to unit test and isn't currently covered - manual

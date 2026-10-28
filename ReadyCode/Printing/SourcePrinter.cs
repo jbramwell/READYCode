@@ -7,8 +7,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Interop;
-using System.Windows.Media;
-using System.Windows.Xps;
 using ReadyCode.Editor;
 using ReadyCode.Models;
 using ReadyCode.Tokenizer;

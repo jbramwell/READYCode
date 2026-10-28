@@ -14,4 +14,17 @@
     <ReadyCodeVersion>2.5.0</ReadyCodeVersion>
   </PropertyGroup>
 
+  <!-- Code style: reports the .editorconfig rules set to "warning" (e.g. IDE0005, unused usings)
+       during builds, not only in the editor. The compiler only reports unused usings when it
+       parses doc comments, so documentation generation is on - but the XML file it produces
+       isn't wanted, so it stays in obj\ (not copied to bin\ or published), and missing-doc-comment
+       warnings (CS1591) are off. -->
+  <PropertyGroup Condition="'$(MSBuildProjectExtension)' == '.csproj'">
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <CopyDocumentationFileToOutputDirectory>false</CopyDocumentationFileToOutputDirectory>
+    <PublishDocumentationFile>false</PublishDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
 </Project>

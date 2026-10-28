@@ -1,0 +1,33 @@
+# Editor and code-style settings for READYCode. Only the rules marked "warning" are enforced in
+# builds (see EnforceCodeStyleInBuild in Directory.Build.props); "suggestion" rules just show
+# hints in the editor. Line endings are left to Git (core.autocrlf), not set here.
+root = true
+
+[*]
+indent_style = space
+trim_trailing_whitespace = true
+
+[*.{cs,xaml}]
+indent_size = 4
+
+[*.{csproj,props,targets,wixproj,wapproj,wxs,wxl,pubxml,appxmanifest,xml}]
+indent_size = 2
+
+[*.{json,yml,yaml}]
+indent_size = 2
+
+[.vscode/*.json]
+indent_size = 4
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+# Conventions the codebase already follows.
+csharp_style_namespace_declarations = file_scoped:suggestion
+csharp_using_directive_placement = outside_namespace:suggestion
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+# Unused using directives fail the build (with TreatWarningsAsErrors in CI) instead of piling up.
+dotnet_diagnostic.IDE0005.severity = warning

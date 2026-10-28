@@ -97,7 +97,7 @@ public static class PetsciiScreenCodeMap
     }
 
     /// <summary>
-    /// Reverses <see cref="ToDisplayText"/>: converts PUA-substituted display text back to raw
+    /// Reverses <see cref="ToDisplayText(string, bool)"/>: converts PUA-substituted display text back to raw
     /// PETSCII bytes-as-chars, for encoding a live variable edit back to memory. A no-op on any
     /// string with no PUA characters in it, so it's safe to apply unconditionally to plain text.
     /// </summary>

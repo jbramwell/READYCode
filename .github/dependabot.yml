@@ -1,0 +1,26 @@
+# Opens a weekly PR for outdated NuGet packages and GitHub Actions, each checked by the
+# Build and Test workflow on x64 and ARM64 before merging.
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      # The test stack moves together; one PR instead of three.
+      test-packages:
+        patterns:
+          - "xunit*"
+          - "Microsoft.NET.Test.Sdk"
+      wix:
+        patterns:
+          - "WixToolset.*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"

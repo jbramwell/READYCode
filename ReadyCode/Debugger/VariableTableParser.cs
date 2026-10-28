@@ -64,8 +64,8 @@ public sealed record ArrayHeader(string Name, BasicVariableType ElementType, int
 /// bytes: for an integer, BOTH name bytes have bit 7 set; for a string, only the SECOND name byte
 /// has bit 7 set; for a float, neither does. A 1-character name's second byte is 0 (before any
 /// type flag is applied). Unused trailing bytes in an integer's or string's 5-byte data area are
-/// ignored. See <see cref="ParseArrayVariables"/> for the array table (ARYTAB onward), a
-/// separate, variable-length record format.
+/// ignored. See <see cref="TryParseArrayHeader"/> and <see cref="ParseArrayElements"/> for the
+/// array table (ARYTAB onward), a separate, variable-length record format.
 /// </summary>
 public static class VariableTableParser
 {

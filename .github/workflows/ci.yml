@@ -37,8 +37,10 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore ReadyCode.slnf
 
+      # Warnings fail the build here (not locally), so the zero-warning baseline - including the
+      # .editorconfig rules enforced in builds, like unused usings - can't erode unnoticed.
       - name: Build
-        run: dotnet build ReadyCode.slnf -c Debug --no-restore
+        run: dotnet build ReadyCode.slnf -c Debug --no-restore -p:TreatWarningsAsErrors=true
 
       - name: Test
         run: dotnet test ReadyCode.Tests/ReadyCode.Tests.csproj -c Debug --no-build --logger "trx;LogFileName=results.trx"
