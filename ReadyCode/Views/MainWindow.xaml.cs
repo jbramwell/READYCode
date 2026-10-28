@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Moonspace Labs, LLC
+﻿// Copyright (c) 2026 Moonspace Labs, LLC
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
 using System.Collections.ObjectModel;
@@ -30,6 +30,7 @@ using ReadyCode.Diff;
 using ReadyCode.Editor;
 using ReadyCode.Formatting;
 using ReadyCode.Interop;
+using ReadyCode.IO;
 using ReadyCode.Minify;
 using ReadyCode.Models;
 using ReadyCode.Prettify;
@@ -1536,7 +1537,7 @@ public partial class MainWindow : Window
             byte[] diskBytes = File.ReadAllBytes(item.SourcePath);
             var kind = FileClassifier.Classify(item.SourcePath, isFolder: false);
             byte[] updated = DiskImage.ForKind(kind).DeleteEntry(diskBytes, item.Name);
-            File.WriteAllBytes(item.SourcePath, updated);
+            AtomicFile.WriteAllBytes(item.SourcePath, updated);
 
             string sourceId = $"{item.SourcePath}!{item.Name}";
             var openTab = ViewModel.OpenTabs.FirstOrDefault(t => t.VirtualSourceId == sourceId);
@@ -1590,7 +1591,7 @@ public partial class MainWindow : Window
             byte[] diskBytes = File.ReadAllBytes(diskImageItem.FullPath);
             var diskKind = FileClassifier.Classify(diskImageItem.FullPath, isFolder: false);
             byte[] updated = DiskImage.ForKind(diskKind).AddEntry(diskBytes, entryName, entryKind, prgData!);
-            File.WriteAllBytes(diskImageItem.FullPath, updated);
+            AtomicFile.WriteAllBytes(diskImageItem.FullPath, updated);
 
             RefreshDiskImageNode(diskImageItem.FullPath);
         }
@@ -1686,7 +1687,7 @@ public partial class MainWindow : Window
                 byte[] diskBytes = File.ReadAllBytes(sourcePath);
                 var kind = FileClassifier.Classify(sourcePath, isFolder: false);
                 byte[] updated = DiskImage.ForKind(kind).ReplaceEntry(diskBytes, entryName, newContent);
-                File.WriteAllBytes(sourcePath, updated);
+                AtomicFile.WriteAllBytes(sourcePath, updated);
 
                 tab.IsModified = false;
                 ViewModel.SetStatus("File saved.");
@@ -1777,14 +1778,14 @@ public partial class MainWindow : Window
             if (ViewModel.ActiveTab?.IsHexMode == true)
             {
                 byte[] rawBytes = ViewModel.ActiveTab.RawBytes!;
-                File.WriteAllBytes(filePath, rawBytes);
+                AtomicFile.WriteAllBytes(filePath, rawBytes);
                 ViewModel.IsModified = false;
                 TrackRecentFile(filePath);
                 ViewModel.SetStatus($"File saved: {rawBytes.Length:N0} bytes.");
             }
             else if (ViewModel.ActiveTab != null && !PrgConverter.ShouldTokenizeOnSave(ViewModel.ActiveTab.Language, filePath))
             {
-                File.WriteAllText(filePath, Editor.Text, Encoding.UTF8);
+                AtomicFile.WriteAllText(filePath, Editor.Text, Encoding.UTF8);
                 ViewModel.IsModified = false;
                 TrackRecentFile(filePath);
                 ViewModel.SetStatus("File saved.");
@@ -1794,7 +1795,7 @@ public partial class MainWindow : Window
             {
                 var converter = new PrgConverter();
                 var prgData = converter.ConvertToPrg(Editor.Text);
-                File.WriteAllBytes(filePath, prgData);
+                AtomicFile.WriteAllBytes(filePath, prgData);
                 ViewModel.IsModified = false;
                 TrackRecentFile(filePath);
                 ViewModel.SetStatus($"File saved: {prgData.Length:N0} tokenized bytes.");
@@ -1887,7 +1888,7 @@ public partial class MainWindow : Window
         {
             if (!PrgConverter.ShouldTokenizeOnSave(tab.Language, tab.FilePath))
             {
-                File.WriteAllText(tab.FilePath, tab.Document.Text, Encoding.UTF8);
+                AtomicFile.WriteAllText(tab.FilePath, tab.Document.Text, Encoding.UTF8);
                 tab.IsModified = false;
                 TrackRecentFile(tab.FilePath);
                 RefreshExplorerForSavedFile(tab.FilePath);
@@ -1898,7 +1899,7 @@ public partial class MainWindow : Window
             {
                 var converter = new PrgConverter();
                 var prgData = converter.ConvertToPrg(tab.Document.Text);
-                File.WriteAllBytes(tab.FilePath, prgData);
+                AtomicFile.WriteAllBytes(tab.FilePath, prgData);
                 tab.IsModified = false;
                 TrackRecentFile(tab.FilePath);
                 RefreshExplorerForSavedFile(tab.FilePath);
@@ -1936,7 +1937,7 @@ public partial class MainWindow : Window
 
         if (dialog.ShowDialog() == true)
         {
-            try { File.WriteAllText(dialog.FileName, Editor.Text, Encoding.UTF8); }
+            try { AtomicFile.WriteAllText(dialog.FileName, Editor.Text, Encoding.UTF8); }
             catch (Exception ex)
             {
                 MessageBox.Show($"Error exporting file: {ex.Message}", "Export Error",
@@ -3417,7 +3418,7 @@ public partial class MainWindow : Window
         try
         {
             var bytes = await ViewModel.C64UFtp.DownloadBytesAsync(item.FullPath);
-            File.WriteAllBytes(dialog.FileName, bytes);
+            AtomicFile.WriteAllBytes(dialog.FileName, bytes);
             ViewModel.SetStatus($"Downloaded \"{item.Name}\".");
         }
         catch (Exception ex)
@@ -5339,7 +5340,7 @@ public partial class MainWindow : Window
             byte[] diskBytes = File.ReadAllBytes(item.SourcePath);
             var kind = FileClassifier.Classify(item.SourcePath, isFolder: false);
             byte[] updated = DiskImage.ForKind(kind).RenameEntry(diskBytes, item.Name, newName);
-            File.WriteAllBytes(item.SourcePath, updated);
+            AtomicFile.WriteAllBytes(item.SourcePath, updated);
             RefreshDiskImageNode(item.SourcePath);
         }
         catch (Exception ex)

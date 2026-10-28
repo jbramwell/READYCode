@@ -1,9 +1,10 @@
-// Copyright (c) 2026 Moonspace Labs, LLC
+﻿// Copyright (c) 2026 Moonspace Labs, LLC
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
+using ReadyCode.IO;
 using ReadyCode.Tokenizer;
 
 namespace ReadyCode.Search;
@@ -96,9 +97,9 @@ public static class ProjectSearcher
     public static void WriteSearchableText(string path, string text)
     {
         if (string.Equals(Path.GetExtension(path), ".prg", StringComparison.OrdinalIgnoreCase))
-            File.WriteAllBytes(path, new PrgConverter().ConvertToPrg(text));
+            AtomicFile.WriteAllBytes(path, new PrgConverter().ConvertToPrg(text));
         else
-            File.WriteAllText(path, text, Encoding.UTF8);
+            AtomicFile.WriteAllText(path, text, Encoding.UTF8);
     }
 
     /// <summary>
