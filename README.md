@@ -268,6 +268,9 @@ it only activates when you configure a device URL in Preferences.
 
 ### Packaging
 
+To publish a release (GitHub MSIs and the Microsoft Store package), follow the checklist in
+[RELEASING.md](RELEASING.md).
+
 The version number lives in one place: `ReadyCodeVersion` in `Directory.Build.props` (Major.Minor.Build).
 It flows into the app's assembly and file versions, the MSI, and the MSIX package (as `X.Y.Z.0` - the
 Store requires the fourth part to be 0, so bump the third for each Store submission). The release
