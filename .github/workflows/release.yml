@@ -47,11 +47,13 @@ jobs:
         run: dotnet test ReadyCode.Tests/ReadyCode.Tests.csproj -c Debug --no-restore
 
       # Publish (not build) so ReadyToRun precompilation is applied - the installers package the
-      # publish output.
+      # publish output. No --no-restore here: the restore above runs as Debug (PublishReadyToRun
+      # off, not self-contained), so it doesn't fetch the Crossgen2 or runtime packs that a
+      # Release publish needs. Letting publish restore with Release properties pulls them in.
       - name: Publish app
         run: |
-          dotnet publish ReadyCode/ReadyCode.csproj -c Release -r win-x64 --no-restore
-          dotnet publish ReadyCode/ReadyCode.csproj -c Release -r win-arm64 --no-restore
+          dotnet publish ReadyCode/ReadyCode.csproj -c Release -r win-x64
+          dotnet publish ReadyCode/ReadyCode.csproj -c Release -r win-arm64
 
       - name: Build installers
         run: |
