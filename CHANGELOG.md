@@ -5,16 +5,33 @@
 ### New Features
 
 - **DEF FN function tracking** - the Variable Explorer now lists `DEF FN` functions alongside variables (with a new `FN` type badge), showing every definition and call-site occurrence and supporting inline renaming. Accordingly, `DEF FN` parameters are now correctly tracked as local to their own functions rather than merged with a same-named global variable
+- **Native ARM64 support** - READYCode now runs natively on Windows on ARM devices. The Microsoft Store package includes both x64 and ARM64, and GitHub releases now include a separate `READYCode-arm64.msi` installer alongside the x64 one
+- **Hierarchical debugger Variables panel** - arrays are now shown as expandable rows whose elements are loaded on demand, and values can be edited inline, with string values displayed and edited using PETSCII characters that follow the tab's Lower Case Mode. Expanded arrays stay expanded as you step through the program
+- **Renumber selected lines only** - Renumber Lines now opens a dialog for setting the starting line number and increment, and for choosing between renumbering all lines or only the selected ones
+- **Help > Copy Diagnostic Info** - copies the app version, .NET runtime, CPU architecture, Windows version, install type, data folder location and recent error log entries to the clipboard, ready to paste into a bug report
 
 ### Improvements
 
 - Double-clicking a row in the Errors panel now selects the exact text the diagnostic's squiggle underlines, scrolling it into view if it's off-screen, instead of only moving the caret to the start of the line
+- Prettify now expands the `?` shorthand to `PRINT` and recognizes C64 shifted keyword abbreviations (e.g. `Po` for `POKE`)
+- Project search now runs in the background, so searching a large project no longer freezes the editor. When a search finds nothing because the regular expression is invalid or too slow, the Find bar and search results now say so instead of reporting "no matches"
+- A regular expression that takes too long to evaluate is now stopped after a short timeout instead of freezing the app
+- Unexpected errors no longer close the app: READYCode now recovers where it can, keeps running so you can save your work, and writes the details to an `error.log` file in its data folder
+- Saving a file or settings is now crash-safe: if the app crashes or the machine loses power mid-save, the file keeps either its old content or its new content, never a half-written mix. If the settings file is ever damaged, its backup copy is used instead
+- Faster startup for MSI installs (installers are now built from ReadyToRun-compiled output)
+- The "Run Without Debugging" menu items are renamed to "Start Without Debugging" and, like "Start Debugging / Continue", now have icons
+- Closing the app while a debug session is active now cleanly detaches the debugger first
+- READYCode now runs on .NET 10 (previously .NET 8)
 
 ### Bug Fixes
 
 - Fixed calls to an undefined `FN` function, and a `DEF FN` parameter declared with a `%` or `$` suffix, not being flagged as errors
 - Fixed Prettify not inserting a space between `FN` and the function name
 - Fixed pressing Enter at the start of a line (before its line number) corrupting the line instead of inserting a new, correctly-numbered line above it
+- Fixed Minify producing invalid code when removing a space would create an unintended `GO` keyword (e.g. `IF A=G OR B=G` becoming `IFA=GORB=G`); Prettify now handles the same `GO`/`OR` ambiguity correctly too
+- Fixed the VICE debugger sometimes leaving the Debug menu stuck in debug mode after the program finished running
+- Fixed autocomplete "ghost text" suggestions appearing inside `REM` comments
+- Fixed editing a debugger variable to a non-finite value (e.g. NaN) writing garbage to the machine on ARM64 instead of being rejected
 
 ## [v2.4.0] - 2026-09-11
 
