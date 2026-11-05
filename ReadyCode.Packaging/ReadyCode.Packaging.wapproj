@@ -7,7 +7,7 @@
     <NoWarn>$(NoWarn);NU1701</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\READYCode\READYCode.csproj">
+    <ProjectReference Include="..\ReadyCode\ReadyCode.csproj">
       <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
     </ProjectReference>
   </ItemGroup>
@@ -49,7 +49,7 @@
     <GenerateTestArtifacts>False</GenerateTestArtifacts>
     <AppxBundlePlatforms>x64|arm64</AppxBundlePlatforms>
     <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
-    <EntryPointProjectUniqueName>..\READYCode\READYCode.csproj</EntryPointProjectUniqueName>
+    <EntryPointProjectUniqueName>..\ReadyCode\ReadyCode.csproj</EntryPointProjectUniqueName>
     <PackageCertificateKeyFile>ReadyCode.Packaging_TemporaryKey.pfx</PackageCertificateKeyFile>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
